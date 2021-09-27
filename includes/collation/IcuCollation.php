@@ -18,7 +18,7 @@
  * @file
  */
 
-use MediaWiki\Languages\LanguageFactory;
+use MediaWiki\MediaWikiServices;
 
 /**
  * @since 1.16.3
@@ -241,18 +241,12 @@ class IcuCollation extends Collation {
 		'zu' => [],
 	];
 
-	/**
-	 * @param LanguageFactory $languageFactory
-	 * @param string $locale
-	 */
-	public function __construct(
-		LanguageFactory $languageFactory,
-		$locale
-	) {
+	public function __construct( $locale ) {
 		$this->locale = $locale;
 		// Drop everything after the '@' in locale's name
 		$localeParts = explode( '@', $locale );
-		$this->digitTransformLanguage = $languageFactory->getLanguage( $locale === 'root' ? 'en' : $localeParts[0] );
+		$this->digitTransformLanguage = MediaWikiServices::getInstance()->getLanguageFactory()
+			->getLanguage( $locale === 'root' ? 'en' : $localeParts[0] );
 
 		$this->mainCollator = Collator::create( $locale );
 		if ( !$this->mainCollator ) {

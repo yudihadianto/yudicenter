@@ -20,8 +20,6 @@
  * @file
  */
 
-use MediaWiki\Languages\LanguageFactory;
-
 /**
  * Resort normal UTF-8 order by putting a bunch of stuff in PUA
  *
@@ -53,24 +51,16 @@ class CustomUppercaseCollation extends NumericUppercaseCollation {
 	/**
 	 * @note This assumes $alphabet does not contain U+F3000-U+F3FFF
 	 *
-	 * @param LanguageFactory $languageFactory
 	 * @param array $alphabet Sorted array of uppercase characters.
-	 * @param string|Language $digitTransformLang What language for number sorting.
+	 * @param Language $lang What language for number sorting.
 	 */
-	public function __construct(
-		LanguageFactory $languageFactory,
-		array $alphabet,
-		$digitTransformLang
-	) {
+	public function __construct( array $alphabet, Language $lang ) {
 		if ( count( $alphabet ) < 1 || count( $alphabet ) >= 4096 ) {
 			throw new UnexpectedValueException( "Alphabet must be < 4096 items" );
 		}
 		$this->firstLetters = $alphabet;
-		$digitTransformLang = $digitTransformLang instanceof Language
-			? $digitTransformLang
-			: $languageFactory->getLanguage( $digitTransformLang );
 		// For digraphs, only the first letter is capitalized in input
-		$this->alphabet = array_map( [ $digitTransformLang, 'uc' ], $alphabet );
+		$this->alphabet = array_map( [ $lang, 'uc' ], $alphabet );
 
 		$this->puaSubset = [];
 		$len = count( $alphabet );
@@ -83,7 +73,7 @@ class CustomUppercaseCollation extends NumericUppercaseCollation {
 		$lengths = array_map( 'mb_strlen', $this->alphabet );
 		array_multisort( $lengths, SORT_DESC, $this->firstLetters, $this->alphabet, $this->puaSubset );
 
-		parent::__construct( $languageFactory, $digitTransformLang );
+		parent::__construct( $lang );
 	}
 
 	private function convertToPua( $string ) {

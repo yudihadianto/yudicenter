@@ -204,19 +204,14 @@ class SwiftFileBackend extends FileBackendStore {
 		// Normalize casing, and strip out illegal headers
 		foreach ( $headers as $name => $value ) {
 			$name = strtolower( $name );
-			if ( $name === 'x-delete-at' && is_numeric( $value ) ) {
-				// Expects a Unix Epoch date
-				$contentHeaders[$name] = $value;
-			} elseif ( $name === 'x-delete-after' && is_numeric( $value ) ) {
-				// Expects number of minutes time to live.
-				$contentHeaders[$name] = $value;
-			} elseif ( preg_match( '/^(x-)?content-(?!length$)/', $name ) ) {
+			if ( !preg_match( '/^(x-)?content-(?!length$)/', $name ) ) {
 				// Only allow content-* and x-content-* headers (but not content-length)
-				$contentHeaders[$name] = $value;
-			} elseif ( $name === 'content-type' && strlen( $value ) ) {
+				continue;
+			} elseif ( $name === 'content-type' && !strlen( $value ) ) {
 				// This header can be set to a value but not unset for sanity
-				$contentHeaders[$name] = $value;
+				continue;
 			}
+			$contentHeaders[$name] = $value;
 		}
 		// By default, Swift has annoyingly low maximum header value limits
 		if ( isset( $contentHeaders['content-disposition'] ) ) {

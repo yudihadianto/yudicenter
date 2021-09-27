@@ -1,7 +1,8 @@
 'use strict';
 
 const assert = require( 'assert' );
-const CreateAccountPage = require( 'wdio-mediawiki/CreateAccountPage' );
+const CreateAccountPage = require( '../pageobjects/createaccount.page' );
+const PreferencesPage = require( '../pageobjects/preferences.page' );
 const UserLoginPage = require( 'wdio-mediawiki/LoginPage' );
 const Api = require( 'wdio-mediawiki/Api' );
 const Util = require( 'wdio-mediawiki/Util' );
@@ -41,5 +42,24 @@ describe( 'User', function () {
 			return mw.config.get( 'wgUserName' );
 		} );
 		assert.strictEqual( actualUsername, username );
+	} );
+
+	// Disabled due to flakiness (T199446)
+	it.skip( 'should be able to change preferences', function () {
+		const realName = Util.getTestString();
+
+		// create
+		browser.call( async () => {
+			await Api.createAccount( bot, username, password );
+		} );
+
+		// log in
+		UserLoginPage.login( username, password );
+
+		// change
+		PreferencesPage.changeRealName( realName );
+
+		// check
+		assert.strictEqual( PreferencesPage.realName.getValue(), realName );
 	} );
 } );

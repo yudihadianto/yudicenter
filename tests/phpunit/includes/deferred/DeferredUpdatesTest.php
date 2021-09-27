@@ -13,7 +13,7 @@ class DeferredUpdatesTest extends MediaWikiIntegrationTestCase {
 	 */
 	public function testAddAndRun() {
 		$update = $this->getMockBuilder( DeferrableUpdate::class )
-			->onlyMethods( [ 'doUpdate' ] )->getMock();
+			->setMethods( [ 'doUpdate' ] )->getMock();
 		$update->expects( $this->once() )->method( 'doUpdate' );
 
 		DeferredUpdates::addUpdate( $update );
@@ -29,12 +29,12 @@ class DeferredUpdatesTest extends MediaWikiIntegrationTestCase {
 		$this->setMwGlobals( 'wgCommandLineMode', false );
 
 		$update1 = $this->getMockBuilder( MergeableUpdate::class )
-			->onlyMethods( [ 'merge', 'doUpdate' ] )->getMock();
+			->setMethods( [ 'merge', 'doUpdate' ] )->getMock();
 		$update1->expects( $this->once() )->method( 'merge' );
 		$update1->expects( $this->never() )->method( 'doUpdate' );
 
 		$update2 = $this->getMockBuilder( MergeableUpdate::class )
-			->onlyMethods( [ 'merge', 'doUpdate' ] )->getMock();
+			->setMethods( [ 'merge', 'doUpdate' ] )->getMock();
 		$update2->expects( $this->never() )->method( 'merge' );
 		$update2->expects( $this->never() )->method( 'doUpdate' );
 
@@ -211,7 +211,7 @@ class DeferredUpdatesTest extends MediaWikiIntegrationTestCase {
 
 		// clear anything
 		$lbFactory = MediaWikiServices::getInstance()->getDBLoadBalancerFactory();
-		$lbFactory->commitPrimaryChanges( __METHOD__ );
+		$lbFactory->commitMasterChanges( __METHOD__ );
 
 		DeferredUpdates::addCallableUpdate(
 			static function () use ( $updates ) {
@@ -277,7 +277,7 @@ class DeferredUpdatesTest extends MediaWikiIntegrationTestCase {
 		$y = false;
 		// clear anything
 		$lbFactory = MediaWikiServices::getInstance()->getDBLoadBalancerFactory();
-		$lbFactory->commitPrimaryChanges( __METHOD__ );
+		$lbFactory->commitMasterChanges( __METHOD__ );
 
 		DeferredUpdates::addCallableUpdate(
 			static function () use ( &$x, &$y ) {
@@ -356,7 +356,7 @@ class DeferredUpdatesTest extends MediaWikiIntegrationTestCase {
 		};
 
 		$lbFactory = MediaWikiServices::getInstance()->getDBLoadBalancerFactory();
-		$lbFactory->beginPrimaryChanges( __METHOD__ );
+		$lbFactory->beginMasterChanges( __METHOD__ );
 
 		DeferredUpdates::addCallableUpdate( $callback1 );
 		$this->assertEquals( [], $calls );
@@ -364,7 +364,7 @@ class DeferredUpdatesTest extends MediaWikiIntegrationTestCase {
 		DeferredUpdates::tryOpportunisticExecute( 'run' );
 		$this->assertEquals( [], $calls );
 
-		$dbw = wfGetDB( DB_PRIMARY );
+		$dbw = wfGetDB( DB_MASTER );
 		$dbw->onTransactionCommitOrIdle( function () use ( &$calls, $callback2 ) {
 			DeferredUpdates::addCallableUpdate( $callback2 );
 			$this->assertEquals( [], $calls );
@@ -373,7 +373,7 @@ class DeferredUpdatesTest extends MediaWikiIntegrationTestCase {
 		$this->assertSame( 1, $dbw->trxLevel() );
 		$this->assertEquals( [], $calls );
 
-		$lbFactory->commitPrimaryChanges( __METHOD__ );
+		$lbFactory->commitMasterChanges( __METHOD__ );
 
 		$this->assertEquals( [ 'oti' ], $calls );
 
@@ -393,7 +393,7 @@ class DeferredUpdatesTest extends MediaWikiIntegrationTestCase {
 			new MWCallableUpdate(
 				static function () use ( $lbFactory, $fname, &$called ) {
 					$lbFactory->flushReplicaSnapshots( $fname );
-					$lbFactory->commitPrimaryChanges( $fname );
+					$lbFactory->commitMasterChanges( $fname );
 					$called = true;
 				},
 				$fname

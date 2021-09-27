@@ -139,14 +139,7 @@ class SpecialEditTags extends UnlistedSpecialPage {
 		}
 
 		// Check blocks
-		$checkReplica = !$this->submitClicked;
-		if (
-			$this->permissionManager->isBlockedFrom(
-				$user,
-				$this->targetObj,
-				$checkReplica
-			)
-		) {
+		if ( $this->permissionManager->isBlockedFrom( $user, $this->targetObj ) ) {
 			throw new UserBlockedError(
 				$user->getBlock(),
 				$user,
@@ -465,7 +458,7 @@ class SpecialEditTags extends UnlistedSpecialPage {
 		$this->getOutput()->wrapWikiMsg( "<div class=\"successbox\">\n$1\n</div>",
 			'tags-edit-success' );
 		$this->wasSaved = true;
-		$this->revList->reloadFromPrimary();
+		$this->revList->reloadFromMaster();
 		$this->reason = ''; // no need to spew the reason back at the user
 		$this->showForm();
 	}

@@ -37,8 +37,7 @@ class ResponseFactory {
 	 * @throws JsonEncodingException
 	 */
 	public function encodeJson( $value ) {
-		$json = json_encode( $value,
-			JSON_UNESCAPED_SLASHES | JSON_UNESCAPED_UNICODE | JSON_INVALID_UTF8_SUBSTITUTE );
+		$json = json_encode( $value, JSON_UNESCAPED_SLASHES | JSON_UNESCAPED_UNICODE );
 		if ( $json === false ) {
 			throw new JsonEncodingException( json_last_error_msg(), json_last_error() );
 		}

@@ -11,7 +11,7 @@ use MediaWiki\MediaWikiServices;
  */
 class ApiQueryWatchlistRawIntegrationTest extends ApiTestCase {
 
-	protected function setUp(): void {
+	protected function setUp() : void {
 		parent::setUp();
 
 		$this->tablesUsed = array_merge(
@@ -472,11 +472,8 @@ class ApiQueryWatchlistRawIntegrationTest extends ApiTestCase {
 	}
 
 	public function testOwnerAndTokenParams() {
-		$services = $this->getServiceContainer();
-		$userOptionsManager = $services->getUserOptionsManager();
-
 		$otherUser = $this->getNotLoggedInTestUser();
-		$userOptionsManager->setOption( $otherUser, 'watchlisttoken', '1234567890' );
+		$otherUser->setOption( 'watchlisttoken', '1234567890' );
 		$otherUser->saveSettings();
 
 		$store = $this->getWatchedItemStore();
@@ -485,7 +482,7 @@ class ApiQueryWatchlistRawIntegrationTest extends ApiTestCase {
 			new TitleValue( 1, 'ApiQueryWatchlistRawIntegrationTestPage1' ),
 		] );
 
-		$services->getMainWANObjectCache()->clearProcessCache();
+		MediaWikiServices::getInstance()->getMainWANObjectCache()->clearProcessCache();
 		$result = $this->doListWatchlistRawRequest( [
 			'wrowner' => $otherUser->getName(),
 			'wrtoken' => '1234567890',
@@ -507,10 +504,8 @@ class ApiQueryWatchlistRawIntegrationTest extends ApiTestCase {
 	}
 
 	public function testOwnerAndTokenParams_wrongToken() {
-		$userOptionsManager = $this->getServiceContainer()->getUserOptionsManager();
-
 		$otherUser = $this->getNotLoggedInTestUser();
-		$userOptionsManager->setOption( $otherUser, 'watchlisttoken', '1234567890' );
+		$otherUser->setOption( 'watchlisttoken', '1234567890' );
 		$otherUser->saveSettings();
 
 		$this->expectException( ApiUsageException::class );

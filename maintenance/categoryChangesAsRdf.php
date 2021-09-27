@@ -393,8 +393,12 @@ SPARQL;
 	 * @param IDatabase $dbr
 	 */
 	private function addIndex( BatchRowIterator $it, IDatabase $dbr ) {
+		// T270033 'new_name_timestamp' index is being renamed
+		$indexName = $dbr->indexExists( 'recentchanges', 'rc_new_name_timestamp', __METHOD__ )
+			? 'rc_new_name_timestamp'
+			: 'new_name_timestamp';
 		$it->addOptions( [
-			'USE INDEX' => [ 'recentchanges' => 'rc_new_name_timestamp' ]
+			'USE INDEX' => [ 'recentchanges' => $indexName ]
 		] );
 	}
 

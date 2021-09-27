@@ -25,6 +25,7 @@ use MediaWiki\Auth\TemporaryPasswordAuthenticationRequest;
 use MediaWiki\Config\ServiceOptions;
 use MediaWiki\HookContainer\HookContainer;
 use MediaWiki\HookContainer\HookRunner;
+use MediaWiki\Permissions\PermissionManager;
 use MediaWiki\User\UserFactory;
 use MediaWiki\User\UserNameUtils;
 use MediaWiki\User\UserOptionsLookup;
@@ -54,6 +55,9 @@ class PasswordReset implements LoggerAwareInterface {
 
 	/** @var ILoadBalancer */
 	private $loadBalancer;
+
+	/** @var PermissionManager */
+	private $permissionManager;
 
 	/** @var UserFactory */
 	private $userFactory;
@@ -88,6 +92,7 @@ class PasswordReset implements LoggerAwareInterface {
 	 * @param AuthManager $authManager
 	 * @param HookContainer $hookContainer
 	 * @param ILoadBalancer $loadBalancer
+	 * @param PermissionManager $permissionManager
 	 * @param UserFactory $userFactory
 	 * @param UserNameUtils $userNameUtils
 	 * @param UserOptionsLookup $userOptionsLookup
@@ -98,6 +103,7 @@ class PasswordReset implements LoggerAwareInterface {
 		AuthManager $authManager,
 		HookContainer $hookContainer,
 		ILoadBalancer $loadBalancer,
+		PermissionManager $permissionManager,
 		UserFactory $userFactory,
 		UserNameUtils $userNameUtils,
 		UserOptionsLookup $userOptionsLookup
@@ -110,6 +116,7 @@ class PasswordReset implements LoggerAwareInterface {
 		$this->authManager = $authManager;
 		$this->hookRunner = new HookRunner( $hookContainer );
 		$this->loadBalancer = $loadBalancer;
+		$this->permissionManager = $permissionManager;
 		$this->userFactory = $userFactory;
 		$this->userNameUtils = $userNameUtils;
 		$this->userOptionsLookup = $userOptionsLookup;
@@ -143,7 +150,7 @@ class PasswordReset implements LoggerAwareInterface {
 			} elseif ( !$this->config->get( 'EnableEmail' ) ) {
 				// Maybe email features have been disabled
 				$status = StatusValue::newFatal( 'passwordreset-emaildisabled' );
-			} elseif ( !$user->isAllowed( 'editmyprivateinfo' ) ) {
+			} elseif ( !$this->permissionManager->userHasRight( $user, 'editmyprivateinfo' ) ) {
 				// Maybe not all users have permission to change private data
 				$status = StatusValue::newFatal( 'badaccess' );
 			} elseif ( $this->isBlocked( $user ) ) {

@@ -6,7 +6,8 @@ use SebastianBergmann\FileIterator\Facade;
  * The tests here verify the structure of the code.  This is for outright bugs,
  * not just style issues.
  */
-class StructureTest extends \PHPUnit\Framework\TestCase {
+
+class StructureTest extends MediaWikiIntegrationTestCase {
 	/**
 	 * Verify all files that appear to be tests have file names ending in
 	 * Test.  If the file names do not end in Test, they will not be run.

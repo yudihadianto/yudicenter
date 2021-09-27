@@ -22,7 +22,6 @@
 
 use MediaWiki\Revision\RevisionRecord;
 use MediaWiki\Storage\DerivedPageDataUpdater;
-use MediaWiki\User\UserIdentity;
 use Wikimedia\Rdbms\ILBFactory;
 
 /**
@@ -47,12 +46,12 @@ class RefreshSecondaryDataUpdate extends DataUpdate
 
 	/** @var RevisionRecord|null */
 	private $revisionRecord;
-	/** @var UserIdentity|null */
+	/** @var User|null */
 	private $user;
 
 	/**
 	 * @param ILBFactory $lbFactory
-	 * @param UserIdentity $user
+	 * @param User $user
 	 * @param WikiPage $page Page we are updating
 	 * @param RevisionRecord $revisionRecord
 	 * @param DerivedPageDataUpdater $updater
@@ -60,7 +59,7 @@ class RefreshSecondaryDataUpdate extends DataUpdate
 	 */
 	public function __construct(
 		ILBFactory $lbFactory,
-		UserIdentity $user,
+		User $user,
 		WikiPage $page,
 		RevisionRecord $revisionRecord,
 		DerivedPageDataUpdater $updater,
@@ -94,7 +93,7 @@ class RefreshSecondaryDataUpdate extends DataUpdate
 
 		// T221577, T248003: flush any transaction; each update needs outer transaction scope
 		// and the code above may have implicitly started one.
-		$this->lbFactory->commitPrimaryChanges( __METHOD__ );
+		$this->lbFactory->commitMasterChanges( __METHOD__ );
 
 		$e = null;
 		foreach ( $updates as $update ) {
@@ -102,7 +101,7 @@ class RefreshSecondaryDataUpdate extends DataUpdate
 				DeferredUpdates::attemptUpdate( $update, $this->lbFactory );
 			} catch ( Exception $e ) {
 				// Try as many updates as possible on the first pass
-				MWExceptionHandler::rollbackPrimaryChangesAndLog( $e );
+				MWExceptionHandler::rollbackMasterChangesAndLog( $e );
 			}
 		}
 

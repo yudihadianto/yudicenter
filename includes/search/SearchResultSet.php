@@ -32,7 +32,7 @@ class SearchResultSet extends BaseSearchResultSet {
 	/**
 	 * Cache of titles.
 	 * Lists titles of the result set, in the same order as results.
-	 * @var Title[]|null
+	 * @var Title[]
 	 */
 	private $titles;
 
@@ -210,7 +210,7 @@ class SearchResultSet extends BaseSearchResultSet {
 				return $this->results;
 			}
 			$this->rewind();
-			while ( $result = $this->next() ) {
+			while ( ( $result = $this->next() ) != false ) {
 				$this->results[] = $result;
 			}
 			$this->rewind();

@@ -163,9 +163,15 @@
 	 * @private
 	 */
 	function hashHandler() {
-		var fragment, $parents;
+		var fragmentId, fragment, $parents;
 
-		fragment = document.querySelector( ':target' );
+		fragmentId = window.location.hash.slice( 1 );
+		if ( !fragmentId ) {
+			// The hash is empty
+			return;
+		}
+
+		fragment = document.getElementById( fragmentId );
 		if ( !fragment ) {
 			// The fragment doesn't exist
 			return;

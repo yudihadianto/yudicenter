@@ -62,7 +62,7 @@ abstract class LoginSignupSpecialPage extends AuthManagerSpecialPage {
 	/** @var User FIXME another flag for passing data. */
 	protected $targetUser;
 
-	/** @var HTMLForm|null */
+	/** @var HTMLForm */
 	protected $authForm;
 
 	abstract protected function isSignup();
@@ -82,9 +82,9 @@ abstract class LoginSignupSpecialPage extends AuthManagerSpecialPage {
 	 */
 	abstract protected function logAuthResult( $success, $status = null );
 
-	public function __construct( $name, $restriction = '' ) {
+	public function __construct( $name ) {
 		global $wgUseMediaWikiUIEverywhere;
-		parent::__construct( $name, $restriction );
+		parent::__construct( $name );
 
 		// Override UseMediaWikiEverywhere to true, to force login and create form to use mw ui
 		$wgUseMediaWikiUIEverywhere = true;
@@ -106,7 +106,7 @@ abstract class LoginSignupSpecialPage extends AuthManagerSpecialPage {
 		$request = $this->getRequest();
 
 		$this->mPosted = $request->wasPosted();
-		$this->mAction = $request->getRawVal( 'action' );
+		$this->mAction = $request->getVal( 'action' );
 		$this->mFromHTTP = $request->getBool( 'fromhttp', false )
 			|| $request->getBool( 'wpFromhttp', false );
 		$this->mStickHTTPS = $this->getConfig()->get( 'ForceHTTPS' )
@@ -264,8 +264,8 @@ abstract class LoginSignupSpecialPage extends AuthManagerSpecialPage {
 		 * reauthenticate for security reasons.
 		 */
 		if ( !$this->isSignup() && !$this->mPosted && !$this->securityLevel &&
-			( $this->mReturnTo !== '' || $this->mReturnToQuery !== '' ) &&
-			$this->getUser()->isRegistered()
+			 ( $this->mReturnTo !== '' || $this->mReturnToQuery !== '' ) &&
+			 $this->getUser()->isRegistered()
 		) {
 			$this->successfulAction();
 			return;
@@ -281,7 +281,9 @@ abstract class LoginSignupSpecialPage extends AuthManagerSpecialPage {
 						: 'warning' ) => $this->mEntryError,
 				] + $this->getRequest()->getQueryValues();
 			$url = $title->getFullURL( $query, false, PROTO_HTTPS );
-			if ( $wgSecureLogin && !$this->mFromHTTP ) {
+			if ( $wgSecureLogin && !$this->mFromHTTP &&
+				 wfCanIPUseHTTPS( $this->getRequest()->getIP() )
+			) {
 				// Avoid infinite redirect
 				$url = wfAppendQuery( $url, 'fromhttp=1' );
 				$this->getOutput()->redirect( $url );
@@ -484,7 +486,7 @@ abstract class LoginSignupSpecialPage extends AuthManagerSpecialPage {
 	 * reflected in the current request.
 	 */
 	protected function setSessionUserForCurrentRequest() {
-		global $wgLang;
+		global $wgUser, $wgLang;
 
 		$context = RequestContext::getMain();
 		$localContext = $this->getContext();
@@ -495,7 +497,7 @@ abstract class LoginSignupSpecialPage extends AuthManagerSpecialPage {
 
 		$user = $context->getRequest()->getSession()->getUser();
 
-		StubGlobalUser::setUser( $user );
+		$wgUser = $user;
 		$context->setUser( $user );
 
 		$wgLang = $context->getLanguage();
@@ -1092,8 +1094,13 @@ abstract class LoginSignupSpecialPage extends AuthManagerSpecialPage {
 	 * @return bool
 	 */
 	private function showCreateAccountLink() {
-		return $this->isSignup() ||
-			$this->getContext()->getAuthority()->isAllowed( 'createaccount' );
+		if ( $this->isSignup() ) {
+			return true;
+		} elseif ( $this->getContext()->getAuthority()->isAllowed( 'createaccount' ) ) {
+			return true;
+		} else {
+			return false;
+		}
 	}
 
 	protected function getTokenName() {

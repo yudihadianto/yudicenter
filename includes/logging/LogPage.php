@@ -98,16 +98,13 @@ class LogPage {
 	protected function saveContent() {
 		global $wgLogRestrictions;
 
-		$dbw = wfGetDB( DB_PRIMARY );
+		$dbw = wfGetDB( DB_MASTER );
 
 		$now = wfTimestampNow();
-		$actorId = MediaWikiServices::getInstance()->getActorNormalization()
-			->acquireActorId( $this->performer, $dbw );
 		$data = [
 			'log_type' => $this->type,
 			'log_action' => $this->action,
 			'log_timestamp' => $dbw->timestamp( $now ),
-			'log_actor' => $actorId,
 			'log_namespace' => $this->target->getNamespace(),
 			'log_title' => $this->target->getDBkey(),
 			'log_page' => $this->target->getArticleID(),
@@ -118,6 +115,7 @@ class LogPage {
 			'log_comment',
 			$this->comment
 		);
+		$data += ActorMigration::newMigration()->getInsertValues( $dbw, 'log_user', $this->performer );
 		$dbw->insert( 'logging', $data, __METHOD__ );
 		$newId = $dbw->insertId();
 
@@ -255,6 +253,7 @@ class LogPage {
 				$titleLink = self::getTitleLink( $title, $langObjOrNull );
 
 				if ( count( $params ) == 0 ) {
+					// @phan-suppress-next-line SecurityCheck-XSS mixed between plaintext and html
 					$rv = wfMessage( $wgLogActions[$key] )->rawParams( $titleLink )
 						->inLanguage( $langObj )->escaped();
 				} else {
@@ -269,7 +268,6 @@ class LogPage {
 
 			if ( isset( $wgLogActionsHandlers[$key] ) ) {
 				$args = func_get_args();
-				// @phan-suppress-next-line PhanTypeMismatchArgumentInternal
 				$rv = call_user_func_array( $wgLogActionsHandlers[$key], $args );
 			} else {
 				wfDebug( "LogPage::actionText - unknown action $key" );
@@ -300,7 +298,7 @@ class LogPage {
 	 * @param ?Language $lang
 	 * @return string HTML
 	 */
-	private static function getTitleLink( Title $title, ?Language $lang ): string {
+	private static function getTitleLink( Title $title, ?Language $lang ) : string {
 		if ( !$lang ) {
 			return $title->getPrefixedText();
 		}
@@ -402,7 +400,7 @@ class LogPage {
 			];
 		}
 
-		$dbw = wfGetDB( DB_PRIMARY );
+		$dbw = wfGetDB( DB_MASTER );
 		$dbw->insert( 'log_search', $data, __METHOD__, [ 'IGNORE' ] );
 
 		return true;

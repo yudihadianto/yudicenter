@@ -64,6 +64,9 @@ class DeletedContribsPager extends IndexPager {
 	/** @var CommentStore */
 	private $commentStore;
 
+	/** @var ActorMigration */
+	private $actorMigration;
+
 	/** @var RevisionFactory */
 	private $revisionFactory;
 
@@ -75,6 +78,7 @@ class DeletedContribsPager extends IndexPager {
 	 * @param HookContainer $hookContainer
 	 * @param ILoadBalancer $loadBalancer
 	 * @param CommentStore $commentStore
+	 * @param ActorMigration $actorMigration
 	 * @param RevisionFactory $revisionFactory
 	 */
 	public function __construct(
@@ -85,6 +89,7 @@ class DeletedContribsPager extends IndexPager {
 		HookContainer $hookContainer,
 		ILoadBalancer $loadBalancer,
 		CommentStore $commentStore,
+		ActorMigration $actorMigration,
 		RevisionFactory $revisionFactory
 	) {
 		// Set database before parent constructor to avoid setting it there with wfGetDB
@@ -98,6 +103,7 @@ class DeletedContribsPager extends IndexPager {
 		$this->namespace = $namespace;
 		$this->hookRunner = new HookRunner( $hookContainer );
 		$this->commentStore = $commentStore;
+		$this->actorMigration = $actorMigration;
 		$this->revisionFactory = $revisionFactory;
 	}
 
@@ -110,8 +116,14 @@ class DeletedContribsPager extends IndexPager {
 
 	public function getQueryInfo() {
 		$dbr = $this->getDatabase();
-		$userCond = [ 'actor_name' => $this->target ];
+		$userCond = [
+			// ->getJoin() below takes care of any joins needed
+			$this->actorMigration->getWhere(
+				$dbr, 'ar_user', User::newFromName( $this->target, false ), false
+			)['conds']
+		];
 		$conds = array_merge( $userCond, $this->getNamespaceCond() );
+		$user = $this->getUser();
 		// Paranoia: avoid brute force searches (T19792)
 		if ( !$this->getAuthority()->isAllowed( 'deletedhistory' ) ) {
 			$conds[] = $dbr->bitAnd( 'ar_deleted', RevisionRecord::DELETED_USER ) . ' = 0';
@@ -120,15 +132,19 @@ class DeletedContribsPager extends IndexPager {
 				' != ' . RevisionRecord::SUPPRESSED_USER;
 		}
 
-		$queryInfo = $this->revisionFactory->getArchiveQueryInfo();
-		$queryInfo['conds'] = $conds;
-		$queryInfo['options'] = [];
+		$commentQuery = $this->commentStore->getJoin( 'ar_comment' );
+		$actorQuery = $this->actorMigration->getJoin( 'ar_user' );
 
-		// rename the "joins" field to "join_conds" as expected by the base class.
-		$queryInfo['join_conds'] = $queryInfo['joins'];
-		unset( $queryInfo['joins'] );
-
-		return $queryInfo;
+		return [
+			'tables' => [ 'archive' ] + $commentQuery['tables'] + $actorQuery['tables'],
+			'fields' => [
+				'ar_rev_id', 'ar_id', 'ar_namespace', 'ar_title', 'ar_timestamp',
+				'ar_minor_edit', 'ar_deleted'
+			] + $commentQuery['fields'] + $actorQuery['fields'],
+			'conds' => $conds,
+			'options' => [],
+			'join_conds' => $commentQuery['joins'] + $actorQuery['joins'],
+		];
 	}
 
 	/**
@@ -201,10 +217,6 @@ class DeletedContribsPager extends IndexPager {
 	}
 
 	public function getNavigationBar() {
-		if ( !$this->isNavigationBarShown() ) {
-			return '';
-		}
-
 		if ( isset( $this->mNavigationBar ) ) {
 			return $this->mNavigationBar;
 		}
@@ -255,12 +267,21 @@ class DeletedContribsPager extends IndexPager {
 		$classes = [];
 		$attribs = [];
 
-		if ( $this->revisionFactory->isRevisionRow( $row, 'archive' ) ) {
+		/*
+		 * There may be more than just revision rows. To make sure that we'll only be processing
+		 * revisions here, let's _try_ to build a revision out of our row (without displaying
+		 * notices though) and then trying to grab data from the built object. If we succeed,
+		 * we're definitely dealing with revision data and we may proceed, if not, we'll leave it
+		 * to extensions to subscribe to the hook to parse the row.
+		 */
+		Wikimedia\suppressWarnings();
+		try {
 			$revRecord = $this->revisionFactory->newRevisionFromArchiveRow( $row );
 			$validRevision = (bool)$revRecord->getId();
-		} else {
+		} catch ( Exception $e ) {
 			$validRevision = false;
 		}
+		Wikimedia\restoreWarnings();
 
 		if ( $validRevision ) {
 			$attribs['data-mw-revid'] = $revRecord->getId();
@@ -364,8 +385,7 @@ class DeletedContribsPager extends IndexPager {
 		}
 		// Style deleted items
 		if ( $revRecord->isDeleted( RevisionRecord::DELETED_TEXT ) ) {
-			$class = Linker::getRevisionDeletedClass( $revRecord );
-			$link = '<span class="' . $class . '">' . $link . '</span>';
+			$link = '<span class="history-deleted">' . $link . '</span>';
 		}
 
 		$pagelink = $linkRenderer->makeLink(

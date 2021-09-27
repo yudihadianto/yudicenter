@@ -69,10 +69,8 @@ abstract class PrefixSearch {
 		// if the content language has variants, try to retrieve fallback results
 		$fallbackLimit = $limit - count( $searches );
 		if ( $fallbackLimit > 0 ) {
-			$services = MediaWikiServices::getInstance();
-			$fallbackSearches = $services->getLanguageConverterFactory()
-				->getLanguageConverter( $services->getContentLanguage() )
-				->autoConvertToAllVariants( $search );
+			$fallbackSearches = MediaWikiServices::getInstance()->getContentLanguage()->
+				autoConvertToAllVariants( $search );
 			$fallbackSearches = array_diff( array_unique( $fallbackSearches ), [ $search ] );
 
 			foreach ( $fallbackSearches as $fbs ) {
@@ -231,40 +229,40 @@ abstract class PrefixSearch {
 	 * be automatically capitalized by Title::secureAndSpit()
 	 * later on depending on $wgCapitalLinks)
 	 *
-	 * @param int[]|null $namespaces Namespaces to search in
+	 * @param array|null $namespaces Namespaces to search in
 	 * @param string $search Term
 	 * @param int $limit Max number of items to return
 	 * @param int $offset Number of items to skip
-	 * @return Title[]
+	 * @return Title[] Array of Title objects
 	 */
 	public function defaultSearchBackend( $namespaces, $search, $limit, $offset ) {
-		if ( !$namespaces ) {
-			$namespaces = [ NS_MAIN ];
+		// Backwards compatability with old code. Default to NS_MAIN if no namespaces provided.
+		if ( $namespaces === null ) {
+			$namespaces = [];
 		}
-
-		if ( in_array( NS_SPECIAL, $namespaces ) ) {
-			// For now, if special is included, ignore the other namespaces
-			return $this->specialSearch( $search, $limit, $offset );
+		if ( !$namespaces ) {
+			$namespaces[] = NS_MAIN;
 		}
 
 		// Construct suitable prefix for each namespace. They differ in cases where
 		// some namespaces always capitalize and some don't.
 		$prefixes = [];
-		// Allow to do a prefix search for e.g. "Talk:"
-		if ( $search === '' ) {
-			$prefixes[$search] = $namespaces;
-		} else {
-			// Don't just ignore input like "[[Foo]]", but try to search for "Foo"
-			$search = preg_replace( MediaWikiTitleCodec::getTitleInvalidRegex(), '', $search );
-			foreach ( $namespaces as $namespace ) {
-				$title = Title::makeTitleSafe( $namespace, $search );
-				if ( $title ) {
-					$prefixes[ $title->getDBkey() ][] = $namespace;
-				}
+		foreach ( $namespaces as $namespace ) {
+			// For now, if special is included, ignore the other namespaces
+			if ( $namespace == NS_SPECIAL ) {
+				return $this->specialSearch( $search, $limit, $offset );
 			}
-		}
-		if ( !$prefixes ) {
-			return [];
+
+			$title = Title::makeTitleSafe( $namespace, $search );
+			if ( !$title ) {
+				$title = Title::makeTitleSafe(
+					$namespace,
+					// Don't just ignore input like "[[Foo]]", but try to search for "Foo"
+					preg_replace( MediaWikiTitleCodec::getTitleInvalidRegex(), '', $search )
+				);
+			}
+			$prefix = $title ? $title->getDBkey() : '';
+			$prefixes[$prefix][] = $namespace;
 		}
 
 		$dbr = wfGetDB( DB_REPLICA );
@@ -272,10 +270,10 @@ abstract class PrefixSearch {
 		// but sometimes there are two if some namespaces do not always capitalize.
 		$conds = [];
 		foreach ( $prefixes as $prefix => $namespaces ) {
-			$condition = [ 'page_namespace' => $namespaces ];
-			if ( $prefix !== '' ) {
-				$condition[] = 'page_title' . $dbr->buildLike( $prefix, $dbr->anyString() );
-			}
+			$condition = [
+				'page_namespace' => $namespaces,
+				'page_title' . $dbr->buildLike( $prefix, $dbr->anyString() ),
+			];
 			$conds[] = $dbr->makeList( $condition, LIST_AND );
 		}
 

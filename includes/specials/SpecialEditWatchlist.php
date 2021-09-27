@@ -31,7 +31,6 @@ use MediaWiki\Linker\LinkRenderer;
 use MediaWiki\Linker\LinkTarget;
 use MediaWiki\MediaWikiServices;
 use MediaWiki\Page\WikiPageFactory;
-use MediaWiki\Watchlist\WatchlistManager;
 
 /**
  * Provides the UI through which users can perform editing
@@ -74,8 +73,8 @@ class SpecialEditWatchlist extends UnlistedSpecialPage {
 	/** @var WikiPageFactory */
 	private $wikiPageFactory;
 
-	/** @var WatchlistManager */
-	private $watchlistManager;
+	/** @var bool Watchlist Expiry flag */
+	private $isWatchlistExpiryEnabled;
 
 	/**
 	 * @param WatchedItemStoreInterface|null $watchedItemStore
@@ -84,7 +83,6 @@ class SpecialEditWatchlist extends UnlistedSpecialPage {
 	 * @param LinkBatchFactory|null $linkBatchFactory
 	 * @param NamespaceInfo|null $nsInfo
 	 * @param WikiPageFactory|null $wikiPageFactory
-	 * @param WatchlistManager|null $watchlistManager
 	 */
 	public function __construct(
 		WatchedItemStoreInterface $watchedItemStore = null,
@@ -92,8 +90,7 @@ class SpecialEditWatchlist extends UnlistedSpecialPage {
 		GenderCache $genderCache = null,
 		LinkBatchFactory $linkBatchFactory = null,
 		NamespaceInfo $nsInfo = null,
-		WikiPageFactory $wikiPageFactory = null,
-		WatchlistManager $watchlistManager = null
+		WikiPageFactory $wikiPageFactory = null
 	) {
 		parent::__construct( 'EditWatchlist', 'editmywatchlist' );
 		// This class is extended and therefor fallback to global state - T266065
@@ -104,7 +101,7 @@ class SpecialEditWatchlist extends UnlistedSpecialPage {
 		$this->linkBatchFactory = $linkBatchFactory ?? $services->getLinkBatchFactory();
 		$this->nsInfo = $nsInfo ?? $services->getNamespaceInfo();
 		$this->wikiPageFactory = $wikiPageFactory ?? $services->getWikiPageFactory();
-		$this->watchlistManager = $watchlistManager ?? $services->getWatchlistManager();
+		$this->isWatchlistExpiryEnabled = $this->getConfig()->get( 'WatchlistExpiry' );
 	}
 
 	public function doesWrites() {
@@ -222,7 +219,7 @@ class SpecialEditWatchlist extends UnlistedSpecialPage {
 			$text = trim( $text );
 			if ( strlen( $text ) > 0 ) {
 				$title = Title::newFromText( $text );
-				if ( $title instanceof Title && $this->watchlistManager->isWatchable( $title ) ) {
+				if ( $title instanceof Title && $title->isWatchable() ) {
 					$titles[] = $title;
 				}
 			}
@@ -435,7 +432,7 @@ class SpecialEditWatchlist extends UnlistedSpecialPage {
 		$titles = [];
 		$options = [ 'sort' => WatchedItemStore::SORT_ASC ];
 
-		if ( $this->getConfig()->get( 'WatchlistExpiry' ) ) {
+		if ( $this->isWatchlistExpiryEnabled ) {
 			$options[ 'sortByExpiry'] = true;
 		}
 
@@ -509,7 +506,7 @@ class SpecialEditWatchlist extends UnlistedSpecialPage {
 				$this->watchedItemStore->removeWatch( $user, Title::makeTitle( (int)$namespace, $dbKey ) );
 				// Can't just do an UPDATE instead of DELETE/INSERT due to unique index
 				if ( $title ) {
-					$this->watchlistManager->addWatch( $user, $title );
+					$user->addWatch( $title );
 				}
 			}
 		} );
@@ -732,7 +729,7 @@ class SpecialEditWatchlist extends UnlistedSpecialPage {
 		}
 
 		$watchlistExpiringMessage = '';
-		if ( $this->getConfig()->get( 'WatchlistExpiry' ) && $expiryDaysText ) {
+		if ( $this->isWatchlistExpiryEnabled && $expiryDaysText ) {
 			$watchlistExpiringMessage = Html::element(
 				'span',
 				[ 'class' => 'mw-watchlistexpiry-msg' ],

@@ -24,7 +24,7 @@ class DifferenceEngineSlotDiffRendererTest extends MediaWikiIntegrationTestCase 
 	public function testAddModules() {
 		$output = $this->getMockBuilder( OutputPage::class )
 			->disableOriginalConstructor()
-			->onlyMethods( [ 'addModules' ] )
+			->setMethods( [ 'addModules' ] )
 			->getMock();
 		$output->expects( $this->once() )
 			->method( 'addModules' )

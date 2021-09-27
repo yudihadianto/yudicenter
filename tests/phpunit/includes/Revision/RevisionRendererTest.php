@@ -23,7 +23,6 @@ use ParserOutput;
 use PHPUnit\Framework\MockObject\MockObject;
 use Title;
 use TitleFactory;
-use Wikimedia\Rdbms\DBConnRef;
 use Wikimedia\Rdbms\IDatabase;
 use Wikimedia\Rdbms\ILoadBalancer;
 use WikitextContent;
@@ -49,11 +48,13 @@ class RevisionRendererTest extends MediaWikiIntegrationTestCase {
 	}
 
 	/**
-	 * @param IDatabase&MockObject $db
 	 * @param int $maxRev
-	 * @return IDatabase&MockObject
+	 *
+	 * @return IDatabase
 	 */
-	private function mockDatabaseConnection( $db, $maxRev = 100 ) {
+	private function getMockDatabaseConnection( $maxRev = 100 ) {
+		/** @var IDatabase|MockObject $db */
+		$db = $this->createMock( IDatabase::class );
 		$db->method( 'selectField' )
 			->willReturnCallback(
 				function ( $table, $fields, $cond ) use ( $maxRev ) {
@@ -71,23 +72,25 @@ class RevisionRendererTest extends MediaWikiIntegrationTestCase {
 
 	/**
 	 * @param int $maxRev
-	 * @param bool $usePrimary
+	 * @param bool $useMaster
 	 * @return RevisionRenderer
 	 */
-	private function newRevisionRenderer( $maxRev = 100, $usePrimary = false ) {
-		$dbIndex = $usePrimary ? DB_PRIMARY : DB_REPLICA;
+	private function newRevisionRenderer( $maxRev = 100, $useMaster = false ) {
+		$dbIndex = $useMaster ? DB_MASTER : DB_REPLICA;
+
+		$db = $this->getMockDatabaseConnection( $maxRev );
 
 		/** @var ILoadBalancer|MockObject $lb */
 		$lb = $this->createMock( ILoadBalancer::class );
 		$lb->method( 'getConnection' )
 			->with( $dbIndex )
-			->willReturn( $this->mockDatabaseConnection( $this->createMock( IDatabase::class ), $maxRev ) );
+			->willReturn( $db );
 		$lb->method( 'getConnectionRef' )
 			->with( $dbIndex )
-			->willReturn( $this->mockDatabaseConnection( $this->createMock( DBConnRef::class ), $maxRev ) );
+			->willReturn( $db );
 		$lb->method( 'getLazyConnectionRef' )
 			->with( $dbIndex )
-			->willReturn( $this->mockDatabaseConnection( $this->createMock( DBConnRef::class ), $maxRev ) );
+			->willReturn( $db );
 
 		/** @var NameTableStore|MockObject $slotRoles */
 		$slotRoles = $this->getMockBuilder( NameTableStore::class )
@@ -454,7 +457,7 @@ class RevisionRendererTest extends MediaWikiIntegrationTestCase {
 	public function testGetRenderedRevision_noHtml() {
 		/** @var MockObject|Content $mockContent */
 		$mockContent = $this->getMockBuilder( WikitextContent::class )
-			->onlyMethods( [ 'getParserOutput' ] )
+			->setMethods( [ 'getParserOutput' ] )
 			->setConstructorArgs( [ 'Whatever' ] )
 			->getMock();
 		$mockContent->method( 'getParserOutput' )

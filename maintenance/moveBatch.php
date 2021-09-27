@@ -47,6 +47,8 @@ class MoveBatch extends Maintenance {
 	}
 
 	public function execute() {
+		global $wgUser;
+
 		# Change to current working directory
 		$oldCwd = getcwd();
 		chdir( $oldCwd );
@@ -74,10 +76,10 @@ class MoveBatch extends Maintenance {
 		if ( !$user ) {
 			$this->fatalError( "Invalid username" );
 		}
-		StubGlobalUser::setUser( $user );
+		$wgUser = $user;
 
 		# Setup complete, now start
-		$dbw = $this->getDB( DB_PRIMARY );
+		$dbw = $this->getDB( DB_MASTER );
 		for ( $linenum = 1; !feof( $file ); $linenum++ ) {
 			$line = fgets( $file );
 			if ( $line === false ) {

@@ -385,16 +385,12 @@ class ResourceLoaderFileModule extends ResourceLoaderModule {
 	 * @return string[]
 	 */
 	public function getScriptURLsForDebug( ResourceLoaderContext $context ) {
-		$rl = $context->getResourceLoader();
-		$config = $this->getConfig();
-		$server = $config->get( 'Server' );
-
 		$urls = [];
 		foreach ( $this->getScriptFiles( $context ) as $file ) {
-			$url = OutputPage::transformResourcePath( $config, $this->getRemotePath( $file ) );
-			// Expand debug URL in case we are another wiki's module source (T255367)
-			$url = $rl->expandUrl( $server, $url );
-			$urls[] = $url;
+			$urls[] = OutputPage::transformResourcePath(
+				$this->getConfig(),
+				$this->getRemotePath( $file )
+			);
 		}
 		return $urls;
 	}
@@ -548,9 +544,19 @@ class ResourceLoaderFileModule extends ResourceLoaderModule {
 	private function getFileHashes( ResourceLoaderContext $context ) {
 		$files = [];
 
-		$styleFiles = $this->getStyleFiles( $context );
-		foreach ( $styleFiles as $paths ) {
-			$files = array_merge( $files, $paths );
+		// Flatten style files into $files
+		$styles = self::collateFilePathListByOption( $this->styles, 'media', 'all' );
+		foreach ( $styles as $styleFiles ) {
+			$files = array_merge( $files, $styleFiles );
+		}
+
+		$skinFiles = self::collateFilePathListByOption(
+			self::tryForKey( $this->skinStyles, $context->getSkin(), 'default' ),
+			'media',
+			'all'
+		);
+		foreach ( $skinFiles as $styleFiles ) {
+			$files = array_merge( $files, $styleFiles );
 		}
 
 		// Extract file paths for package files
@@ -831,41 +837,6 @@ class ResourceLoaderFileModule extends ResourceLoaderModule {
 		return [];
 	}
 
-	public function setSkinStylesOverride( array $moduleSkinStyles ): void {
-		$moduleName = $this->getName();
-		foreach ( $moduleSkinStyles as $skinName => $overrides ) {
-			// If a module provides overrides for a skin, and that skin also provides overrides
-			// for the same module, then the module has precedence.
-			if ( isset( $this->skinStyles[$skinName] ) ) {
-				continue;
-			}
-
-			// If $moduleName in ResourceModuleSkinStyles is preceded with a '+', the defined style
-			// files will be added to 'default' skinStyles, otherwise 'default' will be ignored.
-			if ( isset( $overrides[$moduleName] ) ) {
-				$paths = (array)$overrides[$moduleName];
-				$styleFiles = [];
-			} elseif ( isset( $overrides['+' . $moduleName] ) ) {
-				$paths = (array)$overrides['+' . $moduleName];
-				$styleFiles = isset( $this->skinStyles['default'] ) ?
-					(array)$this->skinStyles['default'] :
-					[];
-			} else {
-				continue;
-			}
-
-			// Add new file paths, remapping them to refer to our directories and not use settings
-			// from the module we're modifying, which come from the base definition.
-			list( $localBasePath, $remoteBasePath ) = self::extractBasePaths( $overrides );
-
-			foreach ( $paths as $path ) {
-				$styleFiles[] = new ResourceLoaderFilePath( $path, $localBasePath, $remoteBasePath );
-			}
-
-			$this->skinStyles[$skinName] = $styleFiles;
-		}
-	}
-
 	/**
 	 * Get a list of file paths for all styles in this module, in order of proper inclusion.
 	 *
@@ -909,7 +880,7 @@ class ResourceLoaderFileModule extends ResourceLoaderModule {
 		$skinFactory = MediaWikiServices::getInstance()->getSkinFactory();
 		$styleFiles = [];
 
-		$internalSkinNames = array_keys( $skinFactory->getInstalledSkins() );
+		$internalSkinNames = array_keys( $skinFactory->getSkinNames() );
 		$internalSkinNames[] = 'default';
 
 		foreach ( $internalSkinNames as $internalSkinName ) {
@@ -959,7 +930,7 @@ class ResourceLoaderFileModule extends ResourceLoaderModule {
 		foreach ( array_unique( $scripts, SORT_REGULAR ) as $fileName ) {
 			$localPath = $this->getLocalPath( $fileName );
 			$contents = $this->getFileContents( $localPath, 'script' );
-			$js .= ResourceLoader::ensureNewline( $contents );
+			$js .= $contents . "\n";
 		}
 		return $js;
 	}
@@ -1316,8 +1287,8 @@ class ResourceLoaderFileModule extends ResourceLoaderModule {
 					throw new LogicException( $msg );
 				}
 				$expandedConfig = [];
-				foreach ( $fileInfo['config'] as $configKey => $var ) {
-					$expandedConfig[ is_numeric( $configKey ) ? $var : $configKey ] = $this->getConfig()->get( $var );
+				foreach ( $fileInfo['config'] as $key => $var ) {
+					$expandedConfig[ is_numeric( $key ) ? $var : $key ] = $this->getConfig()->get( $var );
 				}
 				$expanded['content'] = $expandedConfig;
 			} elseif ( !empty( $fileInfo['main'] ) ) {
@@ -1353,7 +1324,7 @@ class ResourceLoaderFileModule extends ResourceLoaderModule {
 	}
 
 	/**
-	 * Resolves the package files definition and generates the content of each package file.
+	 * Resolves the package files defintion and generates the content of each package file.
 	 * @param ResourceLoaderContext $context
 	 * @return array Package files data structure, see ResourceLoaderModule::getScript()
 	 * @throws RuntimeException If a file doesn't exist, or parsing a .vue file fails
@@ -1449,7 +1420,7 @@ class ResourceLoaderFileModule extends ResourceLoaderModule {
 	 * We already assume UTF-8 everywhere, so this should be safe.
 	 *
 	 * @param string $input
-	 * @return string Input minus the initial BOM char
+	 * @return string Input minus the intial BOM char
 	 */
 	protected function stripBom( $input ) {
 		if ( substr_compare( "\xef\xbb\xbf", $input, 0, 3 ) === 0 ) {

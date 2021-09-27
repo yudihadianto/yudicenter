@@ -258,7 +258,7 @@ class HistoryAction extends FormlessAction {
 				'name' => 'date-range-to',
 			],
 			[
-				'label-message' => 'tag-filter',
+				'label-raw' => $this->msg( 'tag-filter' )->parse(),
 				'type' => 'tagfilter',
 				'id' => 'tagfilter',
 				'name' => 'tagfilter',
@@ -281,9 +281,9 @@ class HistoryAction extends FormlessAction {
 			->setAction( wfScript() )
 			->setCollapsibleOptions( true )
 			->setId( 'mw-history-searchform' )
-			->setSubmitTextMsg( 'historyaction-submit' )
+			->setSubmitText( $this->msg( 'historyaction-submit' )->text() )
 			->setWrapperAttributes( [ 'id' => 'mw-history-search' ] )
-			->setWrapperLegendMsg( 'history-fieldset-title' );
+			->setWrapperLegend( $this->msg( 'history-fieldset-title' )->text() );
 		$htmlForm->loadData();
 
 		$out->addHTML( $htmlForm->getHTML( false ) );
@@ -357,10 +357,6 @@ class HistoryAction extends FormlessAction {
 		$page_id = $this->getWikiPage()->getId();
 
 		$revQuery = MediaWikiServices::getInstance()->getRevisionStore()->getQueryInfo();
-		// T270033 Index renaming
-		$revIndex = $dbr->indexExists( 'revision', 'page_timestamp',  __METHOD__ )
-			? 'page_timestamp'
-			: 'rev_page_timestamp';
 		return $dbr->select(
 			$revQuery['tables'],
 			$revQuery['fields'],
@@ -368,7 +364,7 @@ class HistoryAction extends FormlessAction {
 			__METHOD__,
 			[
 				'ORDER BY' => "rev_timestamp $dirs",
-				'USE INDEX' => [ 'revision' => $revIndex ],
+				'USE INDEX' => [ 'revision' => 'page_timestamp' ],
 				'LIMIT' => $limit
 			],
 			$revQuery['joins']

@@ -41,7 +41,7 @@ class AddChangeTag extends Maintenance {
 	}
 
 	public function execute() {
-		$user = User::newSystemUser( User::MAINTENANCE_SCRIPT_USER, [ 'steal' => true ] );
+		$user = User::newSystemUser( 'Maintenance script', [ 'steal' => true ] );
 
 		$tag = $this->getOption( 'tag' );
 

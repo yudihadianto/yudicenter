@@ -12,9 +12,9 @@
 
 	$( function () {
 		var blockTargetWidget, anonOnlyWidget, enableAutoblockWidget, hideUserWidget, watchUserWidget,
-			expiryWidget, editingRestrictionWidget, partialActionsRestrictionsWidget, preventTalkPageEditWidget,
-			pageRestrictionsWidget, namespaceRestrictionsWidget, createAccountWidget,
-			data, blockAllowsUTEdit, userChangedCreateAccount, updatingBlockOptions;
+			expiryWidget, editingWidget, editingRestrictionWidget, preventTalkPageEditWidget,
+			pageRestrictionsWidget, namespaceRestrictionsWidget, createAccountWidget, data,
+			blockAllowsUTEdit, userChangedCreateAccount, updatingBlockOptions;
 
 		function preserveSelectedStateOnDisable( widget ) {
 			var widgetWasSelected;
@@ -52,7 +52,8 @@
 				infinityValues = [ 'infinite', 'indefinite', 'infinity', 'never' ],
 				isIndefinite = infinityValues.indexOf( expiryValue ) !== -1,
 				editingRestrictionValue = editingRestrictionWidget.getValue(),
-				isSitewide = editingRestrictionValue === 'sitewide';
+				editingIsSelected = editingWidget.isSelected(),
+				isSitewide = editingIsSelected && editingRestrictionValue === 'sitewide';
 
 			enableAutoblockWidget.setDisabled( isNonEmptyIp );
 
@@ -66,11 +67,14 @@
 				watchUserWidget.setDisabled( isIpRange && !isEmpty );
 			}
 
-			pageRestrictionsWidget.setDisabled( isSitewide );
-			namespaceRestrictionsWidget.setDisabled( isSitewide );
+			editingRestrictionWidget.setDisabled( !editingIsSelected );
+			pageRestrictionsWidget.setDisabled( !editingIsSelected || isSitewide );
+			namespaceRestrictionsWidget.setDisabled( !editingIsSelected || isSitewide );
 			if ( blockAllowsUTEdit ) {
 				// Disable for partial blocks, unless the block is against the User_talk namespace
 				preventTalkPageEditWidget.setDisabled(
+					// Partial block that doesn't block editing
+					!editingIsSelected ||
 					// Partial block that blocks editing and doesn't block the User_talk namespace
 					(
 						editingRestrictionValue === 'partial' &&
@@ -87,9 +91,6 @@
 				updatingBlockOptions = false;
 			}
 
-			if ( mw.config.get( 'wgEnablePartialActionBlocks' ) ) {
-				partialActionsRestrictionsWidget.setDisabled( isSitewide );
-			}
 		}
 
 		// This code is also loaded on the "block succeeded" page where there is no form,
@@ -103,11 +104,13 @@
 			updatingBlockOptions = false;
 
 			// Always present if blockTargetWidget is present
+			editingWidget = OO.ui.infuse( $( '#mw-input-wpEditing' ) );
 			expiryWidget = OO.ui.infuse( $( '#mw-input-wpExpiry' ) );
 			createAccountWidget = OO.ui.infuse( $( '#mw-input-wpCreateAccount' ) );
 			enableAutoblockWidget = OO.ui.infuse( $( '#mw-input-wpAutoBlock' ) );
 			anonOnlyWidget = OO.ui.infuse( $( '#mw-input-wpHardBlock' ) );
 			blockTargetWidget.on( 'change', updateBlockOptions );
+			editingWidget.on( 'change', updateBlockOptions );
 			expiryWidget.on( 'change', updateBlockOptions );
 			createAccountWidget.on( 'change', function () {
 				if ( !updatingBlockOptions ) {
@@ -117,10 +120,6 @@
 			editingRestrictionWidget = OO.ui.infuse( $( '#mw-input-wpEditingRestriction' ) );
 			pageRestrictionsWidget = OO.ui.infuse( $( '#mw-input-wpPageRestrictions' ) );
 			namespaceRestrictionsWidget = OO.ui.infuse( $( '#mw-input-wpNamespaceRestrictions' ) );
-			if ( mw.config.get( 'wgEnablePartialActionBlocks' ) ) {
-				// TODO: Use an ID after T280837 is fixed
-				partialActionsRestrictionsWidget = OO.ui.infuse( '.mw-block-action-restriction.oo-ui-checkboxMultiselectInputWidget' );
-			}
 			editingRestrictionWidget.on( 'change', updateBlockOptions );
 			namespaceRestrictionsWidget.on( 'change', updateBlockOptions );
 

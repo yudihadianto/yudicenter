@@ -32,23 +32,6 @@ use Wikimedia\ParamValidator\ParamValidator;
  * @ingroup API
  */
 class ApiHelp extends ApiBase {
-	/** @var SkinFactory */
-	private $skinFactory;
-
-	/**
-	 * @param ApiMain $main
-	 * @param string $action
-	 * @param SkinFactory $skinFactory
-	 */
-	public function __construct(
-		ApiMain $main,
-		$action,
-		SkinFactory $skinFactory
-	) {
-		parent::__construct( $main, $action );
-		$this->skinFactory = $skinFactory;
-	}
-
 	public function execute() {
 		$params = $this->extractRequestParams();
 		$modules = [];
@@ -59,7 +42,8 @@ class ApiHelp extends ApiBase {
 
 		// Get the help
 		$context = new DerivativeContext( $this->getMain()->getContext() );
-		$context->setSkin( $this->skinFactory->makeSkin( 'apioutput' ) );
+		$skinFactory = MediaWikiServices::getInstance()->getSkinFactory();
+		$context->setSkin( $skinFactory->makeSkin( 'apioutput' ) );
 		$context->setLanguage( $this->getMain()->getLanguage() );
 		$context->setTitle( SpecialPage::getTitleFor( 'ApiHelp' ) );
 		$out = new OutputPage( $context );
@@ -179,7 +163,6 @@ class ApiHelp extends ApiBase {
 		$haveModules = [];
 		$html = self::getHelpInternal( $context, $modules, $options, $haveModules );
 		if ( !empty( $options['toc'] ) && $haveModules ) {
-			// @phan-suppress-next-line SecurityCheck-DoubleEscaped Triggered by Linker?
 			$out->addHTML( Linker::generateTOC( $haveModules, $context->getLanguage() ) );
 		}
 		$out->addHTML( $html );

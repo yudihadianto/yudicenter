@@ -21,10 +21,7 @@
  * @ingroup JobQueue
  */
 
-use MediaWiki\Cache\CacheKeyHelper;
-use MediaWiki\Linker\LinkTarget;
 use MediaWiki\MediaWikiServices;
-use MediaWiki\Page\PageReference;
 use MediaWiki\Revision\RevisionLookup;
 use MediaWiki\Revision\SlotRecord;
 
@@ -44,7 +41,7 @@ class DoubleRedirectJob extends Job {
 	private static $user;
 
 	/**
-	 * @param PageReference $page
+	 * @param Title $title
 	 * @param array $params Expected to contain these elements:
 	 * - 'redirTitle' => string The title that changed and should be fixed.
 	 * - 'reason' => string Reason for the change, can be "move" or "maintenance". Used as a suffix
@@ -52,8 +49,8 @@ class DoubleRedirectJob extends Job {
 	 *   "double-redirect-fixed-maintenance".
 	 * ]
 	 */
-	public function __construct( PageReference $page, array $params ) {
-		parent::__construct( 'fixDoubleRedirect', $page, $params );
+	public function __construct( Title $title, array $params ) {
+		parent::__construct( 'fixDoubleRedirect', $title, $params );
 		$this->redirTitle = Title::newFromText( $params['redirTitle'] );
 	}
 
@@ -61,12 +58,13 @@ class DoubleRedirectJob extends Job {
 	 * Insert jobs into the job queue to fix redirects to the given title
 	 * @param string $reason The reason for the fix, see message
 	 *   "double-redirect-fixed-<reason>"
-	 * @param LinkTarget $redirTitle The title which has changed, redirects
+	 * @param Title $redirTitle The title which has changed, redirects
 	 *   pointing to this title are fixed
+	 * @param bool $destTitle Not used
 	 */
-	public static function fixRedirects( $reason, $redirTitle ) {
-		# Need to use the primary DB to get the redirect table updated in the same transaction
-		$dbw = wfGetDB( DB_PRIMARY );
+	public static function fixRedirects( $reason, $redirTitle, $destTitle = false ) {
+		# Need to use the master to get the redirect table updated in the same transaction
+		$dbw = wfGetDB( DB_MASTER );
 		$res = $dbw->select(
 			[ 'redirect', 'page' ],
 			[ 'page_namespace', 'page_title' ],
@@ -87,10 +85,7 @@ class DoubleRedirectJob extends Job {
 
 			$jobs[] = new self( $title, [
 				'reason' => $reason,
-				'redirTitle' => MediaWikiServices::getInstance()
-					->getTitleFormatter()
-					->getPrefixedDBkey( $redirTitle ),
-			] );
+				'redirTitle' => $redirTitle->getPrefixedDBkey() ] );
 			# Avoid excessive memory usage
 			if ( count( $jobs ) > 10000 ) {
 				JobQueueGroup::singleton()->push( $jobs );
@@ -169,7 +164,6 @@ class DoubleRedirectJob extends Job {
 		}
 
 		// Save it
-		// phpcs:ignore MediaWiki.Usage.DeprecatedGlobalVariables.Deprecated$wgUser
 		global $wgUser;
 		$oldUser = $wgUser;
 		$wgUser = $user;
@@ -180,7 +174,7 @@ class DoubleRedirectJob extends Job {
 			$this->redirTitle->getPrefixedText(), $newTitle->getPrefixedText()
 		)->inContentLanguage()->text();
 		$flags = EDIT_UPDATE | EDIT_SUPPRESS_RC | EDIT_INTERNAL;
-		$article->doUserEditContent( $newContent, $user, $reason, $flags );
+		$article->doEditContent( $newContent, $reason, $flags, false, $user );
 		$wgUser = $oldUser;
 
 		return true;
@@ -189,20 +183,20 @@ class DoubleRedirectJob extends Job {
 	/**
 	 * Get the final destination of a redirect
 	 *
-	 * @param LinkTarget $title
+	 * @param Title $title
 	 *
 	 * @return Title|bool The final Title after following all redirects, or false if
 	 *  the page is not a redirect or the redirect loops.
 	 */
 	public static function getFinalDestination( $title ) {
-		$dbw = wfGetDB( DB_PRIMARY );
+		$dbw = wfGetDB( DB_MASTER );
 
 		// Circular redirect check
 		$seenTitles = [];
 		$dest = false;
 
 		while ( true ) {
-			$titleText = CacheKeyHelper::getKeyForPage( $title );
+			$titleText = $title->getPrefixedDBkey();
 			if ( isset( $seenTitles[$titleText] ) ) {
 				wfDebug( __METHOD__, "Circular redirect detected, aborting" );
 

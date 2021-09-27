@@ -7,7 +7,6 @@ use CommentStoreComment;
 use Content;
 use ContentHandler;
 use DeferredUpdates;
-use DummyContentHandlerForTesting;
 use JobQueueGroup;
 use LinksUpdate;
 use MediaWiki\Config\ServiceOptions;
@@ -32,7 +31,6 @@ use User;
 use Wikimedia\TestingAccessWrapper;
 use WikiPage;
 use WikitextContent;
-use WikitextContentHandler;
 
 /**
  * @group Database
@@ -566,46 +564,6 @@ class DerivedPageDataUpdaterTest extends MediaWikiIntegrationTestCase {
 		$this->assertCount( 1, $linksUpdates );
 	}
 
-	public function testAvoidSecondaryDataUpdatesOnNonHTMLContentHandlers() {
-		$this->setMwGlobals( [
-			'wgContentHandlers' => [
-				CONTENT_MODEL_WIKITEXT => WikitextContentHandler::class,
-				'testing' => DummyContentHandlerForTesting::class,
-			],
-		] );
-
-		MediaWikiServices::getInstance()->resetServiceForTesting( 'ContentHandlerFactory' );
-		$user = $this->getTestUser()->getUser();
-		$page = $this->getPage( __METHOD__ );
-		$this->createRevision( $page, __METHOD__ );
-
-		$contentHandler = new DummyContentHandlerForTesting( 'testing' );
-		$mainContent1 = $contentHandler->unserializeContent( serialize( 'first' ) );
-		$update = new RevisionSlotsUpdate();
-		$pcache = MediaWikiServices::getInstance()->getParserCache();
-		$pcache->deleteOptionsKey( $page );
-		$rev = $this->createRevision( $page, 'first', $mainContent1 );
-
-		// Run updates
-		$update->modifyContent( SlotRecord::MAIN, $mainContent1 );
-		$updater = $this->getDerivedPageDataUpdater( $page );
-		$updater->prepareContent( $user, $update, false );
-		$dataUpdates = $updater->getSecondaryDataUpdates();
-		$updater->prepareUpdate( $rev );
-		$updater->doUpdates();
-
-		// Links updates should be triggered
-		$this->assertNotEmpty( $dataUpdates );
-		$linksUpdates = array_filter( $dataUpdates, static function ( $du ) {
-			return $du instanceof LinksUpdate;
-		} );
-		$this->assertCount( 1, $linksUpdates );
-
-		// Parser cache should not be populated.
-		$cached = $pcache->get( $page, $updater->getCanonicalParserOptions() );
-		$this->assertFalse( $cached );
-	}
-
 	public function testGetSecondaryDataUpdatesDeleted() {
 		$user = $this->getTestUser()->getUser();
 		$page = $this->getPage( __METHOD__ );
@@ -636,7 +594,7 @@ class DerivedPageDataUpdaterTest extends MediaWikiIntegrationTestCase {
 		/** @var ContentHandler|MockObject $handler */
 		$handler = $this->getMockBuilder( TextContentHandler::class )
 			->setConstructorArgs( [ $name ] )
-			->onlyMethods(
+			->setMethods(
 				[ 'getSecondaryDataUpdates', 'getDeletionUpdates', 'unserializeContent' ]
 			)
 			->getMock();
@@ -676,7 +634,7 @@ class DerivedPageDataUpdaterTest extends MediaWikiIntegrationTestCase {
 		/** @var Content|MockObject $content */
 		$content = $this->getMockBuilder( TextContent::class )
 			->setConstructorArgs( [ $text ] )
-			->onlyMethods( [ 'getModel', 'getContentHandler' ] )
+			->setMethods( [ 'getModel', 'getContentHandler' ] )
 			->getMock();
 
 		$content->method( 'getModel' )->willReturn( $handler->getModelID() );
@@ -735,7 +693,7 @@ class DerivedPageDataUpdaterTest extends MediaWikiIntegrationTestCase {
 	}
 
 	/**
-	 * Creates a dummy MutableRevisionRecord without touching the database.
+	 * Creates a dummy revision object without touching the database.
 	 *
 	 * @param Title $title
 	 * @param RevisionSlotsUpdate $update
@@ -1131,15 +1089,13 @@ class DerivedPageDataUpdaterTest extends MediaWikiIntegrationTestCase {
 
 		// Case where user does not have canonical parser options
 		$user = $this->getMutableTestUser()->getUser();
-		$services = $this->getServiceContainer();
-		$services->getUserOptionsManager()->setOption(
-			$user,
+		$user->setOption(
 			'thumbsize',
 			$user->getOption( 'thumbsize' ) + 1
 		);
 		$content = [ 'main' => new WikitextContent( 'rev ID ver #2: {{REVISIONID}}' ) ];
 		$rev = $this->createRevision( $page, 'first', $content, $user );
-		$pcache = $services->getParserCache();
+		$pcache = MediaWikiServices::getInstance()->getParserCache();
 		$pcache->deleteOptionsKey( $page );
 
 		$this->db->startAtomic( __METHOD__ ); // let deferred updates queue up

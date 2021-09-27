@@ -25,6 +25,7 @@ namespace MediaWiki\Auth;
 
 use Config;
 use MediaWiki\HookContainer\HookContainer;
+use Psr\Log\LoggerAwareInterface;
 
 /**
  * An AuthenticationProvider is used by AuthManager when authenticating users.
@@ -36,42 +37,21 @@ use MediaWiki\HookContainer\HookContainer;
  * @ingroup Auth
  * @since 1.27
  */
-interface AuthenticationProvider {
+interface AuthenticationProvider extends LoggerAwareInterface {
 
 	/**
 	 * Set AuthManager
-	 * @deprecated since 1.37. For extension-defined authentication providers
-	 * that were using this method to trigger other work, please override
-	 * AbstractAuthenticationProvider::postInitSetup instead. If your extension
-	 * was using this to explicitly change the AuthManager (or Config, or
-	 * HookContainer) of an existing AuthenticationProvider object, please
-	 * file a report on phabricator - there is no non-deprecated way to do this
-	 * anymore.
 	 * @param AuthManager $manager
 	 */
 	public function setManager( AuthManager $manager );
 
 	/**
 	 * Set configuration
-	 * @deprecated since 1.37. For extension-defined authentication providers
-	 * that were using this method to trigger other work, please override
-	 * AbstractAuthenticationProvider::postInitSetup instead. If your extension
-	 * was using this to explicitly change the AuthManager (or Config, or
-	 * HookContainer) of an existing AuthenticationProvider object, please
-	 * file a report on phabricator - there is no non-deprecated way to do this
-	 * anymore.
 	 * @param Config $config
 	 */
 	public function setConfig( Config $config );
 
 	/**
-	 * @deprecated since 1.37. For extension-defined authentication providers
-	 * that were using this method to trigger other work, please override
-	 * AbstractAuthenticationProvider::postInitSetup instead. If your extension
-	 * was using this to explicitly change the AuthManager (or Config, or
-	 * HookContainer) of an existing AuthenticationProvider object, please
-	 * file a report on phabricator - there is no non-deprecated way to do this
-	 * anymore.
 	 * @param HookContainer $hookContainer
 	 */
 	public function setHookContainer( HookContainer $hookContainer );

@@ -13,7 +13,7 @@ use Wikimedia\TestingAccessWrapper;
  * @covers ApiLogin
  */
 class ApiLoginTest extends ApiTestCase {
-	protected function setUp(): void {
+	protected function setUp() : void {
 		parent::setUp();
 
 		$this->tablesUsed[] = 'bot_passwords';
@@ -291,9 +291,7 @@ class ApiLoginTest extends ApiTestCase {
 		);
 
 		$user = self::$users['sysop'];
-		$centralId = $this->getServiceContainer()
-			->getCentralIdLookup()
-			->centralIdFromLocalUser( $user->getUser() );
+		$centralId = CentralIdLookup::factory()->centralIdFromLocalUser( $user->getUser() );
 		$this->assertNotSame( 0, $centralId, 'sanity check' );
 
 		$password = 'ngfhmjm64hv0854493hsj5nncjud2clk';
@@ -301,7 +299,7 @@ class ApiLoginTest extends ApiTestCase {
 		// A is unsalted MD5 (thus fast) ... we don't care about security here, this is test only
 		$passwordHash = $passwordFactory->newFromPlaintext( $password );
 
-		$dbw = wfGetDB( DB_PRIMARY );
+		$dbw = wfGetDB( DB_MASTER );
 		$dbw->insert(
 			'bot_passwords',
 			[

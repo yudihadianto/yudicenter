@@ -21,16 +21,15 @@
  */
 namespace MediaWiki\Rest\Handler;
 
-use MediaWiki\Logger\LoggerFactory;
 use MediaWiki\MediaWikiServices;
-use MediaWiki\Page\PageRecord;
+use MediaWiki\Page\WikiPageFactory;
 use MediaWiki\Parser\RevisionOutputCache;
 use MediaWiki\Rest\LocalizedHttpException;
 use MediaWiki\Revision\RevisionRecord;
 use ParserCache;
 use ParserOptions;
 use ParserOutput;
-use TitleValue;
+use Title;
 use Wikimedia\Message\MessageValue;
 use Wikimedia\Parsoid\Config\PageConfig;
 use Wikimedia\Parsoid\Core\ClientError;
@@ -56,11 +55,14 @@ class ParsoidHTMLHelper {
 	/** @var RevisionOutputCache */
 	private $revisionOutputCache;
 
+	/** @var WikiPageFactory */
+	private $wikiPageFactory;
+
 	/** @var GlobalIdGenerator */
 	private $globalIdGenerator;
 
-	/** @var PageRecord|null */
-	private $page = null;
+	/** @var Title|null */
+	private $title = null;
 
 	/** @var Parsoid|null */
 	private $parsoid = null;
@@ -71,24 +73,27 @@ class ParsoidHTMLHelper {
 	/**
 	 * @param ParserCache $parserCache
 	 * @param RevisionOutputCache $revisionOutputCache
+	 * @param WikiPageFactory $wikiPageFactory
 	 * @param GlobalIdGenerator $globalIdGenerator
 	 */
 	public function __construct(
 		ParserCache $parserCache,
 		RevisionOutputCache $revisionOutputCache,
+		WikiPageFactory $wikiPageFactory,
 		GlobalIdGenerator $globalIdGenerator
 	) {
 		$this->parserCache = $parserCache;
+		$this->wikiPageFactory = $wikiPageFactory;
 		$this->globalIdGenerator = $globalIdGenerator;
 		$this->revisionOutputCache = $revisionOutputCache;
 	}
 
 	/**
-	 * @param PageRecord $page
+	 * @param Title $title
 	 * @param RevisionRecord|null $revision
 	 */
-	public function init( PageRecord $page, ?RevisionRecord $revision = null ) {
-		$this->page = $page;
+	public function init( Title $title, ?RevisionRecord $revision = null ) {
+		$this->title = $title;
 		$this->revision = $revision;
 	}
 
@@ -100,20 +105,11 @@ class ParsoidHTMLHelper {
 		$parsoid = $this->createParsoid();
 		$pageConfig = $this->createPageConfig();
 		try {
-			$startTime = microtime( true );
 			$pageBundle = $parsoid->wikitext2html( $pageConfig, [
 				'discardDataParsoid' => true,
 				'pageBundle' => true,
 			] );
 			$fakeParserOutput = new ParserOutput( $pageBundle->html );
-			$time = microtime( true ) - $startTime;
-			if ( $time > 3 ) {
-				LoggerFactory::getInstance( 'slow-parsoid' )
-					->info( 'Parsing {title} was slow, took {time} seconds', [
-						'time' => number_format( $time, 2 ),
-						'title' => (string)$this->page,
-					] );
-			}
 			return $fakeParserOutput;
 		} catch ( ClientError $e ) {
 			throw new LocalizedHttpException(
@@ -182,14 +178,9 @@ class ParsoidHTMLHelper {
 		// can't report the used options.
 		// Already checked that title/revision exist and accessible.
 		// TODO: make ParsoidPageConfigFactory take a RevisionRecord
-		// TODO: make ParsoidPageConfigFactory take PageReference as well
 		return MediaWikiServices::getInstance()
 			->get( 'ParsoidPageConfigFactory' )
-			->create(
-				TitleValue::newFromPage( $this->page ),
-				null,
-				$this->revision ? $this->revision->getId() : null
-			);
+			->create( $this->title, null, $this->revision ? $this->revision->getId() : null );
 	}
 
 	/**
@@ -197,15 +188,16 @@ class ParsoidHTMLHelper {
 	 * @throws LocalizedHttpException
 	 */
 	public function getHtml(): ParserOutput {
+		$wikiPage = $this->wikiPageFactory->newFromLinkTarget( $this->title );
 		$parserOptions = ParserOptions::newCanonical( 'canonical' );
 
-		$revId = $this->revision ? $this->revision->getId() : $this->page->getLatest();
-		$isOld = $revId !== $this->page->getLatest();
+		$revId = $this->revision ? $this->revision->getId() : $wikiPage->getLatest();
+		$isOld = $revId !== $wikiPage->getLatest();
 
 		if ( $isOld ) {
 			$parserOutput = $this->revisionOutputCache->get( $this->revision, $parserOptions );
 		} else {
-			$parserOutput = $this->parserCache->get( $this->page, $parserOptions );
+			$parserOutput = $this->parserCache->get( $wikiPage, $parserOptions );
 		}
 		if ( $parserOutput ) {
 			return $parserOutput;
@@ -226,7 +218,7 @@ class ParsoidHTMLHelper {
 		if ( $isOld ) {
 			$this->revisionOutputCache->save( $fakeParserOutput, $this->revision, $parserOptions, $now );
 		} else {
-			$this->parserCache->save( $fakeParserOutput, $this->page, $parserOptions, $now );
+			$this->parserCache->save( $fakeParserOutput, $wikiPage, $parserOptions, $now );
 		}
 
 		return $fakeParserOutput;

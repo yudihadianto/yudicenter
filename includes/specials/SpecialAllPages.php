@@ -224,6 +224,7 @@ class SpecialAllPages extends IncludableSpecialPage {
 			if ( $toKey !== "" ) {
 				$conds[] = 'page_title <= ' . $dbr->addQuotes( $toKey );
 			}
+
 			$res = $dbr->select( 'page',
 				[ 'page_namespace', 'page_title', 'page_is_redirect', 'page_id' ],
 				$conds,
@@ -231,7 +232,7 @@ class SpecialAllPages extends IncludableSpecialPage {
 				[
 					'ORDER BY' => 'page_title',
 					'LIMIT' => $this->maxPerPage + 1,
-					'USE INDEX' => 'page_name_title',
+					'USE INDEX' => 'name_title',
 				]
 			);
 

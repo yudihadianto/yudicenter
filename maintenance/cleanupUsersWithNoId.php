@@ -132,7 +132,7 @@ class CleanupUsersWithNoId extends LoggedUpdateMaintenance {
 			return;
 		}
 
-		$dbw = $this->getDB( DB_PRIMARY );
+		$dbw = $this->getDB( DB_MASTER );
 		if ( !$dbw->fieldExists( $table, $idField, __METHOD__ ) ||
 			!$dbw->fieldExists( $table, $nameField, __METHOD__ )
 		) {
@@ -141,7 +141,7 @@ class CleanupUsersWithNoId extends LoggedUpdateMaintenance {
 		}
 
 		$primaryKey = (array)$primaryKey;
-		$pkFilter = array_fill_keys( $primaryKey, true );
+		$pkFilter = array_flip( $primaryKey );
 		$this->output( "Beginning cleanup of $table\n" );
 
 		$next = '1=1';

@@ -756,7 +756,7 @@ $.effects.animateClass = function( value, duration, easing, callback ) {
 		var animated = $( this ),
 			baseClass = animated.attr( "class" ) || "",
 			applyClassChange,
-			allAnimations = o.children ? animated.find( "*" ).addBack() : animated;
+			allAnimations = o.children ? animated.find( "*" ).andSelf() : animated;
 
 		// map the animated objects to store the original styles.
 		allAnimations = allAnimations.map(function() {
@@ -1057,7 +1057,7 @@ function _normalizeArguments( effect, options, speed, callback ) {
 	}
 
 	// catch (effect, callback)
-	if ( typeof options === 'function' ) {
+	if ( $.isFunction( options ) ) {
 		callback = options;
 		speed = null;
 		options = {};
@@ -1071,7 +1071,7 @@ function _normalizeArguments( effect, options, speed, callback ) {
 	}
 
 	// catch (effect, options, callback)
-	if ( typeof speed === 'function' ) {
+	if ( $.isFunction( speed ) ) {
 		callback = speed;
 		speed = null;
 	}
@@ -1139,10 +1139,10 @@ $.fn.extend({
 				mode = args.mode;
 
 			function done() {
-				if ( typeof complete === 'function' ) {
+				if ( $.isFunction( complete ) ) {
 					complete.call( elem[0] );
 				}
-				if ( typeof next === 'function' ) {
+				if ( $.isFunction( next ) ) {
 					next();
 				}
 			}
@@ -1195,7 +1195,7 @@ $.fn.extend({
 	// jQuery core overloads toggle and creates _toggle
 	__toggle: $.fn.toggle,
 	toggle: function( speed ) {
-		if ( standardSpeed( speed ) || typeof speed === "boolean" || typeof speed === 'function' ) {
+		if ( standardSpeed( speed ) || typeof speed === "boolean" || $.isFunction( speed ) ) {
 			return this.__toggle.apply( this, arguments );
 		} else {
 			var args = _normalizeArguments.apply( this, arguments );

@@ -76,11 +76,8 @@ class ReassignEdits extends Maintenance {
 	 * @return int Number of entries changed, or that would be changed
 	 */
 	private function doReassignEdits( &$from, &$to, $rc = false, $report = false ) {
-		$actorTableSchemaMigrationStage = $this->getConfig()->get( 'ActorTableSchemaMigrationStage' );
-		$dbw = $this->getDB( DB_PRIMARY );
+		$dbw = $this->getDB( DB_MASTER );
 		$this->beginTransaction( $dbw, __METHOD__ );
-		$actorNormalization = MediaWikiServices::getInstance()->getActorNormalization();
-		$fromActorId = $actorNormalization->findActorId( $from, $dbw );
 
 		# Count things
 		$this->output( "Checking current edits..." );
@@ -98,11 +95,14 @@ class ReassignEdits extends Maintenance {
 		$this->output( "found {$cur}.\n" );
 
 		$this->output( "Checking deleted edits..." );
+		$arQueryInfo = ActorMigration::newMigration()->getWhere( $dbw, 'ar_user', $from, false );
 		$res = $dbw->select(
-			[ 'archive' ],
+			[ 'archive' ] + $arQueryInfo['tables'],
 			'COUNT(*) AS count',
-			[ 'ar_actor' => $fromActorId ],
-			__METHOD__
+			$arQueryInfo['conds'],
+			__METHOD__,
+			[],
+			$arQueryInfo['joins']
 		);
 		$row = $dbw->fetchObject( $res );
 		$del = $row->count;
@@ -111,11 +111,14 @@ class ReassignEdits extends Maintenance {
 		# Don't count recent changes if we're not supposed to
 		if ( $rc ) {
 			$this->output( "Checking recent changes..." );
+			$rcQueryInfo = ActorMigration::newMigration()->getWhere( $dbw, 'rc_user', $from, false );
 			$res = $dbw->select(
-				[ 'recentchanges' ],
+				[ 'recentchanges' ] + $rcQueryInfo['tables'],
 				'COUNT(*) AS count',
-				[ 'rc_actor' => $fromActorId ],
-				__METHOD__
+				$rcQueryInfo['conds'],
+				__METHOD__,
+				[],
+				$rcQueryInfo['joins']
 			);
 			$row = $dbw->fetchObject( $res );
 			$rec = $row->count;
@@ -127,42 +130,30 @@ class ReassignEdits extends Maintenance {
 		$total = $cur + $del + $rec;
 		$this->output( "\nTotal entries to change: {$total}\n" );
 
-		$toActorId = $actorNormalization->acquireActorId( $to, $dbw );
+		$toActorId =
+			MediaWikiServices::getInstance()->getActorNormalization()->acquireActorId( $to, $dbw );
 		if ( !$report ) {
 			if ( $total ) {
 				# Reassign edits
 				$this->output( "\nReassigning current edits..." );
-				if ( $actorTableSchemaMigrationStage & SCHEMA_COMPAT_WRITE_TEMP ) {
-					$dbw->update(
-						'revision_actor_temp',
-						[ 'revactor_actor' => $toActorId ],
-						[ 'revactor_actor' => $fromActorId ],
-						__METHOD__
-					);
-				}
-				if ( $actorTableSchemaMigrationStage & SCHEMA_COMPAT_WRITE_NEW ) {
-					$dbw->update(
-						'revision',
-						[ 'rev_actor' => $toActorId ],
-						[ 'rev_actor' => $fromActorId ],
-						__METHOD__
-					);
-				}
+				$dbw->update(
+					'revision_actor_temp',
+					[ 'revactor_actor' => $toActorId ],
+					[ 'revactor_actor' => $from->getActorId() ],
+					__METHOD__
+				);
 				$this->output( "done.\nReassigning deleted edits..." );
 				$dbw->update( 'archive',
 					[ 'ar_actor' => $toActorId ],
-					[ 'ar_actor' => $fromActorId ],
-					__METHOD__
-				);
+					[ $arQueryInfo['conds'] ], __METHOD__ );
 				$this->output( "done.\n" );
 				# Update recent changes if required
 				if ( $rc ) {
 					$this->output( "Updating recent changes..." );
 					$dbw->update( 'recentchanges',
 						[ 'rc_actor' => $toActorId ],
-						[ 'rc_actor' => $fromActorId ],
-						__METHOD__
-					);
+						// @phan-suppress-next-line PhanTypeArraySuspiciousNullable False positive
+						[ $rcQueryInfo['conds'] ], __METHOD__ );
 					$this->output( "done.\n" );
 				}
 			}
@@ -180,8 +171,7 @@ class ReassignEdits extends Maintenance {
 	 * @return User
 	 */
 	private function initialiseUser( $username ) {
-		$services = MediaWikiServices::getInstance();
-		if ( $services->getUserNameUtils()->isIP( $username ) ) {
+		if ( User::isIP( $username ) ) {
 			$user = User::newFromName( $username, false );
 			$user->getActorId();
 		} else {

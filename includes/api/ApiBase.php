@@ -22,16 +22,16 @@
 
 use MediaWiki\Api\ApiHookRunner;
 use MediaWiki\Api\Validator\SubmoduleDef;
-use MediaWiki\Block\Block;
+use MediaWiki\Block\AbstractBlock;
+use MediaWiki\Block\DatabaseBlock;
 use MediaWiki\HookContainer\HookContainer;
 use MediaWiki\Linker\LinkTarget;
 use MediaWiki\MediaWikiServices;
 use MediaWiki\Page\PageIdentity;
 use MediaWiki\ParamValidator\TypeDef\NamespaceDef;
-use MediaWiki\Permissions\Authority;
+use MediaWiki\Permissions\GroupPermissionsLookup;
 use MediaWiki\Permissions\PermissionManager;
 use MediaWiki\Permissions\PermissionStatus;
-use MediaWiki\User\UserFactory;
 use Wikimedia\ParamValidator\ParamValidator;
 use Wikimedia\ParamValidator\TypeDef\EnumDef;
 use Wikimedia\ParamValidator\TypeDef\IntegerDef;
@@ -244,7 +244,7 @@ abstract class ApiBase extends ContextSource {
 	 * Get the module manager, or null if this module has no sub-modules
 	 * @since 1.21
 	 * @stable to override
-	 * @return ApiModuleManager|null
+	 * @return ApiModuleManager
 	 */
 	public function getModuleManager() {
 		return null;
@@ -258,7 +258,7 @@ abstract class ApiBase extends ContextSource {
 	 * formats. This should be used only when there is a fundamental
 	 * requirement for a specific format.
 	 * @stable to override
-	 * @return ApiFormatBase|null Instance of a derived class of ApiFormatBase, or null
+	 * @return mixed Instance of a derived class of ApiFormatBase, or null
 	 */
 	public function getCustomPrinter() {
 		return null;
@@ -331,8 +331,8 @@ abstract class ApiBase extends ContextSource {
 	 * Indicates whether this module requires write mode
 	 *
 	 * This should return true for modules that may require synchronous database writes.
-	 * Modules that do not need such writes should also not rely on primary database access,
-	 * since only read queries are needed and each primary DB is a single point of failure.
+	 * Modules that do not need such writes should also not rely on master database access,
+	 * since only read queries are needed and each master DB is a single point of failure.
 	 * Additionally, requests that only need replica DBs can be efficiently routed to any
 	 * datacenter via the Promise-Non-Write-API-Action header.
 	 *
@@ -477,19 +477,6 @@ abstract class ApiBase extends ContextSource {
 	}
 
 	/**
-	 * Used to avoid infinite loops - the ApiMain class should override some
-	 * methods, if it doesn't and uses the default ApiBase implementation, which
-	 * just calls the same method for the ApiMain instance, it'll lead to an infinite loop
-	 *
-	 * @param string $methodName used for debug messages
-	 */
-	private function dieIfMain( string $methodName ) {
-		if ( $this->isMain() ) {
-			self::dieDebug( $methodName, 'base method was called on main module.' );
-		}
-	}
-
-	/**
 	 * Returns true if the current request breaks the same-origin policy.
 	 *
 	 * For example, json with callbacks.
@@ -500,8 +487,11 @@ abstract class ApiBase extends ContextSource {
 	 * @return bool
 	 */
 	public function lacksSameOriginSecurity() {
-		// Main module has this method overridden, avoid infinite loops
-		$this->dieIfMain( __METHOD__ );
+		// Main module has this method overridden
+		// Safety - avoid infinite loop:
+		if ( $this->isMain() ) {
+			self::dieDebug( __METHOD__, 'base method was called on main module.' );
+		}
 
 		return $this->getMain()->lacksSameOriginSecurity();
 	}
@@ -569,8 +559,11 @@ abstract class ApiBase extends ContextSource {
 	 * @return ApiResult
 	 */
 	public function getResult() {
-		// Main module has this method overridden, avoid infinite loops
-		$this->dieIfMain( __METHOD__ );
+		// Main module has getResult() method overridden
+		// Safety - avoid infinite loop:
+		if ( $this->isMain() ) {
+			self::dieDebug( __METHOD__, 'base method was called on main module. ' );
+		}
 
 		return $this->getMain()->getResult();
 	}
@@ -580,8 +573,11 @@ abstract class ApiBase extends ContextSource {
 	 * @return ApiErrorFormatter
 	 */
 	public function getErrorFormatter() {
-		// Main module has this method overridden, avoid infinite loops
-		$this->dieIfMain( __METHOD__ );
+		// Main module has getErrorFormatter() method overridden
+		// Safety - avoid infinite loop:
+		if ( $this->isMain() ) {
+			self::dieDebug( __METHOD__, 'base method was called on main module. ' );
+		}
 
 		return $this->getMain()->getErrorFormatter();
 	}
@@ -603,8 +599,11 @@ abstract class ApiBase extends ContextSource {
 	 * @return ApiContinuationManager|null
 	 */
 	public function getContinuationManager() {
-		// Main module has this method overridden, avoid infinite loops
-		$this->dieIfMain( __METHOD__ );
+		// Main module has getContinuationManager() method overridden
+		// Safety - avoid infinite loop:
+		if ( $this->isMain() ) {
+			self::dieDebug( __METHOD__, 'base method was called on main module. ' );
+		}
 
 		return $this->getMain()->getContinuationManager();
 	}
@@ -613,8 +612,11 @@ abstract class ApiBase extends ContextSource {
 	 * @param ApiContinuationManager|null $manager
 	 */
 	public function setContinuationManager( ApiContinuationManager $manager = null ) {
-		// Main module has this method overridden, avoid infinite loops
-		$this->dieIfMain( __METHOD__ );
+		// Main module has setContinuationManager() method overridden
+		// Safety - avoid infinite loop:
+		if ( $this->isMain() ) {
+			self::dieDebug( __METHOD__, 'base method was called on main module. ' );
+		}
 
 		$this->getMain()->setContinuationManager( $manager );
 	}
@@ -627,6 +629,17 @@ abstract class ApiBase extends ContextSource {
 	 */
 	protected function getPermissionManager(): PermissionManager {
 		return MediaWikiServices::getInstance()->getPermissionManager();
+	}
+
+	/**
+	 * Obtain a GroupPermissionsLookup instance that subclasses may use to access group permissions.
+	 *
+	 * @since 1.36
+	 * @return GroupPermissionsLookup
+	 * @internal
+	 */
+	protected function getGroupPermissionsLookup(): GroupPermissionsLookup {
+		return MediaWikiServices::getInstance()->getGroupPermissionsLookup();
 	}
 
 	/**
@@ -970,7 +983,7 @@ abstract class ApiBase extends ContextSource {
 	 * @param string|false $load Whether load the object's state from the database:
 	 *        - false: don't load (if the pageid is given, it will still be loaded)
 	 *        - 'fromdb': load from a replica DB
-	 *        - 'fromdbmaster': load from the primary database
+	 *        - 'fromdbmaster': load from the master database
 	 * @return WikiPage
 	 */
 	public function getTitleOrPageId( $params, $load = false ) {
@@ -1122,23 +1135,22 @@ abstract class ApiBase extends ContextSource {
 	 */
 	public function getWatchlistUser( $params ) {
 		if ( $params['owner'] !== null && $params['token'] !== null ) {
-			$services = MediaWikiServices::getInstance();
-			$user = $services->getUserFactory()->newFromName( $params['owner'], UserFactory::RIGOR_NONE );
-			if ( !$user || !$user->isRegistered() ) {
+			$user = User::newFromName( $params['owner'], false );
+			if ( !( $user && $user->getId() ) ) {
 				$this->dieWithError(
 					[ 'nosuchusershort', wfEscapeWikiText( $params['owner'] ) ], 'bad_wlowner'
 				);
 			}
-			$token = $services->getUserOptionsLookup()->getOption( $user, 'watchlisttoken' );
+			$token = $user->getOption( 'watchlisttoken' );
 			if ( $token == '' || !hash_equals( $token, $params['token'] ) ) {
 				$this->dieWithError( 'apierror-bad-watchlist-token', 'bad_wltoken' );
 			}
 		} else {
-			$user = $this->getUser();
-			if ( !$user->isRegistered() ) {
+			if ( !$this->getUser()->isRegistered() ) {
 				$this->dieWithError( 'watchlistanontext', 'notloggedin' );
 			}
 			$this->checkUserRightsAny( 'viewmywatchlist' );
+			$user = $this->getUser();
 		}
 
 		return $user;
@@ -1206,25 +1218,19 @@ abstract class ApiBase extends ContextSource {
 	/**
 	 * Add block info to block messages in a Status
 	 * @since 1.33
-	 * @internal since 1.37, should become protected in the future.
 	 * @param StatusValue $status
-	 * @param Authority|null $user
+	 * @param User|null $user
 	 */
-	public function addBlockInfoToStatus( StatusValue $status, Authority $user = null ) {
-		if ( $status instanceof PermissionStatus ) {
-			$block = $status->getBlock();
-		} else {
-			$user = $user ?: $this->getAuthority();
-			$block = $user->getBlock();
+	public function addBlockInfoToStatus( StatusValue $status, User $user = null ) {
+		if ( $user === null ) {
+			$user = $this->getUser();
 		}
 
-		if ( $block ) {
-			foreach ( self::$blockMsgMap as $msg => list( $apiMsg, $code ) ) {
-				if ( $status->hasMessage( $msg ) ) {
-					$status->replaceMessage( $msg, ApiMessage::create( $apiMsg, $code,
-						[ 'blockinfo' => $this->getBlockDetails( $block ) ]
-					) );
-				}
+		foreach ( self::$blockMsgMap as $msg => list( $apiMsg, $code ) ) {
+			if ( $status->hasMessage( $msg ) && $user->getBlock() ) {
+				$status->replaceMessage( $msg, ApiMessage::create( $apiMsg, $code,
+					[ 'blockinfo' => $this->getBlockDetails( $user->getBlock() ) ]
+				) );
 			}
 		}
 	}
@@ -1374,7 +1380,6 @@ abstract class ApiBase extends ContextSource {
 	 * @param array|null $data See ApiErrorFormatter::addError()
 	 * @param int|null $httpCode HTTP error code to use
 	 * @throws ApiUsageException always
-	 * @return never
 	 */
 	public function dieWithError( $msg, $code = null, $data = null, $httpCode = null ) {
 		throw ApiUsageException::newWithMessage( $this, $msg, $code, $data, $httpCode );
@@ -1387,10 +1392,8 @@ abstract class ApiBase extends ContextSource {
 	 * @param Throwable $exception See ApiErrorFormatter::getMessageFromException()
 	 * @param array $options See ApiErrorFormatter::getMessageFromException()
 	 * @throws ApiUsageException always
-	 * @return never
 	 */
 	public function dieWithException( Throwable $exception, array $options = [] ) {
-		// @phan-suppress-previous-line PhanTypeMissingReturn
 		$this->dieWithError(
 			// @phan-suppress-next-line PhanTypeMismatchArgument
 			$this->getErrorFormatter()->getMessageFromException( $exception, $options )
@@ -1402,14 +1405,12 @@ abstract class ApiBase extends ContextSource {
 	 * error handler and die with an error message including block info.
 	 *
 	 * @since 1.27
-	 * @param Block $block The block used to generate the ApiUsageException
+	 * @param AbstractBlock $block The block used to generate the ApiUsageException
 	 * @throws ApiUsageException always
-	 * @return never
 	 */
-	public function dieBlocked( Block $block ) {
-		// @phan-suppress-previous-line PhanTypeMissingReturn
+	public function dieBlocked( AbstractBlock $block ) {
 		// Die using the appropriate message depending on block type
-		if ( $block->getType() == Block::TYPE_AUTO ) {
+		if ( $block->getType() == DatabaseBlock::TYPE_AUTO ) {
 			$this->dieWithError(
 				'apierror-autoblocked',
 				'autoblocked',
@@ -1437,7 +1438,6 @@ abstract class ApiBase extends ContextSource {
 	 * @since 1.29 Accepts a StatusValue
 	 * @param StatusValue $status
 	 * @throws ApiUsageException always
-	 * @return never
 	 */
 	public function dieStatus( StatusValue $status ) {
 		if ( $status->isGood() ) {
@@ -1466,10 +1466,8 @@ abstract class ApiBase extends ContextSource {
 	 * Helper function for readonly errors
 	 *
 	 * @throws ApiUsageException always
-	 * @return never
 	 */
 	public function dieReadOnly() {
-		// @phan-suppress-previous-line PhanTypeMissingReturn
 		$this->dieWithError(
 			'apierror-readonly',
 			'readonly',
@@ -1577,7 +1575,6 @@ abstract class ApiBase extends ContextSource {
 	 * @param string $method Method or function name
 	 * @param string $message Error message
 	 * @throws MWException always
-	 * @return never
 	 */
 	protected static function dieDebug( $method, $message ) {
 		throw new MWException( "Internal error in $method: $message" );
@@ -2005,6 +2002,167 @@ abstract class ApiBase extends ContextSource {
 	}
 
 	// endregion -- end of help message generation
+
+	/***************************************************************************/
+	// region   Deprecated methods
+	/** @name   Deprecated methods */
+
+	/**
+	 * Split a multi-valued parameter string, like explode()
+	 * @since 1.28
+	 * @deprecated since 1.35, use ParamValidator::explodeMultiValue() instead
+	 * @param string $value
+	 * @param int $limit
+	 * @return string[]
+	 */
+	protected function explodeMultiValue( $value, $limit ) {
+		wfDeprecated( __METHOD__, '1.35' );
+		return ParamValidator::explodeMultiValue( $value, $limit );
+	}
+
+	/**
+	 * Return an array of values that were given in a 'a|b|c' notation,
+	 * after it optionally validates them against the list allowed values.
+	 *
+	 * @deprecated since 1.35, no replacement
+	 * @param string $valueName The name of the parameter (for error
+	 *  reporting)
+	 * @param mixed $value The value being parsed
+	 * @param bool $allowMultiple Can $value contain more than one value
+	 *  separated by '|'?
+	 * @param string[]|null $allowedValues An array of values to check against. If
+	 *  null, all values are accepted.
+	 * @param string|null $allSpecifier String to use to specify all allowed values, or null
+	 *  if this behavior should not be allowed
+	 * @param int|null $limit1 Maximum number of values, for normal users.
+	 * @param int|null $limit2 Maximum number of values, for users with the apihighlimits right.
+	 * @return string|string[] (allowMultiple ? an_array_of_values : a_single_value)
+	 */
+	protected function parseMultiValue( $valueName, $value, $allowMultiple, $allowedValues,
+		$allSpecifier = null, $limit1 = null, $limit2 = null
+	) {
+		wfDeprecated( __METHOD__, '1.35' );
+
+		if ( ( $value === '' || $value === "\x1f" ) && $allowMultiple ) {
+			return [];
+		}
+		$limit1 = $limit1 ?: self::LIMIT_SML1;
+		$limit2 = $limit2 ?: self::LIMIT_SML2;
+
+		// This is a bit awkward, but we want to avoid calling canApiHighLimits()
+		// if we don't need to because its fairly expensive
+		$valuesList = $this->explodeMultiValue( $value, $limit2 + 1 );
+		$sizeLimit = count( $valuesList ) > $limit1 && $this->mMainModule->canApiHighLimits()
+			? $limit2
+			: $limit1;
+
+		if ( $allowMultiple && is_array( $allowedValues ) && $allSpecifier &&
+			count( $valuesList ) === 1 && $valuesList[0] === $allSpecifier
+		) {
+			return $allowedValues;
+		}
+
+		if ( count( $valuesList ) > $sizeLimit ) {
+			$this->dieWithError(
+				[ 'apierror-toomanyvalues', $valueName, $sizeLimit ],
+				"too-many-$valueName"
+			);
+		}
+
+		if ( !$allowMultiple && count( $valuesList ) != 1 ) {
+			// T35482 - Allow entries with | in them for non-multiple values
+			if ( in_array( $value, $allowedValues, true ) ) {
+				return $value;
+			}
+
+			$values = array_map( static function ( $v ) {
+				return '<kbd>' . wfEscapeWikiText( $v ) . '</kbd>';
+			}, $allowedValues );
+			$this->dieWithError( [
+				'apierror-multival-only-one-of',
+				$valueName,
+				Message::listParam( $values ),
+				count( $values ),
+			], "multival_$valueName" );
+		}
+
+		if ( is_array( $allowedValues ) ) {
+			// Check for unknown values
+			$unknown = array_map( 'wfEscapeWikiText', array_diff( $valuesList, $allowedValues ) );
+			if ( count( $unknown ) ) {
+				if ( $allowMultiple ) {
+					$this->addWarning( [
+						'apiwarn-unrecognizedvalues',
+						$valueName,
+						Message::listParam( $unknown, 'comma' ),
+						count( $unknown ),
+					] );
+				} else {
+					$this->dieWithError(
+						[ 'apierror-unrecognizedvalue', $valueName, wfEscapeWikiText( $valuesList[0] ) ],
+						"unknown_$valueName"
+					);
+				}
+			}
+			// Now throw them out
+			$valuesList = array_intersect( $valuesList, $allowedValues );
+		}
+
+		return $allowMultiple ? $valuesList : $valuesList[0];
+	}
+
+	/**
+	 * Validate the value against the minimum and user/bot maximum limits.
+	 * Prints usage info on failure.
+	 * @deprecated since 1.35, use $this->getMain()->getParamValidator()->validateValue() instead.
+	 * @param string $name Parameter name, unprefixed
+	 * @param int &$value Parameter value
+	 * @param int|null $min Minimum value
+	 * @param int|null $max Maximum value for users
+	 * @param int|null $botMax Maximum value for sysops/bots
+	 * @param bool $enforceLimits Whether to enforce (die) if value is outside limits
+	 */
+	protected function validateLimit( $name, &$value, $min, $max, $botMax = null,
+		$enforceLimits = false
+	) {
+		wfDeprecated( __METHOD__, '1.35' );
+		$value = $this->getMain()->getParamValidator()->validateValue(
+			$this, $name, $value, [
+				ParamValidator::PARAM_TYPE => 'limit',
+				IntegerDef::PARAM_MIN => $min,
+				IntegerDef::PARAM_MAX => $max,
+				IntegerDef::PARAM_MAX2 => $botMax,
+				IntegerDef::PARAM_IGNORE_RANGE => !$enforceLimits,
+			]
+		);
+	}
+
+	/**
+	 * Validate and normalize parameters of type 'timestamp'
+	 * @deprecated since 1.35, use $this->getMain()->getParamValidator()->validateValue() instead.
+	 * @param string $value Parameter value
+	 * @param string $encParamName Parameter name
+	 * @return string Validated and normalized parameter
+	 */
+	protected function validateTimestamp( $value, $encParamName ) {
+		wfDeprecated( __METHOD__, '1.35' );
+
+		// Sigh.
+		$name = $encParamName;
+		$p = (string)$this->getModulePrefix();
+		$l = strlen( $p );
+		if ( $l && substr( $name, 0, $l ) === $p ) {
+			$name = substr( $name, $l );
+		}
+
+		return $this->getMain()->getParamValidator()->validateValue(
+			$this, $name, $value, [
+				ParamValidator::PARAM_TYPE => 'timestamp',
+			]
+		);
+	}
+
+	// endregion -- end of deprecated methods
 
 }
 

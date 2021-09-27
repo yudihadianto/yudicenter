@@ -27,7 +27,7 @@ class RemoveInvalidEmails extends Maintenance {
 	public function execute() {
 		$this->commit = $this->hasOption( 'commit' );
 		$dbr = $this->getDB( DB_REPLICA );
-		$dbw = $this->getDB( DB_PRIMARY );
+		$dbw = $this->getDB( DB_MASTER );
 		$lastId = 0;
 		$lbFactory = MediaWikiServices::getInstance()->getDBLoadBalancerFactory();
 		do {

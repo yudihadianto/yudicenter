@@ -28,6 +28,7 @@ use MediaWiki\Page\PageIdentity;
 use MediaWiki\Permissions\Authority;
 use MediaWiki\User\UserIdentity;
 use MWTimestamp;
+use Wikimedia\Assert\Assert;
 
 /**
  * A RevisionRecord representing an existing revision persisted in the revision table.
@@ -45,7 +46,7 @@ class RevisionStoreRecord extends RevisionRecord {
 	 * @note Avoid calling this constructor directly. Use the appropriate methods
 	 * in RevisionStore instead.
 	 *
-	 * @param PageIdentity $page The page this RevisionRecord is associated with.
+	 * @param PageIdentity $page The page this Revision is associated with.
 	 * @param UserIdentity $user
 	 * @param CommentStoreComment $comment
 	 * @param \stdClass $row A row from the revision table. Use RevisionStore::getQueryInfo() to build
@@ -57,11 +58,12 @@ class RevisionStoreRecord extends RevisionRecord {
 		PageIdentity $page,
 		UserIdentity $user,
 		CommentStoreComment $comment,
-		\stdClass $row,
+		$row,
 		RevisionSlots $slots,
 		$wikiId = self::LOCAL
 	) {
 		parent::__construct( $page, $slots, $wikiId );
+		Assert::parameterType( \stdClass::class, $row, '$row' );
 		$this->mId = intval( $row->rev_id );
 		$this->mPageId = intval( $row->rev_page );
 		$this->mComment = $comment;
@@ -109,7 +111,7 @@ class RevisionStoreRecord extends RevisionRecord {
 	}
 
 	/**
-	 * MCR migration note: this replaced Revision::isDeleted
+	 * MCR migration note: this replaces Revision::isDeleted
 	 *
 	 * @param int $field One of DELETED_* bitfield constants
 	 *

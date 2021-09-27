@@ -154,11 +154,9 @@ class StatusValue {
 	 * Change operation status
 	 *
 	 * @param bool $ok
-	 * @return $this
 	 */
 	public function setOK( $ok ) {
 		$this->ok = $ok;
-		return $this;
 	}
 
 	/**
@@ -166,12 +164,10 @@ class StatusValue {
 	 *
 	 * @param bool $ok Whether the operation completed
 	 * @param mixed|null $value
-	 * @return $this
 	 */
 	public function setResult( $ok, $value = null ) {
 		$this->ok = (bool)$ok;
 		$this->value = $value;
-		return $this;
 	}
 
 	/**
@@ -188,7 +184,6 @@ class StatusValue {
 	 * parameters as separate array elements.
 	 *
 	 * @param array $newError
-	 * @return $this
 	 */
 	private function addError( array $newError ) {
 		if ( $newError[ 'message' ] instanceof MessageSpecifier ) {
@@ -217,11 +212,10 @@ class StatusValue {
 				if ( $newError[ 'type' ] === 'error' && $existingError[ 'type' ] === 'warning' ) {
 					$this->errors[ $index ][ 'type' ] = 'error';
 				}
-				return $this;
+				return;
 			}
 		}
 		$this->errors[] = $newError;
-		return $this;
 	}
 
 	/**
@@ -229,10 +223,9 @@ class StatusValue {
 	 *
 	 * @param string|MessageSpecifier $message Message key or object
 	 * @param mixed ...$parameters
-	 * @return $this
 	 */
 	public function warning( $message, ...$parameters ) {
-		return $this->addError( [
+		$this->addError( [
 			'type' => 'warning',
 			'message' => $message,
 			'params' => $parameters
@@ -245,10 +238,9 @@ class StatusValue {
 	 *
 	 * @param string|MessageSpecifier $message Message key or object
 	 * @param mixed ...$parameters
-	 * @return $this
 	 */
 	public function error( $message, ...$parameters ) {
-		return $this->addError( [
+		$this->addError( [
 			'type' => 'error',
 			'message' => $message,
 			'params' => $parameters
@@ -261,11 +253,10 @@ class StatusValue {
 	 *
 	 * @param string|MessageSpecifier $message Message key or object
 	 * @param mixed ...$parameters
-	 * @return $this
 	 */
 	public function fatal( $message, ...$parameters ) {
+		$this->error( $message, ...$parameters );
 		$this->ok = false;
-		return $this->error( $message, ...$parameters );
 	}
 
 	/**
@@ -273,7 +264,6 @@ class StatusValue {
 	 *
 	 * @param StatusValue $other
 	 * @param bool $overwriteValue Whether to override the "value" member
-	 * @return $this
 	 */
 	public function merge( $other, $overwriteValue = false ) {
 		foreach ( $other->errors as $error ) {
@@ -285,7 +275,6 @@ class StatusValue {
 		}
 		$this->successCount += $other->successCount;
 		$this->failCount += $other->failCount;
-		return $this;
 	}
 
 	/**
@@ -414,7 +403,7 @@ class StatusValue {
 	 * @param array $params Message parameters
 	 * @return string String representation
 	 */
-	private function flattenParams( array $params ): string {
+	private function flattenParams( array $params ) : string {
 		$ret = [];
 		foreach ( $params as $p ) {
 			if ( is_array( $p ) ) {

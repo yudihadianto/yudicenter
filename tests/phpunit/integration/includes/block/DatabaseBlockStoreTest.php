@@ -5,7 +5,7 @@ use MediaWiki\Block\DatabaseBlockStore;
 use MediaWiki\Block\Restriction\NamespaceRestriction;
 use MediaWiki\Config\ServiceOptions;
 use MediaWiki\HookContainer\HookContainer;
-use MediaWiki\Tests\Unit\DummyServicesTrait;
+use MediaWiki\MediaWikiServices;
 use Psr\Log\NullLogger;
 
 /**
@@ -17,8 +17,6 @@ use Psr\Log\NullLogger;
  * @covers \MediaWiki\Block\DatabaseBlockStore
  */
 class DatabaseBlockStoreTest extends MediaWikiIntegrationTestCase {
-	use DummyServicesTrait;
-
 	/** @var User */
 	private $sysop;
 
@@ -37,7 +35,7 @@ class DatabaseBlockStoreTest extends MediaWikiIntegrationTestCase {
 	 * - constructorArgs: Override the constructor arguments
 	 * @return DatabaseBlockStore
 	 */
-	private function getStore( array $options = [] ): DatabaseBlockStore {
+	private function getStore( array $options = [] ) : DatabaseBlockStore {
 		$overrideConfig = $options['config'] ?? [];
 		$overrideConstructorArgs = $options['constructorArgs'] ?? [];
 
@@ -53,22 +51,23 @@ class DatabaseBlockStoreTest extends MediaWikiIntegrationTestCase {
 			->willReturn( true );
 
 		// Most tests need read only to be false
-		$readOnlyMode = $this->getDummyReadOnlyMode( false );
+		$readOnlyMode = $this->createMock( ReadOnlyMode::class );
+		$readOnlyMode->method( 'isReadOnly' )
+			->willReturn( false );
 
-		$services = $this->getServiceContainer();
+		$services = MediaWikiServices::getInstance();
 		$defaultConstructorArgs = [
 			'serviceOptions' => new ServiceOptions(
 				DatabaseBlockStore::CONSTRUCTOR_OPTIONS,
 				$config
 			),
 			'logger' => new NullLogger(),
-			'actorStoreFactory' => $services->getActorStoreFactory(),
+			'actorMigration' => $services->getActorMigration(),
 			'blockRestrictionStore' => $services->getBlockRestrictionStore(),
 			'commentStore' => $services->getCommentStore(),
 			'hookContainer' => $hookContainer,
 			'loadBalancer' => $services->getDBLoadBalancer(),
 			'readOnlyMode' => $readOnlyMode,
-			'userFactory' => $services->getUserFactory(),
 		];
 		$constructorArgs = array_merge( $defaultConstructorArgs, $overrideConstructorArgs );
 
@@ -81,12 +80,12 @@ class DatabaseBlockStoreTest extends MediaWikiIntegrationTestCase {
 	 * - autoblock: Whether this block is autoblocking
 	 * @return DatabaseBlock
 	 */
-	private function getBlock( array $options = [] ): DatabaseBlock {
+	private function getBlock( array $options = [] ) : DatabaseBlock {
 		$target = $options['target'] ?? $this->getTestUser()->getUser();
 		$autoblock = $options['autoblock'] ?? false;
 
 		return new DatabaseBlock( [
-			'by' => $this->sysop,
+			'by' => $this->sysop->getId(),
 			'address' => $target,
 			'enableAutoblock' => $autoblock,
 		] );
@@ -115,7 +114,7 @@ class DatabaseBlockStoreTest extends MediaWikiIntegrationTestCase {
 		$this->assertSame( $autoblock->isUsertalkEditAllowed(), $block->isUsertalkEditAllowed() );
 		$this->assertSame( $autoblock->isSitewide(), $block->isSitewide() );
 
-		$restrictionStore = $this->getServiceContainer()->getBlockRestrictionStore();
+		$restrictionStore = MediaWikiServices::getInstance()->getBlockRestrictionStore();
 		$this->assertTrue(
 			$restrictionStore->equals(
 				$autoblock->getRestrictions(),
@@ -193,15 +192,14 @@ class DatabaseBlockStoreTest extends MediaWikiIntegrationTestCase {
 	 */
 	public function testInsertBlockLogout( $options, $expectTokenEqual ) {
 		$block = $this->getBlock();
-		$userFactory = $this->getServiceContainer()->getUserFactory();
-		$targetToken = $userFactory->newFromUserIdentity( $block->getTargetUserIdentity() )->getToken();
+		$targetToken = $block->getTarget()->getToken();
 
 		$store = $this->getStore( $options );
 		$result = $store->insertBlock( $block );
 
 		$this->assertSame(
 			$expectTokenEqual,
-			$targetToken === $userFactory->newFromUserIdentity( $block->getTargetUserIdentity() )->getToken()
+			$targetToken === $block->getTarget()->getToken()
 		);
 	}
 
@@ -343,9 +341,12 @@ class DatabaseBlockStoreTest extends MediaWikiIntegrationTestCase {
 		$target = $this->sysop;
 		$block = DatabaseBlock::newFromTarget( $target );
 
+		$readOnlyMode = $this->createMock( ReadOnlyMode::class );
+		$readOnlyMode->method( 'isReadOnly' )
+			->willReturn( true );
 		$store = $this->getStore( [
 			'constructorArgs' => [
-				'readOnlyMode' => $this->getDummyReadOnlyMode( true )
+				'readOnlyMode' => $readOnlyMode
 			],
 		] );
 
@@ -371,7 +372,7 @@ class DatabaseBlockStoreTest extends MediaWikiIntegrationTestCase {
 	 * @param int $blockId
 	 * @param bool $expected Whether to expect to find any rows
 	 */
-	private function assertPurgeWorked( int $blockId, bool $expected ): void {
+	private function assertPurgeWorked( int $blockId, bool $expected ) : void {
 		$blockRows = (bool)$this->db->select(
 			'ipblocks',
 			'ipb_id',
@@ -396,9 +397,12 @@ class DatabaseBlockStoreTest extends MediaWikiIntegrationTestCase {
 	}
 
 	public function testPurgeExpiredBlocksFailureReadOnly() {
+		$readOnlyMode = $this->createMock( ReadOnlyMode::class );
+		$readOnlyMode->method( 'isReadOnly' )
+			->willReturn( true );
 		$store = $this->getStore( [
 			'constructorArgs' => [
-				'readOnlyMode' => $this->getDummyReadOnlyMode( true ),
+				'readOnlyMode' => $readOnlyMode,
 			],
 		] );
 		$store->purgeExpiredBlocks();

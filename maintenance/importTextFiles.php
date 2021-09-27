@@ -83,7 +83,7 @@ class ImportTextFiles extends Maintenance {
 		$this->output( "Importing $count pages...\n" );
 
 		if ( $userName === false ) {
-			$user = User::newSystemUser( User::MAINTENANCE_SCRIPT_USER, [ 'steal' => true ] );
+			$user = User::newSystemUser( 'Maintenance script', [ 'steal' => true ] );
 		} else {
 			$user = User::newFromName( $userName );
 		}

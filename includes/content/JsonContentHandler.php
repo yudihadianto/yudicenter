@@ -18,8 +18,6 @@
  * @file
  */
 
-use MediaWiki\Content\Transform\PreSaveTransformParams;
-
 /**
  * Content handler for JSON.
  *
@@ -45,33 +43,5 @@ class JsonContentHandler extends CodeContentHandler {
 	public function makeEmptyContent() {
 		$class = $this->getContentClass();
 		return new $class( '{}' );
-	}
-
-	public function preSaveTransform(
-		Content $content,
-		PreSaveTransformParams $pstParams
-	): Content {
-		$shouldCallDeprecatedMethod = $this->shouldCallDeprecatedContentTransformMethod(
-			$content,
-			$pstParams
-		);
-
-		if ( $shouldCallDeprecatedMethod ) {
-			return $this->callDeprecatedContentPST(
-				$content,
-				$pstParams
-			);
-		}
-
-		'@phan-var JsonContent $content';
-
-		// FIXME: WikiPage::doEditContent invokes PST before validation. As such, native data
-		// may be invalid (though PST result is discarded later in that case).
-		if ( !$content->isValid() ) {
-			return $content;
-		}
-
-		$contentClass = $this->getContentClass();
-		return new $contentClass( JsonContent::normalizeLineEndings( $content->beautifyJSON() ) );
 	}
 }

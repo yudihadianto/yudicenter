@@ -1,21 +1,19 @@
 <?php
 
-use MediaWiki\Permissions\Authority;
-
 class ApiTestContext extends RequestContext {
 
 	/**
 	 * Returns a DerivativeContext with the request variables in place
 	 *
 	 * @param WebRequest $request WebRequest request object including parameters and session
-	 * @param Authority|null $performer
+	 * @param User|null $user
 	 * @return DerivativeContext
 	 */
-	public function newTestContext( WebRequest $request, Authority $performer = null ) {
+	public function newTestContext( WebRequest $request, User $user = null ) {
 		$context = new DerivativeContext( $this );
 		$context->setRequest( $request );
-		if ( $performer !== null ) {
-			$context->setAuthority( $performer );
+		if ( $user !== null ) {
+			$context->setUser( $user );
 		}
 
 		return $context;

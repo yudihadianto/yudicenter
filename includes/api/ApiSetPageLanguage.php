@@ -20,8 +20,7 @@
  * @file
  */
 
-use MediaWiki\Languages\LanguageNameUtils;
-use Wikimedia\Rdbms\ILoadBalancer;
+use MediaWiki\MediaWikiServices;
 
 /**
  * API module that facilitates changing the language of a page.
@@ -31,30 +30,6 @@ use Wikimedia\Rdbms\ILoadBalancer;
  * @ingroup API
  */
 class ApiSetPageLanguage extends ApiBase {
-
-	/** @var ILoadBalancer */
-	private $loadBalancer;
-
-	/** @var LanguageNameUtils */
-	private $languageNameUtils;
-
-	/**
-	 * @param ApiMain $mainModule
-	 * @param string $moduleName
-	 * @param ILoadBalancer $loadBalancer
-	 * @param LanguageNameUtils $languageNameUtils
-	 */
-	public function __construct(
-		ApiMain $mainModule,
-		$moduleName,
-		ILoadBalancer $loadBalancer,
-		LanguageNameUtils $languageNameUtils
-	) {
-		parent::__construct( $mainModule, $moduleName );
-		$this->loadBalancer = $loadBalancer;
-		$this->languageNameUtils = $languageNameUtils;
-	}
-
 	// Check if change language feature is enabled
 	protected function getExtendedDescription() {
 		if ( !$this->getConfig()->get( 'PageLanguageUseDB' ) ) {
@@ -84,12 +59,11 @@ class ApiSetPageLanguage extends ApiBase {
 		$params = $this->extractRequestParams();
 
 		$pageObj = $this->getTitleOrPageId( $params, 'fromdbmaster' );
-		$titleObj = $pageObj->getTitle();
-		$this->getErrorFormatter()->setContextTitle( $titleObj );
 		if ( !$pageObj->exists() ) {
 			$this->dieWithError( 'apierror-missingtitle' );
 		}
 
+		$titleObj = $pageObj->getTitle();
 		$user = $this->getUser();
 
 		// Check that the user is allowed to edit the page
@@ -109,8 +83,7 @@ class ApiSetPageLanguage extends ApiBase {
 			$titleObj,
 			$params['lang'],
 			$params['reason'] ?? '',
-			$params['tags'] ?: [],
-			$this->loadBalancer->getConnectionRef( ILoadBalancer::DB_PRIMARY )
+			$params['tags'] ?: []
 		);
 
 		if ( !$status->isOK() ) {
@@ -143,7 +116,9 @@ class ApiSetPageLanguage extends ApiBase {
 			'lang' => [
 				ApiBase::PARAM_TYPE => array_merge(
 					[ 'default' ],
-					array_keys( $this->languageNameUtils->getLanguageNames( null, 'mwfile' ) )
+					array_keys( MediaWikiServices::getInstance()
+						->getLanguageNameUtils()
+						->getLanguageNames( null, 'mwfile' ) )
 				),
 				ApiBase::PARAM_REQUIRED => true,
 			],

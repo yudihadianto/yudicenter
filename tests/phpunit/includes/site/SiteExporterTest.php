@@ -82,8 +82,9 @@ class SiteExporterTest extends MediaWikiIntegrationTestCase {
 				}
 			} ) );
 
-		$store->method( 'getSites' )
-			->willReturn( new SiteList() );
+		$store->expects( $this->any() )
+			->method( 'getSites' )
+			->will( $this->returnValue( new SiteList() ) );
 
 		return $store;
 	}

@@ -57,11 +57,11 @@ class RunBatchedQuery extends Maintenance {
 
 		$dbName = $this->getOption( 'db', null );
 		if ( $dbName === null ) {
-			$dbw = $this->getDB( DB_PRIMARY );
+			$dbw = $this->getDB( DB_MASTER );
 		} else {
 			$lbf = MediaWiki\MediaWikiServices::getInstance()->getDBLoadBalancerFactory();
 			$lb = $lbf->getMainLB( $dbName );
-			$dbw = $lb->getConnection( DB_PRIMARY, [], $dbName );
+			$dbw = $lb->getConnection( DB_MASTER, [], $dbName );
 		}
 
 		$selectConds = $where;

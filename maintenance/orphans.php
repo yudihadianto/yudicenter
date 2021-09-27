@@ -73,7 +73,7 @@ class Orphans extends Maintenance {
 	 * @param bool $fix Whether to fix broken revisions when found
 	 */
 	private function checkOrphans( $fix ) {
-		$dbw = $this->getDB( DB_PRIMARY );
+		$dbw = $this->getDB( DB_MASTER );
 		$commentStore = CommentStore::getStore();
 
 		if ( $fix ) {
@@ -142,7 +142,7 @@ class Orphans extends Maintenance {
 	 * @param bool $fix Whether to fix broken entries
 	 */
 	private function checkSeparation( $fix ) {
-		$dbw = $this->getDB( DB_PRIMARY );
+		$dbw = $this->getDB( DB_MASTER );
 		$page = $dbw->tableName( 'page' );
 		$revision = $dbw->tableName( 'revision' );
 

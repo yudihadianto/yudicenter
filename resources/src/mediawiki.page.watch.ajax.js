@@ -98,12 +98,6 @@
 			.updateTooltipAccessKeys()
 			.attr( 'href', mw.util.getUrl( pageTitle, { action: action } ) );
 
-		if ( expiry === null || expiry === 'infinity' ) {
-			$li.removeClass( 'mw-watchlink-temp' );
-		} else {
-			$li.addClass( 'mw-watchlink-temp' );
-		}
-
 		if ( state === 'loading' ) {
 			$link.addClass( 'loading' );
 		} else {
@@ -269,7 +263,8 @@
 										// * removedwatchtext-talk
 										// * removedwatchtext
 										message: mw.message( message, mwTitle.getPrefixedText() ).parseDom(),
-										$link: $link
+										$link: $link,
+										$li: $link.closest( 'li' )
 									} );
 							}
 

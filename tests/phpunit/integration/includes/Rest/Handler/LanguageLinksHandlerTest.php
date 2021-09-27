@@ -5,11 +5,12 @@ namespace MediaWiki\Tests\Rest\Handler;
 use MediaWiki\Config\ServiceOptions;
 use MediaWiki\Interwiki\ClassicInterwikiLookup;
 use MediaWiki\Languages\LanguageNameUtils;
+use MediaWiki\MediaWikiServices;
 use MediaWiki\Page\PageIdentity;
 use MediaWiki\Rest\Handler\LanguageLinksHandler;
 use MediaWiki\Rest\LocalizedHttpException;
 use MediaWiki\Rest\RequestData;
-use MediaWiki\Tests\Unit\DummyServicesTrait;
+use MockTitleTrait;
 use Title;
 use Wikimedia\Message\MessageValue;
 
@@ -19,8 +20,9 @@ use Wikimedia\Message\MessageValue;
  * @group Database
  */
 class LanguageLinksHandlerTest extends \MediaWikiIntegrationTestCase {
-	use DummyServicesTrait;
+
 	use HandlerTestTrait;
+	use MockTitleTrait;
 
 	public function addDBData() {
 		$defaults = [
@@ -43,23 +45,23 @@ class LanguageLinksHandlerTest extends \MediaWikiIntegrationTestCase {
 	}
 
 	private function newHandler() {
+		$services = MediaWikiServices::getInstance();
+
 		$languageNameUtils = new LanguageNameUtils(
 			new ServiceOptions(
 				LanguageNameUtils::CONSTRUCTOR_OPTIONS,
 				[ 'ExtraLanguageNames' => [], 'UsePigLatinVariant' => false ]
 			),
-			$this->getServiceContainer()->getHookContainer()
+			$services->getHookContainer()
 		);
 
-		// DummyServicesTrait::getDummyMediaWikiTitleCodec
-		$titleCodec = $this->getDummyMediaWikiTitleCodec();
+		$titleCodec = $this->makeMockTitleCodec();
 
 		return new LanguageLinksHandler(
-			$this->getServiceContainer()->getDBLoadBalancer(),
+			$services->getDBLoadBalancer(),
 			$languageNameUtils,
 			$titleCodec,
-			$titleCodec,
-			$this->getServiceContainer()->getPageStore()
+			$titleCodec
 		);
 	}
 

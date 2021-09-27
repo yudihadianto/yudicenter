@@ -14,10 +14,7 @@ namespace MediaWiki\Rest;
  * fill with null bytes as in a real file, it throws an exception instead.
  */
 class StringStream implements CopyableStreamInterface {
-
-	/** @var string */
-	private $contents;
-	/** @var int */
+	private $contents = '';
 	private $offset = 0;
 
 	/**

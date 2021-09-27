@@ -51,7 +51,6 @@ class CachedBagOStuff extends BagOStuff {
 
 		$this->store = $backend;
 		$this->procCache = new HashBagOStuff( $params );
-
 		$this->attrMap = $backend->attrMap;
 	}
 
@@ -139,7 +138,7 @@ class CachedBagOStuff extends BagOStuff {
 		return $this->store->proxyCall( __FUNCTION__, self::ARG0_KEY, self::RES_NONKEY, func_get_args() );
 	}
 
-	public function lock( $key, $timeout = 6, $exptime = 6, $rclass = '' ) {
+	public function lock( $key, $timeout = 6, $expiry = 6, $rclass = '' ) {
 		return $this->store->proxyCall( __FUNCTION__, self::ARG0_KEY, self::RES_NONKEY, func_get_args() );
 	}
 
@@ -150,10 +149,9 @@ class CachedBagOStuff extends BagOStuff {
 	public function deleteObjectsExpiringBefore(
 		$timestamp,
 		callable $progress = null,
-		$limit = INF,
-		string $tag = null
+		$limit = INF
 	) {
-		$this->procCache->deleteObjectsExpiringBefore( $timestamp, $progress, $limit, $tag );
+		$this->procCache->deleteObjectsExpiringBefore( $timestamp, $progress, $limit );
 
 		return $this->store->proxyCall( __FUNCTION__, self::ARG0_NONKEY, self::RES_NONKEY, func_get_args() );
 	}

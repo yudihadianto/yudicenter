@@ -6,6 +6,8 @@ use MediaWiki\ShellDisabledError;
 use Wikimedia\ScopedCallback;
 
 /**
+ * ExtensionRegistry class
+ *
  * The Registry loads JSON files, and uses a Processor
  * to extract information from them. It also registers
  * classes with the autoloader.
@@ -178,7 +180,7 @@ class ExtensionRegistry {
 		$this->queued[$path] = $mtime;
 	}
 
-	private function getCache(): BagOStuff {
+	private function getCache() : BagOStuff {
 		// Can't call MediaWikiServices here, as we must not cause services
 		// to be instantiated before extensions have loaded.
 		return ObjectCache::makeLocalServerCache();
@@ -424,6 +426,7 @@ class ExtensionRegistry {
 	) {
 		if ( isset( $info['AutoloadClasses'] ) ) {
 			$autoload = self::processAutoLoader( $dir, $info['AutoloadClasses'] );
+			// @phan-suppress-next-line PhanUndeclaredVariableAssignOp
 			$GLOBALS['wgAutoloadClasses'] += $autoload;
 			$autoloadClasses += $autoload;
 		}

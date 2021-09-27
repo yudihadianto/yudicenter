@@ -22,7 +22,6 @@
  */
 
 use MediaWiki\MediaWikiServices;
-use MediaWiki\Page\PageIdentity;
 use MediaWiki\Revision\RevisionRecord;
 
 /**
@@ -77,6 +76,7 @@ class RevisionDeleter {
 			'class' => RevDelLogList::class,
 			'services' => [
 				'DBLoadBalancerFactory',
+				'ActorMigration',
 				'CommentStore',
 			],
 		],
@@ -121,12 +121,12 @@ class RevisionDeleter {
 	 * @since 1.22
 	 * @param string $typeName RevDel type, see RevisionDeleter::getTypes()
 	 * @param IContextSource $context
-	 * @param PageIdentity $page
+	 * @param Title $title
 	 * @param array $ids
 	 * @return RevDelList
 	 * @throws MWException
 	 */
-	public static function createList( $typeName, IContextSource $context, PageIdentity $page, array $ids ) {
+	public static function createList( $typeName, IContextSource $context, Title $title, array $ids ) {
 		$typeName = self::getCanonicalTypeName( $typeName );
 		if ( !$typeName ) {
 			throw new MWException( __METHOD__ . ": Unknown RevDel type '$typeName'" );
@@ -139,7 +139,7 @@ class RevisionDeleter {
 		return $objectFactory->createObject(
 			$spec,
 			[
-				'extraArgs' => [ $context, $page, $ids ],
+				'extraArgs' => [ $context, $title, $ids ],
 				'assertClass' => RevDelList::class,
 			]
 		);

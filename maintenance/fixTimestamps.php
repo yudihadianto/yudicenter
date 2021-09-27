@@ -50,7 +50,7 @@ class FixTimestamps extends Maintenance {
 		$grace = 60;
 
 		# Find bounding revision IDs
-		$dbw = $this->getDB( DB_PRIMARY );
+		$dbw = $this->getDB( DB_MASTER );
 		$revisionTable = $dbw->tableName( 'revision' );
 		$res = $dbw->query( "SELECT MIN(rev_id) as minrev, MAX(rev_id) as maxrev FROM $revisionTable " .
 			"WHERE rev_timestamp BETWEEN '{$start}' AND '{$end}'", __METHOD__ );
@@ -87,9 +87,11 @@ class FixTimestamps extends Maintenance {
 				// Monotonic change
 				$lastNormal = $timestamp;
 				++$numGoodRevs;
+				continue;
 			} elseif ( abs( $delta ) <= $grace ) {
 				// Non-monotonic change within grace interval
 				++$numGoodRevs;
+				continue;
 			} else {
 				// Non-monotonic change larger than grace interval
 				$badRevs[] = $row->rev_id;
@@ -108,7 +110,7 @@ class FixTimestamps extends Maintenance {
 		good revisions to provide a majority reference." );
 		} elseif ( $numBadRevs == 0 ) {
 			$this->output( "No bad revisions found.\n" );
-			return;
+			exit( 0 );
 		}
 
 		$this->output( sprintf( "Fixing %d revisions (%.2f%% of revisions in search interval)\n",

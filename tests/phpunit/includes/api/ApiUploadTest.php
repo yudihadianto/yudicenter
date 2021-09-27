@@ -12,7 +12,7 @@ class ApiUploadTest extends ApiUploadTestCase {
 		return __DIR__ . '/../../data/media/' . $fileName;
 	}
 
-	protected function setUp(): void {
+	protected function setUp() : void {
 		parent::setUp();
 		$this->tablesUsed[] = 'watchlist'; // This test might interfere with watchlists test.
 		$this->tablesUsed[] = 'watchlist_expiry';
@@ -28,8 +28,7 @@ class ApiUploadTest extends ApiUploadTestCase {
 				] )
 			],
 			[],
-			$this->getServiceContainer()->getMainWANObjectCache(),
-			$this->createMock( MimeAnalyzer::class )
+			null
 		) );
 		$this->resetServices();
 
@@ -76,7 +75,7 @@ class ApiUploadTest extends ApiUploadTestCase {
 		$this->assertEquals( 'Success', $result['upload']['result'] );
 		$this->assertSame( filesize( $filePath ), (int)$result['upload']['imageinfo']['size'] );
 		$this->assertEquals( $mimeType, $result['upload']['imageinfo']['mime'] );
-		$this->assertTrue( $this->getServiceContainer()->getWatchlistManager()->isTempWatched( $user, $title ) );
+		$this->assertTrue( $user->isTempWatched( $title ) );
 	}
 
 	public function testUploadZeroLength() {
@@ -212,7 +211,7 @@ class ApiUploadTest extends ApiUploadTestCase {
 		$mimeType = 'image/jpeg';
 		$filePath = $this->filePath( 'yuv420.jpg' );
 		$fileSize = filesize( $filePath );
-		$chunkSize = 20 * 1024; // The file is ~60 KiB, use 20 KiB chunks
+		$chunkSize = 20 * 1024; // The file is ~60kB, use 20kB chunks
 
 		$this->setMwGlobals( [
 			'wgMinUploadChunkSize' => $chunkSize

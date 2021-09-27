@@ -26,8 +26,6 @@ use MediaWiki\Linker\LinkRenderer;
 use MediaWiki\MediaWikiServices;
 use MediaWiki\Revision\RevisionRecord;
 use MediaWiki\Revision\RevisionStore;
-use MediaWiki\User\UserFactory;
-use MediaWiki\User\UserIdentity;
 use Wikimedia\IPUtils;
 use Wikimedia\Rdbms\FakeResultWrapper;
 use Wikimedia\Rdbms\IDatabase;
@@ -53,7 +51,7 @@ class ContribsPager extends RangeChronologicalPager {
 	/**
 	 * @var string|int A single namespace number, or an empty string for all namespaces
 	 */
-	private $namespace;
+	private $namespace = '';
 
 	/**
 	 * @var string|false Name of tag to filter, or false to ignore tags
@@ -104,9 +102,6 @@ class ContribsPager extends RangeChronologicalPager {
 	 */
 	private $mParentLens;
 
-	/** @var UserIdentity */
-	private $targetUser;
-
 	/**
 	 * @var TemplateParser
 	 */
@@ -137,7 +132,6 @@ class ContribsPager extends RangeChronologicalPager {
 	 * @param ActorMigration|null $actorMigration
 	 * @param RevisionStore|null $revisionStore
 	 * @param NamespaceInfo|null $namespaceInfo
-	 * @param UserIdentity|null $targetUser
 	 */
 	public function __construct(
 		IContextSource $context,
@@ -148,37 +142,15 @@ class ContribsPager extends RangeChronologicalPager {
 		ILoadBalancer $loadBalancer = null,
 		ActorMigration $actorMigration = null,
 		RevisionStore $revisionStore = null,
-		NamespaceInfo $namespaceInfo = null,
-		UserIdentity $targetUser = null
+		NamespaceInfo $namespaceInfo = null
 	) {
 		// Class is used directly in extensions - T266484
 		$services = MediaWikiServices::getInstance();
 		$loadBalancer = $loadBalancer ?? $services->getDBLoadBalancer();
-
 		// Set ->target before calling parent::__construct() so
 		// parent can call $this->getIndexField() and get the right result. Set
 		// the rest too just to keep things simple.
-		if ( $targetUser ) {
-			$this->target = $options['target'] ?? $targetUser->getName();
-			$this->targetUser = $targetUser;
-		} else {
-			// Use target option
-			// It's possible for the target to be empty. This is used by
-			// ContribsPagerTest and does not cause newFromName() to return
-			// false. It's probably not used by any production code.
-			$this->target = $options['target'] ?? '';
-			$this->targetUser = $services->getUserFactory()->newFromName(
-				$this->target, UserFactory::RIGOR_NONE
-			);
-			if ( !$this->targetUser ) {
-				// This can happen if the target contained "#". Callers
-				// typically pass user input through title normalization to
-				// avoid it.
-				throw new InvalidArgumentException( __METHOD__ . ': the user name is too ' .
-					'broken to use even with validation disabled.' );
-			}
-		}
-
+		$this->target = $options['target'] ?? '';
 		$this->namespace = $options['namespace'] ?? '';
 		$this->tagFilter = $options['tagfilter'] ?? false;
 		$this->nsInvert = $options['nsInvert'] ?? false;
@@ -331,13 +303,14 @@ class ContribsPager extends RangeChronologicalPager {
 	 */
 	private function getTargetTable() {
 		$dbr = $this->getDatabase();
-		$ipRangeConds = $this->targetUser->isRegistered()
-			? null : $this->getIpRangeConds( $dbr, $this->target );
+		$user = User::newFromName( $this->target, false );
+		$ipRangeConds = $user->isAnon() ? $this->getIpRangeConds( $dbr, $this->target ) : null;
 		if ( $ipRangeConds ) {
 			return 'ip_changes';
 		} else {
-			$conds = $this->actorMigration->getWhere( $dbr, 'rev_user', $this->targetUser );
+			$conds = $this->actorMigration->getWhere( $dbr, 'rev_user', $user );
 			if ( isset( $conds['orconds']['actor'] ) ) {
+				// @todo: This will need changing when revision_actor_temp goes away
 				return 'revision_actor_temp';
 			}
 		}
@@ -356,21 +329,22 @@ class ContribsPager extends RangeChronologicalPager {
 		];
 
 		// WARNING: Keep this in sync with getTargetTable()!
+		$user = User::newFromName( $this->target, false );
 		$dbr = $this->getDatabase();
-		$ipRangeConds = !$this->targetUser->isRegistered() ? $this->getIpRangeConds( $dbr, $this->target ) : null;
+		$ipRangeConds = $user->isAnon() ? $this->getIpRangeConds( $dbr, $this->target ) : null;
 		if ( $ipRangeConds ) {
-			// Put ip_changes first (T284419)
-			array_unshift( $queryInfo['tables'], 'ip_changes' );
-			$queryInfo['join_conds']['revision'] = [
-				'JOIN', [ 'rev_id = ipc_rev_id' ]
+			$queryInfo['tables'][] = 'ip_changes';
+			$queryInfo['join_conds']['ip_changes'] = [
+				'LEFT JOIN', [ 'ipc_rev_id = rev_id' ]
 			];
 			$queryInfo['conds'][] = $ipRangeConds;
 		} else {
-			// tables and joins are already handled by RevisionStore::getQueryInfo()
-			$conds = $this->actorMigration->getWhere( $dbr, 'rev_user', $this->targetUser );
+			// tables and joins are already handled by Revision::getQueryInfo()
+			$conds = $this->actorMigration->getWhere( $dbr, 'rev_user', $user );
 			$queryInfo['conds'][] = $conds['conds'];
 			// Force the appropriate index to avoid bad query plans (T189026)
 			if ( isset( $conds['orconds']['actor'] ) ) {
+				// @todo: This will need changing when revision_actor_temp goes away
 				$queryInfo['options']['USE INDEX']['temp_rev_user'] = 'actor_timestamp';
 			}
 		}
@@ -606,24 +580,48 @@ class ContribsPager extends RangeChronologicalPager {
 	}
 
 	/**
-	 * Check whether the revision associated is valid for formatting. If has no
-	 * associated revision ID then null is returned.
+	 * Check whether the revision associated is valid for formatting. If has no associated revision
+	 * id then null is returned.
 	 *
-	 * This was previously used by formatRow() but now exists only for the
-	 * convenience of extensions.
+	 * @deprecated since 1.35
+	 *
+	 * @param stdClass $row
+	 * @param Title|null $title
+	 * @return Revision|null
+	 */
+	public function tryToCreateValidRevision( $row, $title = null ) {
+		wfDeprecated( __METHOD__, '1.35' );
+		$potentialRevRecord = $this->tryCreatingRevisionRecord( $row, $title );
+		return $potentialRevRecord ? new Revision( $potentialRevRecord ) : null;
+	}
+
+	/**
+	 * Check whether the revision associated is valid for formatting. If has no associated revision
+	 * id then null is returned.
 	 *
 	 * @since 1.35
-	 * @deprecated since 1.37 use RevisionStore::isRevisionRow()
 	 *
 	 * @param stdClass $row
 	 * @param Title|null $title
 	 * @return RevisionRecord|null
 	 */
 	public function tryCreatingRevisionRecord( $row, $title = null ) {
-		if ( !$this->revisionStore->isRevisionRow( $row ) ) {
+		/*
+		 * There may be more than just revision rows. To make sure that we'll only be processing
+		 * revisions here, let's _try_ to build a revision out of our row (without displaying
+		 * notices though) and then trying to grab data from the built object. If we succeed,
+		 * we're definitely dealing with revision data and we may proceed, if not, we'll leave it
+		 * to extensions to subscribe to the hook to parse the row.
+		 */
+		Wikimedia\suppressWarnings();
+		try {
+			$revRecord = $this->revisionStore->newRevisionFromRow( $row, 0, $title );
+			return $revRecord->getId() ? $revRecord : null;
+		} catch ( Exception $e ) {
 			return null;
+		} finally {
+			Wikimedia\restoreWarnings();
 		}
-		return $this->revisionStore->newRevisionFromRow( $row, 0, $title );
 	}
 
 	/**
@@ -635,7 +633,7 @@ class ContribsPager extends RangeChronologicalPager {
 	 * was not written by the target user.
 	 *
 	 * @todo This would probably look a lot nicer in a table.
-	 * @param stdClass|mixed $row
+	 * @param stdClass $row
 	 * @return string
 	 */
 	public function formatRow( $row ) {
@@ -651,13 +649,8 @@ class ContribsPager extends RangeChronologicalPager {
 		if ( isset( $row->page_namespace ) && isset( $row->page_title ) ) {
 			$page = Title::newFromRow( $row );
 		}
-		// Flow overrides the ContribsPager::reallyDoQuery hook, causing this
-		// function to be called with a special object for $row. It expects us
-		// skip formatting so that the row can be formatted by the
-		// ContributionsLineEnding hook below.
-		// FIXME: have some better way for extensions to provide formatted rows.
-		if ( $this->revisionStore->isRevisionRow( $row ) ) {
-			$revRecord = $this->revisionStore->newRevisionFromRow( $row, 0, $page );
+		$revRecord = $this->tryCreatingRevisionRecord( $row, $page );
+		if ( $revRecord ) {
 			$attribs['data-mw-revid'] = $revRecord->getId();
 
 			$link = $linkRenderer->makeLink(

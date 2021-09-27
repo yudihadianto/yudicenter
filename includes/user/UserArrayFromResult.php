@@ -29,7 +29,7 @@ class UserArrayFromResult extends UserArray implements Countable {
 	/** @var int */
 	public $key;
 
-	/** @var User|false */
+	/** @var bool|User */
 	public $current;
 
 	/**
@@ -60,11 +60,14 @@ class UserArrayFromResult extends UserArray implements Countable {
 		return $this->res->numRows();
 	}
 
-	public function current(): User {
+	/**
+	 * @return User
+	 */
+	public function current() {
 		return $this->current;
 	}
 
-	public function key(): int {
+	public function key() {
 		return $this->key;
 	}
 

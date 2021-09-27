@@ -39,10 +39,7 @@ class PageSelectQueryBuilderTest extends MediaWikiIntegrationTestCase {
 		return new PageStore(
 			$serviceOptions,
 			$services->getDBLoadBalancer(),
-			$services->getNamespaceInfo(),
-			$services->getTitleParser(),
-			$services->getLinkCache(),
-			$services->getStatsdDataFactory()
+			$services->getNamespaceInfo()
 		);
 	}
 
@@ -67,8 +64,8 @@ class PageSelectQueryBuilderTest extends MediaWikiIntegrationTestCase {
 			->fetchPageRecordArray();
 
 		$this->assertCount( 2, $recs );
-		$this->assertSame( 'AA', $recs[ $recAA->getId() ]->getDBkey() );
-		$this->assertSame( 'AB', $recs[ $recAB->getId() ]->getDBkey() );
+		$this->assertSame( $recs[ $recAA->getId() ]->getDBkey(), 'AA' );
+		$this->assertSame( $recs[ $recAB->getId() ]->getDBkey(), 'AB' );
 	}
 
 	/**
@@ -138,10 +135,6 @@ class PageSelectQueryBuilderTest extends MediaWikiIntegrationTestCase {
 
 		$this->assertTrue( $recAB->isSamePageAs( $rec ) );
 
-		// The page should have ended up in the LinkCache
-		$linkCache = $this->getServiceContainer()->getLinkCache();
-		$this->assertSame( $rec->getId(), $linkCache->getGoodLinkID( $rec ) );
-
 		$rec = $pageStore->newSelectQueryBuilder()
 			->whereTitles( NS_TALK, 'AB' )
 			->fetchPageRecord();
@@ -163,7 +156,7 @@ class PageSelectQueryBuilderTest extends MediaWikiIntegrationTestCase {
 			->fetchPageRecordArray();
 
 		$this->assertCount( 1, $recs );
-		$this->assertSame( 'AA', $recs[ $recAA->getId() ]->getDBkey() );
+		$this->assertSame( $recs[ $recAA->getId() ]->getDBkey(), 'AA' );
 	}
 
 	/**

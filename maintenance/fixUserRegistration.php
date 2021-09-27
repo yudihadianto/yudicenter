@@ -39,7 +39,7 @@ class FixUserRegistration extends Maintenance {
 	}
 
 	public function execute() {
-		$dbw = $this->getDB( DB_PRIMARY );
+		$dbw = $this->getDB( DB_MASTER );
 
 		$lastId = 0;
 		$lbFactory = MediaWikiServices::getInstance()->getDBLoadBalancerFactory();

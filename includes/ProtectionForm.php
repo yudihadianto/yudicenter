@@ -25,10 +25,7 @@
 
 use MediaWiki\HookContainer\HookRunner;
 use MediaWiki\MediaWikiServices;
-use MediaWiki\Permissions\Authority;
 use MediaWiki\Permissions\PermissionManager;
-use MediaWiki\Permissions\PermissionStatus;
-use MediaWiki\Watchlist\WatchlistManager;
 
 /**
  * Handles the page protection UI and backend
@@ -55,8 +52,8 @@ class ProtectionForm {
 	 */
 	protected $mExpirySelection = [];
 
-	/** @var PermissionStatus Permissions errors for the protect action */
-	protected $mPermStatus;
+	/** @var array Permissions errors for the protect action */
+	protected $mPermErrors = [];
 
 	/** @var array Types (i.e. actions) for which levels can be selected */
 	protected $mApplicableTypes = [];
@@ -82,8 +79,8 @@ class ProtectionForm {
 	/** @var WebRequest */
 	private $mRequest;
 
-	/** @var Authority */
-	private $mPerformer;
+	/** @var User */
+	private $mUser;
 
 	/** @var Language */
 	private $mLang;
@@ -93,11 +90,6 @@ class ProtectionForm {
 
 	/** @var PermissionManager */
 	private $permManager;
-
-	/**
-	 * @var WatchlistManager
-	 */
-	private $watchlistManager;
 
 	/** @var HookRunner */
 	private $hookRunner;
@@ -109,27 +101,28 @@ class ProtectionForm {
 		$this->mApplicableTypes = $this->mTitle->getRestrictionTypes();
 		$this->mContext = $article->getContext();
 		$this->mRequest = $this->mContext->getRequest();
-		$this->mPerformer = $this->mContext->getAuthority();
+		$this->mUser = $this->mContext->getUser();
 		$this->mOut = $this->mContext->getOutput();
 		$this->mLang = $this->mContext->getLanguage();
 
 		$services = MediaWikiServices::getInstance();
 		$this->permManager = $services->getPermissionManager();
 		$this->hookRunner = new HookRunner( $services->getHookContainer() );
-		$this->watchlistManager = $services->getWatchlistManager();
 
 		// Check if the form should be disabled.
 		// If it is, the form will be available in read-only to show levels.
-		$this->mPermStatus = PermissionStatus::newEmpty();
-		if ( $this->mRequest->wasPosted() ) {
-			$this->mPerformer->authorizeWrite( 'protect', $this->mTitle, $this->mPermStatus );
-		} else {
-			$this->mPerformer->authorizeRead( 'protect', $this->mTitle, $this->mPermStatus );
-		}
+		$this->mPermErrors = $this->permManager->getPermissionErrors(
+			'protect',
+			$this->mUser,
+			$this->mTitle,
+			$this->mRequest->wasPosted()
+				? PermissionManager::RIGOR_SECURE
+				: PermissionManager::RIGOR_FULL // T92357
+		);
 		if ( wfReadOnly() ) {
-			$this->mPermStatus->fatal( 'readonlytext', wfReadOnlyReason() );
+			$this->mPermErrors[] = [ 'readonlytext', wfReadOnlyReason() ];
 		}
-		$this->disabled = !$this->mPermStatus->isGood();
+		$this->disabled = $this->mPermErrors !== [];
 		$this->disabledAttrib = $this->disabled ? [ 'disabled' => 'disabled' ] : [];
 
 		$this->loadData();
@@ -140,7 +133,7 @@ class ProtectionForm {
 	 */
 	private function loadData() {
 		$levels = $this->permManager->getNamespaceRestrictionLevels(
-			$this->mTitle->getNamespace(), $this->mPerformer->getUser()
+			$this->mTitle->getNamespace(), $this->mUser
 		);
 
 		$this->mCascade = $this->mTitle->areRestrictionsCascading();
@@ -256,9 +249,9 @@ class ProtectionForm {
 		$out->addBacklinkSubtitle( $this->mTitle );
 
 		if ( is_array( $err ) ) {
-			$out->addHTML( Html::errorBox( $out->msg( ...$err )->parse() ) );
+			$out->wrapWikiMsg( "<div class='error'>\n$1\n</div>\n", $err );
 		} elseif ( is_string( $err ) ) {
-			$out->addHTML( Html::errorBox( $err ) );
+			$out->addHTML( "<div class='error'>{$err}</div>\n" );
 		}
 
 		if ( $this->mApplicableTypes === [] ) {
@@ -300,9 +293,9 @@ class ProtectionForm {
 				$this->mContext->msg( 'protect-title-notallowed',
 					$this->mTitle->getPrefixedText() )
 			);
-			$out->addWikiTextAsInterface(
-				$out->formatPermissionStatus( $this->mPermStatus, 'protect' )
-			);
+			$out->addWikiTextAsInterface( $out->formatPermissionsErrorMessage(
+				$this->mPermErrors, 'protect'
+			) );
 		} else {
 			$out->setPageTitle(
 				$this->mContext->msg( 'protect-title', $this->mTitle->getPrefixedText() )
@@ -328,10 +321,7 @@ class ProtectionForm {
 		}
 
 		$token = $this->mRequest->getVal( 'wpEditToken' );
-		$legacyUser = MediaWikiServices::getInstance()
-			->getUserFactory()
-			->newFromAuthority( $this->mPerformer );
-		if ( !$legacyUser->matchEditToken( $token, [ 'protect', $this->mTitle->getPrefixedDBkey() ] ) ) {
+		if ( !$this->mUser->matchEditToken( $token, [ 'protect', $this->mTitle->getPrefixedDBkey() ] ) ) {
 			$this->show( [ 'sessionfailure' ] );
 			return false;
 		}
@@ -369,7 +359,7 @@ class ProtectionForm {
 			$expiry,
 			$this->mCascade,
 			$reasonstr,
-			$this->mPerformer->getUser()
+			$this->mUser
 		);
 
 		if ( !$status->isOK() ) {
@@ -396,10 +386,10 @@ class ProtectionForm {
 			return false;
 		}
 
-		$this->watchlistManager->setWatch(
+		WatchAction::doWatchOrUnwatch(
 			$this->mRequest->getCheck( 'mwProtectWatch' ),
-			$this->mPerformer,
-			$this->mTitle
+			$this->mTitle,
+			$this->mUser
 		);
 
 		return true;
@@ -421,7 +411,7 @@ class ProtectionForm {
 		$scExpiryOptions = $this->mContext->msg( 'protect-expiry-options' )->inContentLanguage()->text();
 		$levels = $this->permManager->getNamespaceRestrictionLevels(
 			$this->mTitle->getNamespace(),
-			$this->disabled ? null : $this->mPerformer->getUser()
+			$this->disabled ? null : $this->mUser
 		);
 
 		// Not all languages have V_x <-> N_x relation
@@ -452,17 +442,28 @@ class ProtectionForm {
 				if ( $this->mExistingExpiry[$action] == 'infinity' ) {
 					$existingExpiryMessage = $this->mContext->msg( 'protect-existing-expiry-infinity' );
 				} else {
-					$existingExpiryMessage = $this->mContext->msg( 'protect-existing-expiry' )
-						->dateTimeParams( $this->mExistingExpiry[$action] )
-						->dateParams( $this->mExistingExpiry[$action] )
-						->timeParams( $this->mExistingExpiry[$action] );
+					$timestamp = $this->mLang->userTimeAndDate( $this->mExistingExpiry[$action], $this->mUser );
+					$date = $this->mLang->userDate( $this->mExistingExpiry[$action], $this->mUser );
+					$time = $this->mLang->userTime( $this->mExistingExpiry[$action], $this->mUser );
+					$existingExpiryMessage = $this->mContext->msg(
+						'protect-existing-expiry',
+						$timestamp,
+						$date,
+						$time
+					);
 				}
 				$expiryOptions[$existingExpiryMessage->text()] = 'existing';
 			}
 
 			$expiryOptions[$this->mContext->msg( 'protect-othertime-op' )->text()] = 'othertime';
-
-			$expiryOptions = array_merge( $expiryOptions, XmlSelect::parseOptionsMessage( $scExpiryOptions ) );
+			foreach ( explode( ',', $scExpiryOptions ) as $option ) {
+				if ( strpos( $option, ":" ) === false ) {
+					$show = $value = $option;
+				} else {
+					list( $show, $value ) = explode( ":", $option );
+				}
+				$expiryOptions[$show] = htmlspecialchars( $value );
+			}
 
 			# Add expiry dropdown
 			$fields["wpProtectExpirySelection-$action"] = [
@@ -556,24 +557,21 @@ class ProtectionForm {
 				'default' => $this->mReason,
 			];
 			# Disallow watching if user is not logged in
-			if ( $this->mPerformer->getUser()->isRegistered() ) {
+			if ( $this->mUser->isRegistered() ) {
 				$fields['mwProtectWatch'] = [
 					'type' => 'check',
 					'id' => 'mwProtectWatch',
 					'label' => $this->mContext->msg( 'watchthis' )->text(),
 					'name' => 'mwProtectWatch',
 					'default' => (
-						$this->watchlistManager->isWatched( $this->mPerformer, $this->mTitle )
-						|| MediaWikiServices::getInstance()->getUserOptionsLookup()->getOption(
-							$this->mPerformer->getUser(),
-							'watchdefault'
-						)
+						$this->mUser->isWatched( $this->mTitle )
+						|| $this->mUser->getOption( 'watchdefault' )
 					),
 				];
 			}
 		}
 
-		if ( $this->mPerformer->isAllowed( 'editinterface' ) ) {
+		if ( $this->permManager->userHasRight( $this->mUser, 'editinterface' ) ) {
 			$linkRenderer = MediaWikiServices::getInstance()->getLinkRenderer();
 			$link = $linkRenderer->makeKnownLink(
 				$this->mContext->msg( 'protect-dropdown' )->inContentLanguage()->getTitle(),
@@ -585,13 +583,10 @@ class ProtectionForm {
 		}
 
 		if ( !$this->disabled ) {
-			$legacyUser = MediaWikiServices::getInstance()
-				->getUserFactory()
-				->newFromAuthority( $this->mPerformer );
 			$fields['wpEditToken'] = [
 				'name' => 'wpEditToken',
 				'type' => 'hidden',
-				'default' => $legacyUser->getEditToken( [ 'protect', $this->mTitle->getPrefixedDBkey() ] ),
+				'default' => $this->mUser->getEditToken( [ 'protect', $this->mTitle->getPrefixedDBkey() ] ),
 			];
 		}
 
@@ -602,9 +597,9 @@ class ProtectionForm {
 			->setTableId( 'mw-protect-table2' )
 			->setAction( $this->mTitle->getLocalURL( 'action=protect' ) )
 			->setSubmitID( 'mw-Protect-submit' )
-			->setSubmitTextMsg( 'confirm' )
+			->setSubmitText( $this->mContext->msg( 'confirm' )->text() )
 			->suppressDefaultSubmit( $this->disabled )
-			->setWrapperLegendMsg( 'protect-legend' )
+			->setWrapperLegend( $this->mContext->msg( 'protect-legend' )->text() )
 			->loadData();
 
 		return $htmlForm->getHTML( false ) . $out;

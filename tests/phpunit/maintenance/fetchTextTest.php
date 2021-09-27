@@ -114,9 +114,8 @@ class FetchTextTest extends MediaWikiIntegrationTestCase {
 	 * @throws MWException
 	 */
 	private function addRevision( $page, $text, $summary ) {
-		$status = $page->doUserEditContent(
+		$status = $page->doEditContent(
 			ContentHandler::makeContent( $text, $page->getTitle() ),
-			$this->getTestSysop()->getUser(),
 			$summary
 		);
 
@@ -173,7 +172,7 @@ class FetchTextTest extends MediaWikiIntegrationTestCase {
 		}
 	}
 
-	protected function setUp(): void {
+	protected function setUp() : void {
 		parent::setUp();
 
 		// Check if any Exception is stored for rethrowing from addDBData

@@ -63,7 +63,7 @@ class PrevNextNavigationRenderer {
 	) {
 		# Make 'previous' link
 		$prev = $this->messageLocalizer->msg( 'prevn' )
-			->page( $title )
+			->title( $title )
 			->numParams( $limit )
 			->text();
 
@@ -83,7 +83,7 @@ class PrevNextNavigationRenderer {
 
 		# Make 'next' link
 		$next = $this->messageLocalizer->msg( 'nextn' )
-			->page( $title )
+			->title( $title )
 			->numParams( $limit )
 			->text();
 		if ( $atend ) {
@@ -118,7 +118,7 @@ class PrevNextNavigationRenderer {
 		}
 
 		return $this->messageLocalizer->msg( 'viewprevnext' )
-			->page( $title )
+			->title( $title )
 			->rawParams( $plink, $nlink, $lang->pipeList( $numLinks ) )
 			->escaped();
 	}
@@ -146,7 +146,7 @@ class PrevNextNavigationRenderer {
 	) {
 		$query = [ 'limit' => $limit, 'offset' => $offset ] + $query;
 		$tooltip = $this->messageLocalizer->msg( $tooltipMsg )
-			->page( $title )
+			->title( $title )
 			->numParams( $limit )
 			->text();
 

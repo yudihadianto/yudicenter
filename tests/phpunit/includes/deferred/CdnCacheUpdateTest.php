@@ -62,7 +62,7 @@ class CdnCacheUpdateTest extends MediaWikiIntegrationTestCase {
 	private function newCdnCacheUpdate( array $urls ) {
 		return $this->getMockBuilder( CdnCacheUpdate::class )
 			->setConstructorArgs( [ $urls ] )
-			->onlyMethods( [ 'doUpdate' ] )
+			->setMethods( [ 'doUpdate' ] )
 			->getMock();
 	}
 }

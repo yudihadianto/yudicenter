@@ -81,17 +81,14 @@ class PPNode_Hash_Text implements PPNode {
 	}
 
 	public function splitArg() {
-		// @phan-suppress-previous-line PhanPluginNeverReturnMethod
 		throw new MWException( __METHOD__ . ': not supported' );
 	}
 
 	public function splitExt() {
-		// @phan-suppress-previous-line PhanPluginNeverReturnMethod
 		throw new MWException( __METHOD__ . ': not supported' );
 	}
 
 	public function splitHeading() {
-		// @phan-suppress-previous-line PhanPluginNeverReturnMethod
 		throw new MWException( __METHOD__ . ': not supported' );
 	}
 }

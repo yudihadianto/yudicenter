@@ -29,7 +29,7 @@ use Wikimedia\Rdbms\ILoadBalancer;
  *
  * @ingroup SpecialPage
  */
-class SpecialRandomRedirect extends SpecialRandomPage {
+class SpecialRandomredirect extends RandomPage {
 
 	/**
 	 * @param ILoadBalancer $loadBalancer

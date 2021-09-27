@@ -64,7 +64,7 @@ class BotPasswordSessionProvider extends ImmutableSessionProviderWithCookie {
 		}
 
 		// Enabled?
-		if ( !$this->getConfig()->get( 'EnableBotPasswords' ) ) {
+		if ( !$this->config->get( 'EnableBotPasswords' ) ) {
 			return null;
 		}
 

@@ -190,14 +190,7 @@ class SpecialRevisionDelete extends UnlistedSpecialPage {
 		}
 
 		// Check blocks
-		$checkReplica = !$this->submitClicked;
-		if (
-			$this->permissionManager->isBlockedFrom(
-				$user,
-				$this->targetObj,
-				$checkReplica
-			)
-		) {
+		if ( $this->permissionManager->isBlockedFrom( $user, $this->targetObj ) ) {
 			throw new UserBlockedError(
 				$user->getBlock(),
 				$user,
@@ -679,7 +672,7 @@ class SpecialRevisionDelete extends UnlistedSpecialPage {
 			$this->typeLabels['success']
 		);
 		$this->wasSaved = true;
-		$this->revDelList->reloadFromPrimary();
+		$this->revDelList->reloadFromMaster();
 		$this->showForm();
 	}
 

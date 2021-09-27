@@ -6,11 +6,8 @@
  * Represents files in a repository.
  */
 use MediaWiki\HookContainer\ProtectedHookAccessorTrait;
-use MediaWiki\Linker\LinkTarget;
 use MediaWiki\MediaWikiServices;
-use MediaWiki\Page\PageIdentity;
-use MediaWiki\Permissions\Authority;
-use MediaWiki\User\UserIdentity;
+use Wikimedia\AtEase\AtEase;
 
 /**
  * Base code for files.
@@ -63,10 +60,10 @@ use MediaWiki\User\UserIdentity;
  * @stable to extend
  * @ingroup FileAbstraction
  */
-abstract class File implements IDBAccessObject, MediaHandlerState {
+abstract class File implements IDBAccessObject {
 	use ProtectedHookAccessorTrait;
 
-	// Bitfield values akin to the revision deletion constants
+	// Bitfield values akin to the Revision deletion constants
 	public const DELETED_FILE = 1;
 	public const DELETED_COMMENT = 2;
 	public const DELETED_USER = 4;
@@ -170,9 +167,6 @@ abstract class File implements IDBAccessObject, MediaHandlerState {
 	/** @var array Cache of tmp filepaths pointing to generated bucket thumbnails, keyed by width */
 	protected $tmpBucketedThumbCache = [];
 
-	/** @var array */
-	private $handlerState = [];
-
 	/**
 	 * Call this constructor from child classes.
 	 *
@@ -197,22 +191,13 @@ abstract class File implements IDBAccessObject, MediaHandlerState {
 	 * Given a string or Title object return either a
 	 * valid Title object with namespace NS_FILE or null
 	 *
-	 * @param PageIdentity|LinkTarget|string $title
+	 * @param Title|string $title
 	 * @param string|bool $exception Use 'exception' to throw an error on bad titles
 	 * @throws MWException
 	 * @return Title|null
 	 */
 	public static function normalizeTitle( $title, $exception = false ) {
 		$ret = $title;
-
-		if ( !$ret instanceof Title ) {
-			if ( $ret instanceof PageIdentity ) {
-				$ret = Title::castFromPageIdentity( $ret );
-			} elseif ( $ret instanceof LinkTarget ) {
-				$ret = Title::castFromLinkTarget( $ret );
-			}
-		}
-
 		if ( $ret instanceof Title ) {
 			# Normalize NS_MEDIA -> NS_FILE
 			if ( $ret->getNamespace() === NS_MEDIA ) {
@@ -607,21 +592,12 @@ abstract class File implements IDBAccessObject, MediaHandlerState {
 	 * Returns ID or name of user who uploaded the file
 	 * STUB
 	 *
-	 * @deprecated since 1.37. Use and override ::getUploader instead.
+	 * @stable to override
 	 * @param string $type 'text' or 'id'
 	 * @return string|int
 	 */
 	public function getUser( $type = 'text' ) {
-		wfDeprecated( __METHOD__, '1.37' );
-		$user = $this->getUploader( self::RAW ) ?? User::newFromName( 'Unknown user' );
-		if ( $type === 'object' ) {
-			return User::newFromIdentity( $user );
-		} elseif ( $type === 'text' ) {
-			return $user->getName();
-		} elseif ( $type === 'id' ) {
-			return $user->getId();
-		}
-		throw new MWException( "Unknown type '$type'." );
+		return null;
 	}
 
 	/**
@@ -740,54 +716,11 @@ abstract class File implements IDBAccessObject, MediaHandlerState {
 	 * Get handler-specific metadata
 	 * Overridden by LocalFile, UnregisteredLocalFile
 	 * STUB
-	 * @deprecated since 1.37 use getMetadataArray() or getMetadataItem()
+	 * @stable to override
 	 * @return string|false
 	 */
 	public function getMetadata() {
 		return false;
-	}
-
-	public function getHandlerState( string $key ) {
-		return $this->handlerState[$key] ?? null;
-	}
-
-	public function setHandlerState( string $key, $value ) {
-		$this->handlerState[$key] = $value;
-	}
-
-	/**
-	 * Get the unserialized handler-specific metadata
-	 * STUB
-	 * @since 1.37
-	 * @return array
-	 */
-	public function getMetadataArray(): array {
-		return [];
-	}
-
-	/**
-	 * Get a specific element of the unserialized handler-specific metadata.
-	 *
-	 * @since 1.37
-	 * @param string $itemName
-	 * @return mixed
-	 */
-	public function getMetadataItem( string $itemName ) {
-		$items = $this->getMetadataItems( [ $itemName ] );
-		return $items[$itemName] ?? null;
-	}
-
-	/**
-	 * Get multiple elements of the unserialized handler-specific metadata.
-	 *
-	 * @since 1.37
-	 * @param string[] $itemNames
-	 * @return array
-	 */
-	public function getMetadataItems( array $itemNames ): array {
-		return array_intersect_key(
-			$this->getMetadataArray(),
-			array_fill_keys( $itemNames, true ) );
 	}
 
 	/**
@@ -809,12 +742,17 @@ abstract class File implements IDBAccessObject, MediaHandlerState {
 	/**
 	 * get versioned metadata
 	 *
-	 * @param array $metadata Array of unserialized metadata
+	 * @param array|string $metadata Array or string of (serialized) metadata
 	 * @param int $version Version number.
 	 * @return array Array containing metadata, or what was passed to it on fail
+	 *   (unserializing if not array)
 	 */
 	public function convertMetadataVersion( $metadata, $version ) {
 		$handler = $this->getHandler();
+		if ( !is_array( $metadata ) ) {
+			// Just to make the return type consistent
+			$metadata = unserialize( $metadata );
+		}
 		if ( $handler ) {
 			return $handler->convertMetadataVersion( $metadata, $version );
 		} else {
@@ -1461,7 +1399,7 @@ abstract class File implements IDBAccessObject, MediaHandlerState {
 
 		// Thumbnailing a very large file could result in network saturation if
 		// everyone does it at once.
-		if ( $this->getSize() >= 1e7 ) { // 10 MB
+		if ( $this->getSize() >= 1e7 ) { // 10MB
 			$work = new PoolCounterWorkViaCallback( 'GetLocalFileCopy', sha1( $this->getName() ),
 				[
 					'doWork' => function () {
@@ -1962,7 +1900,6 @@ abstract class File implements IDBAccessObject, MediaHandlerState {
 
 	/**
 	 * @throws MWException
-	 * @return never
 	 */
 	protected function readOnlyError() {
 		throw new MWException( static::class . ': write operations are not supported' );
@@ -2106,14 +2043,14 @@ abstract class File implements IDBAccessObject, MediaHandlerState {
 	 * Cache purging is done; logging is caller's responsibility.
 	 *
 	 * @param string $reason
-	 * @param UserIdentity $user
+	 * @param User $user
 	 * @param bool $suppress Hide content from sysops?
 	 * @return Status
 	 * STUB
 	 * Overridden by LocalFile
 	 * @stable to override
 	 */
-	public function deleteFile( $reason, UserIdentity $user, $suppress = false ) {
+	public function deleteFile( $reason, User $user, $suppress = false ) {
 		$this->readOnlyError();
 	}
 
@@ -2191,13 +2128,11 @@ abstract class File implements IDBAccessObject, MediaHandlerState {
 	 * @note Use getWidth()/getHeight() instead of this method unless you have a
 	 *  a good reason. This method skips all caches.
 	 *
-	 * @deprecated since 1.37
-	 *
+	 * @stable to override
 	 * @param string $filePath The path to the file (e.g. From getLocalRefPath() )
 	 * @return array|false The width, followed by height, with optionally more things after
 	 */
 	protected function getImageSize( $filePath ) {
-		wfDeprecated( __METHOD__, '1.37' );
 		if ( !$this->getHandler() ) {
 			return false;
 		}
@@ -2267,25 +2202,6 @@ abstract class File implements IDBAccessObject, MediaHandlerState {
 	}
 
 	/**
-	 * Get the identity of the file uploader.
-	 *
-	 * @note if the file does not exist, this will return null regardless of the permissions.
-	 *
-	 * @stable to override
-	 * @since 1.37
-	 * @param int $audience One of:
-	 *   File::FOR_PUBLIC       to be displayed to all users
-	 *   File::FOR_THIS_USER    to be displayed to the given user
-	 *   File::RAW              get the description regardless of permissions
-	 * @param Authority|null $performer to check for, only if FOR_THIS_USER is
-	 *   passed to the $audience parameter
-	 * @return UserIdentity|null
-	 */
-	public function getUploader( int $audience = self::FOR_PUBLIC, Authority $performer = null ): ?UserIdentity {
-		return null;
-	}
-
-	/**
 	 * Get description of file revision
 	 * STUB
 	 *
@@ -2294,11 +2210,11 @@ abstract class File implements IDBAccessObject, MediaHandlerState {
 	 *   File::FOR_PUBLIC       to be displayed to all users
 	 *   File::FOR_THIS_USER    to be displayed to the given user
 	 *   File::RAW              get the description regardless of permissions
-	 * @param Authority|null $performer to check for, only if FOR_THIS_USER is
+	 * @param User|null $user User object to check for, only if FOR_THIS_USER is
 	 *   passed to the $audience parameter
 	 * @return null|string
 	 */
-	public function getDescription( $audience = self::FOR_PUBLIC, Authority $performer = null ) {
+	public function getDescription( $audience = self::FOR_PUBLIC, User $user = null ) {
 		return null;
 	}
 
@@ -2330,7 +2246,7 @@ abstract class File implements IDBAccessObject, MediaHandlerState {
 	 * Get the SHA-1 base 36 hash of the file
 	 *
 	 * @stable to override
-	 * @return string|false
+	 * @return string
 	 */
 	public function getSha1() {
 		$this->assertRepoDefined();
@@ -2360,10 +2276,10 @@ abstract class File implements IDBAccessObject, MediaHandlerState {
 	 * STUB
 	 * @stable to override
 	 * @param int $field
-	 * @param Authority $performer User object to check
+	 * @param User $user User object to check
 	 * @return bool
 	 */
-	public function userCan( $field, Authority $performer ) {
+	public function userCan( $field, User $user ) {
 		return true;
 	}
 
@@ -2374,7 +2290,17 @@ abstract class File implements IDBAccessObject, MediaHandlerState {
 	public function getContentHeaders() {
 		$handler = $this->getHandler();
 		if ( $handler ) {
-			return $handler->getContentHeaders( $this->getMetadataArray() );
+			$metadata = $this->getMetadata();
+
+			if ( is_string( $metadata ) ) {
+				$metadata = AtEase::quietCall( 'unserialize', $metadata );
+			}
+
+			if ( !is_array( $metadata ) ) {
+				$metadata = [];
+			}
+
+			return $handler->getContentHeaders( $metadata );
 		}
 
 		return [];

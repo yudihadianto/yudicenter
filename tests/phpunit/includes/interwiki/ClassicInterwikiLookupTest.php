@@ -9,7 +9,7 @@ use MediaWiki\MediaWikiServices;
 class ClassicInterwikiLookupTest extends MediaWikiIntegrationTestCase {
 
 	private function populateDB( $iwrows ) {
-		$dbw = wfGetDB( DB_PRIMARY );
+		$dbw = wfGetDB( DB_MASTER );
 		$dbw->delete( 'interwiki', '*', __METHOD__ );
 		$dbw->insert( 'interwiki', array_values( $iwrows ), __METHOD__ );
 		$this->tablesUsed[] = 'interwiki';
@@ -41,7 +41,6 @@ class ClassicInterwikiLookupTest extends MediaWikiIntegrationTestCase {
 			MediaWikiServices::getInstance()->getLanguageFactory()->getLanguage( 'en' ),
 			WANObjectCache::newEmpty(),
 			MediaWikiServices::getInstance()->getHookContainer(),
-			MediaWikiServices::getInstance()->getDBLoadBalancer(),
 			60 * 60,
 			false,
 			3,
@@ -157,7 +156,6 @@ class ClassicInterwikiLookupTest extends MediaWikiIntegrationTestCase {
 			MediaWikiServices::getInstance()->getLanguageFactory()->getLanguage( 'en' ),
 			WANObjectCache::newEmpty(),
 			MediaWikiServices::getInstance()->getHookContainer(),
-			MediaWikiServices::getInstance()->getDBLoadBalancer(),
 			60 * 60,
 			$cdbFile,
 			3,
@@ -210,7 +208,6 @@ class ClassicInterwikiLookupTest extends MediaWikiIntegrationTestCase {
 			MediaWikiServices::getInstance()->getLanguageFactory()->getLanguage( 'en' ),
 			WANObjectCache::newEmpty(),
 			MediaWikiServices::getInstance()->getHookContainer(),
-			MediaWikiServices::getInstance()->getDBLoadBalancer(),
 			60 * 60,
 			$hash,
 			3,
@@ -265,7 +262,6 @@ class ClassicInterwikiLookupTest extends MediaWikiIntegrationTestCase {
 			MediaWikiServices::getInstance()->getLanguageFactory()->getLanguage( 'en' ),
 			WANObjectCache::newEmpty(),
 			MediaWikiServices::getInstance()->getHookContainer(),
-			MediaWikiServices::getInstance()->getDBLoadBalancer(),
 			60 * 60,
 			$hash,
 			3,

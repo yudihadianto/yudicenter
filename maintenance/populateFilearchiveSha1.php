@@ -47,7 +47,7 @@ class PopulateFilearchiveSha1 extends LoggedUpdateMaintenance {
 
 	public function doDBUpdates() {
 		$startTime = microtime( true );
-		$dbw = $this->getDB( DB_PRIMARY );
+		$dbw = $this->getDB( DB_MASTER );
 		$table = 'filearchive';
 		$conds = [ 'fa_sha1' => '', 'fa_storage_key IS NOT NULL' ];
 

@@ -21,14 +21,20 @@ class NamespaceInfoTest extends MediaWikiIntegrationTestCase {
 	/** @var ScopedCallback */
 	private $scopedCallback;
 
-	protected function setUp(): void {
+	protected function setUp() : void {
 		parent::setUp();
+
+		// Boo, there's still some global state in the class :(
+		global $wgHooks;
+		$hooks = $wgHooks;
+		unset( $hooks['CanonicalNamespaces'] );
+		$this->setMwGlobals( 'wgHooks', $hooks );
 
 		$this->scopedCallback =
 			ExtensionRegistry::getInstance()->setAttributeForTest( 'ExtensionNamespaces', [] );
 	}
 
-	protected function tearDown(): void {
+	protected function tearDown() : void {
 		$this->scopedCallback = null;
 
 		parent::tearDown();
@@ -63,7 +69,7 @@ class NamespaceInfoTest extends MediaWikiIntegrationTestCase {
 		return MediaWikiServices::getInstance()->getHookContainer();
 	}
 
-	private function newObj( array $options = [] ): NamespaceInfo {
+	private function newObj( array $options = [] ) : NamespaceInfo {
 		return new NamespaceInfo(
 			new LoggedServiceOptions(
 				self::$serviceOptionsAccessLog,

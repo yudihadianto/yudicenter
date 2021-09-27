@@ -82,7 +82,7 @@ class FixDefaultJsonContentPages extends LoggedUpdateMaintenance {
 			->getRevisionLookup()
 			->getRevisionByTitle( $title );
 		$content = $rev->getContent( SlotRecord::MAIN, RevisionRecord::RAW );
-		$dbw = $this->getDB( DB_PRIMARY );
+		$dbw = $this->getDB( DB_MASTER );
 		if ( $content instanceof JsonContent ) {
 			$lbFactory = MediaWikiServices::getInstance()->getDBLoadBalancerFactory();
 			if ( $content->isValid() ) {

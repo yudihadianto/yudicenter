@@ -14,7 +14,7 @@ class EnhancedChangesListTest extends MediaWikiLangTestCase {
 	 */
 	private $testRecentChangesHelper;
 
-	protected function setUp(): void {
+	protected function setUp() : void {
 		parent::setUp();
 		$this->testRecentChangesHelper = new TestRecentChangesHelper();
 	}
@@ -80,10 +80,10 @@ class EnhancedChangesListTest extends MediaWikiLangTestCase {
 
 	public function testRecentChangesPrefix() {
 		$mockContext = $this->getMockBuilder( RequestContext::class )
-			->onlyMethods( [ 'getTitle' ] )
+			->setMethods( [ 'getTitle' ] )
 			->getMock();
 		$mockContext->method( 'getTitle' )
-			->willReturn( Title::newFromText( 'Expected Context Title' ) );
+			->will( $this->returnValue( Title::newFromText( 'Expected Context Title' ) ) );
 
 		// One group of two lines
 		$enhancedChangesList = $this->newEnhancedChangesList();
@@ -229,18 +229,10 @@ class EnhancedChangesListTest extends MediaWikiLangTestCase {
 	 */
 	private function getCategorizationChange( $timestamp, $thisId, $lastId ) {
 		$wikiPage = new WikiPage( Title::newFromText( 'Testpage' ) );
-		$wikiPage->doUserEditContent(
-			new WikitextContent( 'Some random text' ),
-			$this->getTestSysop()->getUser(),
-			'page created'
-		);
+		$wikiPage->doEditContent( new WikitextContent( 'Some random text' ), 'page created' );
 
 		$wikiPage = new WikiPage( Title::newFromText( 'Category:Foo' ) );
-		$wikiPage->doUserEditContent(
-			new WikitextContent( 'Some random text' ),
-			$this->getTestSysop()->getUser(),
-			'category page created'
-		);
+		$wikiPage->doEditContent( new WikitextContent( 'Some random text' ), 'category page created' );
 
 		$user = $this->getMutableTestUser()->getUser();
 		$recentChange = $this->testRecentChangesHelper->makeCategorizationRecentChange(

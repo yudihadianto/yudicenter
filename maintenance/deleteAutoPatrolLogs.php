@@ -175,7 +175,7 @@ class DeleteAutoPatrolLogs extends Maintenance {
 				continue;
 			}
 
-			if ( $auto ) {
+			if ( $auto === true ) {
 				$autopatrols[] = $row->log_id;
 			}
 		}
@@ -189,7 +189,7 @@ class DeleteAutoPatrolLogs extends Maintenance {
 
 	private function deleteRows( array $rows ) {
 		$dbw = MediaWiki\MediaWikiServices::getInstance()->getDBLoadBalancer()->getConnection(
-			DB_PRIMARY
+			DB_MASTER
 		);
 
 		$dbw->delete(

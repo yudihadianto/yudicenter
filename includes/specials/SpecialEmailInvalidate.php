@@ -22,7 +22,6 @@
  */
 
 use MediaWiki\User\UserFactory;
-use Wikimedia\ScopedCallback;
 
 /**
  * Special page allows users to cancel an email confirmation using the e-mail
@@ -49,7 +48,7 @@ class SpecialEmailInvalidate extends UnlistedSpecialPage {
 	}
 
 	public function execute( $code ) {
-		// Ignore things like primary queries/connections on GET requests.
+		// Ignore things like master queries/connections on GET requests.
 		// It's very convenient to just allow formless link usage.
 		$trxProfiler = Profiler::instance()->getTransactionProfiler();
 
@@ -57,9 +56,9 @@ class SpecialEmailInvalidate extends UnlistedSpecialPage {
 		$this->checkReadOnly();
 		$this->checkPermissions();
 
-		$scope = $trxProfiler->silenceForScope();
+		$old = $trxProfiler->setSilenced( true );
 		$this->attemptInvalidate( $code );
-		ScopedCallback::consume( $scope );
+		$trxProfiler->setSilenced( $old );
 	}
 
 	/**

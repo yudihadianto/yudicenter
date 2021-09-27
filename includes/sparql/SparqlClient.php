@@ -20,6 +20,7 @@
 
 namespace MediaWiki\Sparql;
 
+use Http;
 use MediaWiki\Http\HttpRequestFactory;
 
 /**
@@ -70,7 +71,7 @@ class SparqlClient {
 	public function __construct( $url, HttpRequestFactory $requestFactory ) {
 		$this->endpoint = $url;
 		$this->requestFactory = $requestFactory;
-		$this->userAgent = $requestFactory->getUserAgent() . " SparqlClient";
+		$this->userAgent = Http::userAgent() . " SparqlClient";
 	}
 
 	/**

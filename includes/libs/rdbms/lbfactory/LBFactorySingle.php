@@ -34,8 +34,6 @@ class LBFactorySingle extends LBFactory {
 	private $lb;
 
 	/**
-	 * You probably want to use {@link newFromConnection} instead.
-	 *
 	 * @param array $conf An associative array with one member:
 	 *  - connection: The IDatabase connection object
 	 */
@@ -69,30 +67,27 @@ class LBFactorySingle extends LBFactory {
 		) );
 	}
 
-	public function newMainLB( $domain = false, $owner = null ): ILoadBalancer {
-		// @phan-suppress-previous-line PhanPluginNeverReturnMethod
+	public function newMainLB( $domain = false, $owner = null ) {
 		throw new BadMethodCallException( "Method is not supported." );
 	}
 
-	public function getMainLB( $domain = false ): ILoadBalancer {
+	public function getMainLB( $domain = false ) {
 		return $this->lb;
 	}
 
-	public function newExternalLB( $cluster, $owner = null ): ILoadBalancer {
-		// @phan-suppress-previous-line PhanPluginNeverReturnMethod
+	public function newExternalLB( $cluster, $owner = null ) {
 		throw new BadMethodCallException( "Method is not supported." );
 	}
 
-	public function getExternalLB( $cluster ): ILoadBalancer {
-		// @phan-suppress-previous-line PhanPluginNeverReturnMethod
+	public function getExternalLB( $cluster ) {
 		throw new BadMethodCallException( "Method is not supported." );
 	}
 
-	public function getAllMainLBs(): array {
+	public function getAllMainLBs() {
 		return [ self::CLUSTER_MAIN_DEFAULT => $this->lb ];
 	}
 
-	public function getAllExternalLBs(): array {
+	public function getAllExternalLBs() {
 		return [];
 	}
 

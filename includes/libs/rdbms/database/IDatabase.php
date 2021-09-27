@@ -132,9 +132,6 @@ interface IDatabase {
 	/** @var int Query is known to be a Data Definition Language command */
 	public const QUERY_CHANGE_SCHEMA = 256 | self::QUERY_IGNORE_DBO_TRX;
 
-	/** Flag to return the lock acquision timestamp (null if not acquired) */
-	public const LOCK_TIMESTAMP = 1;
-
 	/** @var bool Parameter to unionQueries() for UNION ALL */
 	public const UNION_ALL = true;
 	/** @var bool Parameter to unionQueries() for UNION DISTINCT */
@@ -145,9 +142,9 @@ interface IDatabase {
 	/** @var string Field for getLBInfo()/setLBInfo() */
 	public const LB_READ_ONLY_REASON = 'readOnlyReason';
 
-	/** @var string primary DB server than can stream OLTP updates to replica servers */
+	/** @var string Master server than can stream OLTP updates to replica servers */
 	public const ROLE_STREAMING_MASTER = 'streaming-master';
-	/** @var string Replica server that streams OLTP updates from the primary DB server */
+	/** @var string Replica server that streams OLTP updates from the master server */
 	public const ROLE_STREAMING_REPLICA = 'streaming-replica';
 	/** @var string Replica server of a static dataset that does not get OLTP updates */
 	public const ROLE_STATIC_CLONE = 'static-clone';
@@ -167,48 +164,17 @@ interface IDatabase {
 	public function getServerInfo();
 
 	/**
-	 * Get a non-recycled ID that uniquely identifies this server within the replication topology
-	 *
-	 * A replication topology defines which servers can originate changes to a given dataset
-	 * and how those changes propagate among database servers. It is assumed that the server
-	 * only participates in the replication of a single relevant dataset.
-	 *
-	 * @return string|null 32, 64, or 128 bit integer ID; null if not applicable or unknown
-	 * @throws DBQueryError
-	 * @since 1.37
-	 */
-	public function getTopologyBasedServerId();
-
-	/**
 	 * Get the replication topology role of this server
 	 *
-	 * A replication topology defines which servers can originate changes to a given dataset
-	 * and how those changes propagate among database servers. It is assumed that the server
-	 * only participates in the replication of a single relevant dataset.
-	 *
 	 * @return string One of the class ROLE_* constants
-	 * @throws DBQueryError
 	 * @since 1.34
 	 */
 	public function getTopologyRole();
 
 	/**
-	 * Get the readable name of the sole root primary DB server for the replication topology
+	 * Get the host (or address) of the root master server for the replication topology
 	 *
-	 * A replication topology defines which servers can originate changes to a given dataset
-	 * and how those changes propagate among database servers. It is assumed that the server
-	 * only participates in the replication of a single relevant dataset.
-	 *
-	 * @return string|null Readable server name; null if unknown or if co-primaries are defined
-	 * @throws DBQueryError
-	 * @since 1.37
-	 */
-	public function getTopologyRootPrimary();
-
-	/**
-	 * @deprecated since 1.37; use getTopologyRootPrimary() instead.
-	 * @return string|null Readable server name; null if unknown or if co-primaries are defined
-	 * @throws DBQueryError
+	 * @return string|null Master server name or null if not known
 	 * @since 1.34
 	 */
 	public function getTopologyRootMaster();
@@ -403,14 +369,11 @@ interface IDatabase {
 	public function getDomainID();
 
 	/**
-	 * Get the RDBMS type of the server (e.g. "mysql", "sqlite")
+	 * Get the type of the DBMS (e.g. "mysql", "sqlite")
 	 *
 	 * @return string
 	 */
 	public function getType();
-
-	/***************************************************************************/
-	// region  Deprecated IResultWrapper accessors
 
 	/**
 	 * Fetch the next row from the given result object, in object form
@@ -418,12 +381,10 @@ interface IDatabase {
 	 * Fields can be retrieved with $row->fieldname, with fields acting like
 	 * member variables. If no more rows are available, false is returned.
 	 *
-	 * @deprecated since 1.37 use IResultWrapper::fetchObject()
-	 *
-	 * @param IResultWrapper $res Object as returned from IDatabase::query(), etc.
+	 * @param IResultWrapper|stdClass $res Object as returned from IDatabase::query(), etc.
 	 * @return stdClass|bool
 	 */
-	public function fetchObject( IResultWrapper $res );
+	public function fetchObject( $res );
 
 	/**
 	 * Fetch the next row from the given result object, in associative array form
@@ -431,21 +392,17 @@ interface IDatabase {
 	 * Fields are retrieved with $row['fieldname'].
 	 * If no more rows are available, false is returned.
 	 *
-	 * @deprecated since 1.37 use IResultWrapper::fetchRow()
-	 *
 	 * @param IResultWrapper $res Result object as returned from IDatabase::query(), etc.
 	 * @return array|bool
 	 */
-	public function fetchRow( IResultWrapper $res );
+	public function fetchRow( $res );
 
 	/**
 	 * Get the number of rows in a query result
 	 *
 	 * Returns zero if the query did not return any rows or was a write query.
 	 *
-	 * @deprecated since 1.37 use IResultWrapper::numRows()
-	 *
-	 * @param IResultWrapper|bool $res A SQL result
+	 * @param mixed $res A SQL result
 	 * @return int
 	 */
 	public function numRows( $res );
@@ -454,50 +411,20 @@ interface IDatabase {
 	 * Get the number of fields in a result object
 	 * @see https://www.php.net/mysql_num_fields
 	 *
-	 * @deprecated since 1.37
-	 *
-	 * @param IResultWrapper $res A SQL result
+	 * @param mixed $res A SQL result
 	 * @return int
 	 */
-	public function numFields( IResultWrapper $res );
+	public function numFields( $res );
 
 	/**
 	 * Get a field name in a result object
 	 * @see https://www.php.net/mysql_field_name
 	 *
-	 * @deprecated since 1.37
-	 *
-	 * @param IResultWrapper $res A SQL result
+	 * @param mixed $res A SQL result
 	 * @param int $n
 	 * @return string
 	 */
-	public function fieldName( IResultWrapper $res, $n );
-
-	/**
-	 * Free a result object returned by query() or select()
-	 *
-	 * It's usually not necessary to call this, just use unset() or let the variable
-	 * holding the result object go out of scope.
-	 *
-	 * @deprecated since 1.37 Use IResultWrapper::free()
-	 *
-	 * @param IResultWrapper $res A SQL result
-	 */
-	public function freeResult( IResultWrapper $res );
-
-	/**
-	 * Change the position of the cursor in a result object
-	 * @see https://www.php.net/mysql_data_seek
-	 *
-	 * @deprecated since 1.37 use IResultWrapper::seek()
-	 *
-	 * @param IResultWrapper $res A SQL result
-	 * @param int $row
-	 */
-	public function dataSeek( IResultWrapper $res, $row );
-
-	// endregion -- Deprecated IResultWrapper accessors
-	/***************************************************************************/
+	public function fieldName( $res, $n );
 
 	/**
 	 * Get the inserted value of an auto-increment row
@@ -509,6 +436,15 @@ interface IDatabase {
 	 * @return int
 	 */
 	public function insertId();
+
+	/**
+	 * Change the position of the cursor in a result object
+	 * @see https://www.php.net/mysql_data_seek
+	 *
+	 * @param mixed $res A SQL result
+	 * @param int $row
+	 */
+	public function dataSeek( $res, $row );
 
 	/**
 	 * Get the last error number
@@ -585,7 +521,7 @@ interface IDatabase {
 	 * @param string $sql SQL query
 	 * @param string $fname Name of the calling function, for profiling/SHOW PROCESSLIST
 	 *     comment (you can use __METHOD__ or add some extra info)
-	 * @param int $flags Bit field of IDatabase::QUERY_* constants. Note that suppression
+	 * @param int $flags Bitfield of IDatabase::QUERY_* constants. Note that suppression
 	 *     of errors is best handled by try/catch rather than using one of these flags.
 	 * @return bool|IResultWrapper True for a successful write query, IResultWrapper object
 	 *     for a successful read query, or false on failure if QUERY_SILENCE_ERRORS is set.
@@ -596,12 +532,22 @@ interface IDatabase {
 	public function query( $sql, $fname = __METHOD__, $flags = 0 );
 
 	/**
+	 * Free a result object returned by query() or select()
+	 *
+	 * It's usually not necessary to call this, just use unset() or let the variable
+	 * holding the result object go out of scope.
+	 *
+	 * @param mixed $res A SQL result
+	 */
+	public function freeResult( $res );
+
+	/**
 	 * Create an empty SelectQueryBuilder which can be used to run queries
 	 * against this connection.
 	 *
 	 * @return SelectQueryBuilder
 	 */
-	public function newSelectQueryBuilder(): SelectQueryBuilder;
+	public function newSelectQueryBuilder();
 
 	/**
 	 * A SELECT wrapper which returns a single field from a single result row
@@ -616,7 +562,7 @@ interface IDatabase {
 	 * @param string $fname The function name of the caller.
 	 * @param string|array $options The query options. {@see select} for details.
 	 * @param string|array $join_conds The query join conditions. {@see select} for details.
-	 * @return mixed|false The value from the field, or false if nothing was found
+	 * @return mixed The value from the field
 	 * @throws DBError If an error occurs, {@see query}
 	 */
 	public function selectField(
@@ -642,7 +588,7 @@ interface IDatabase {
 	 */
 	public function selectFieldValues(
 		$table, $var, $cond = '', $fname = __METHOD__, $options = [], $join_conds = []
-	): array;
+	);
 
 	/**
 	 * Execute a SELECT query constructed using the various parameters provided
@@ -988,8 +934,8 @@ interface IDatabase {
 	 *     The keys in each map must be identical to each other and in the same order.
 	 *     The rows must not collide with each other.
 	 * @param string $fname Calling function name (use __METHOD__) for logs/profiling
-	 * @param string|array $options Combination map/list where each string-keyed entry maps
-	 *   a non-boolean option to the option parameters and each integer-keyed value is the
+	 * @param string|array $options Combination map/list where each string-keyed entry maps a
+	 *   non-boolean option to the option parameters and each integer-keyed value is the
 	 *   name of a boolean option. Supported options are:
 	 *     - IGNORE: Boolean: skip insertion of rows that would cause unique key conflicts.
 	 *       IDatabase::affectedRows() can be used to determine how many rows were inserted.
@@ -1014,8 +960,8 @@ interface IDatabase {
 	 *   accidentally, an empty condition for 'update' queries isn't allowed.
 	 *   IDatabase::ALL_ROWS should be passed explicitely in order to update all rows.
 	 * @param string $fname Calling function name (use __METHOD__) for logs/profiling
-	 * @param string|array $options Combination map/list where each string-keyed entry maps
-	 *   a non-boolean option to the option parameters and each integer-keyed value is the
+	 * @param string|array $options Combination map/list where each string-keyed entry maps a
+	 *   non-boolean option to the option parameters and each integer-keyed value is the
 	 *   name of a boolean option. Supported options are:
 	 *     - IGNORE: Boolean: skip update of rows that would cause unique key conflicts.
 	 *       IDatabase::affectedRows() can be used to determine how many rows were updated.
@@ -1034,10 +980,10 @@ interface IDatabase {
 	 * @code
 	 *     $sql = $db->makeList( [
 	 *         'rev_page' => $id,
-	 *         $db->makeList( [ 'rev_minor' => 1, 'rev_len < 500' ], $db::LIST_OR )
+	 *         $db->makeList( [ 'rev_minor' => 1, 'rev_len' < 500 ], $db::LIST_OR ] )
 	 *     ], $db::LIST_AND );
 	 * @endcode
-	 * This would set $sql to "rev_page = '$id' AND (rev_minor = 1 OR rev_len < 500)"
+	 * This would set $sql to "rev_page = '$id' AND (rev_minor = '1' OR rev_len < '500')"
 	 *
 	 * @param array $a Containing the data
 	 * @param int $mode IDatabase class constant:
@@ -1271,26 +1217,16 @@ interface IDatabase {
 	public function selectDomain( $domain );
 
 	/**
-	 * Get the current database name; null if there isn't one
-	 *
+	 * Get the current DB name
 	 * @return string|null
 	 */
 	public function getDBname();
 
 	/**
-	 * Get the hostname or IP address of the server
-	 *
-	 * @return string|null
+	 * Get the server hostname or IP address
+	 * @return string
 	 */
 	public function getServer();
-
-	/**
-	 * Get the readable name for the server
-	 *
-	 * @return string Readable server name, falling back to the hostname or IP address
-	 * @since 1.36
-	 */
-	public function getServerName();
 
 	/**
 	 * Escape and quote a raw value string for use in a SQL query
@@ -1377,14 +1313,14 @@ interface IDatabase {
 	 *
 	 * @param string $table The table name
 	 * @param string|string[]|string[][] $uniqueKeys Column name or non-empty list of column
-	 *   name lists that define all applicable unique keys on the table. There must only be
-	 *   one such key. Each unique key on the table is "applicable" unless either:
+	 *   name lists that define all applicable unique keys on the table. Each unique key on the
+	 *   table is "applicable" unless either:
 	 *     - It involves an AUTOINCREMENT column for which no values are assigned in $rows
 	 *     - It involves a UUID column for which newly generated UUIDs are assigned in $rows
 	 * @param array|array[] $rows Row(s) to insert, in the form of either:
 	 *   - A string-keyed map of (column name => value) defining a new row. Values are
 	 *     treated as literals and quoted appropriately; null is interpreted as NULL.
-	 *     Columns belonging to a key in $uniqueKeys must be defined here and non-null.
+	 *     Columns belonging to a key in $uniqueIndexes must be defined here and non-null.
 	 *   - An integer-keyed list of such string-keyed maps, defining a list of new rows.
 	 *     The keys in each map must be identical to each other and in the same order.
 	 *     The rows must not collide with each other.
@@ -1404,24 +1340,22 @@ interface IDatabase {
 	 * @param array|array[] $rows Row(s) to insert, in the form of either:
 	 *   - A string-keyed map of (column name => value) defining a new row. Values are
 	 *     treated as literals and quoted appropriately; null is interpreted as NULL.
-	 *     Columns belonging to a key in $uniqueKeys must be defined here and non-null.
+	 *     Columns belonging to a key in $uniqueIndexes must be defined here and non-null.
 	 *   - An integer-keyed list of such string-keyed maps, defining a list of new rows.
 	 *     The keys in each map must be identical to each other and in the same order.
 	 *     The rows must not collide with each other.
 	 * @param string|string[]|string[][] $uniqueKeys Column name or non-empty list of column
-	 *   name lists that define all applicable unique keys on the table. There must only be
-	 *   one such key. Each unique key on the table is "applicable" unless either:
+	 *   name lists that define all applicable unique keys on the table. Each unique key on the
+	 *   table is "applicable" unless either:
 	 *     - It involves an AUTOINCREMENT column for which no values are assigned in $rows
 	 *     - It involves a UUID column for which newly generated UUIDs are assigned in $rows
-	 *   Passing string[] to $uniqueKeys is deprecated.
 	 * @param array $set Combination map/list where each string-keyed entry maps a column
-	 *   to a literal assigned value and each integer-keyed value is a SQL assignment expression
-	 *   of the form "<unquoted alphanumeric column> = <SQL expression>". The (column => value)
-	 *   entries are convenient due to automatic value quoting and conversion of null to NULL.
-	 *   The SQL assignment entries are useful for updates like "column = column + X". All of
-	 *   the assignments have no defined execution order, so callers should make sure that they
-	 *   not depend on each other. Do not modify AUTOINCREMENT or UUID columns in assignments,
-	 *   even if they are just "secondary" unique keys.
+	 *   to a literal assigned value and each integer-keyed value is a SQL expression in the
+	 *   format of a column assignment within UPDATE...SET. The (column => value) entries are
+	 *   convenient due to automatic value quoting and conversion of null to NULL. The SQL
+	 *   assignment format is useful for updates like "column = column + X". All assignments
+	 *   have no defined execution order, so they should not depend on each other. Do not
+	 *   modified AUTOINCREMENT or UUID columns in assignments.
 	 * @param string $fname Calling function name (use __METHOD__) for logs/profiling
 	 * @return bool Return true if no exception was thrown (deprecated since 1.33)
 	 * @throws DBError If an error occurs, {@see query}
@@ -1574,12 +1508,12 @@ interface IDatabase {
 	 *
 	 * This doesn't need to be overridden unless CASE isn't supported in the RDBMS.
 	 *
-	 * @param string|array $cond SQL condition expression (yields a boolean)
-	 * @param string $caseTrueExpression SQL expression to return when the condition is true
-	 * @param string $caseFalseExpression SQL expression to return when the condition is false
+	 * @param string|array $cond SQL expression which will result in a boolean value
+	 * @param string $trueVal SQL expression to return if true
+	 * @param string $falseVal SQL expression to return if false
 	 * @return string SQL fragment
 	 */
-	public function conditional( $cond, $caseTrueExpression, $caseFalseExpression );
+	public function conditional( $cond, $trueVal, $falseVal );
 
 	/**
 	 * Returns a SQL expression for simple string replacement (e.g. REPLACE() in mysql)
@@ -1644,89 +1578,60 @@ interface IDatabase {
 	public function wasErrorReissuable();
 
 	/**
-	 * Wait for the replica DB to catch up to a given primary DB position
+	 * Wait for the replica DB to catch up to a given master position
 	 *
 	 * Note that this does not start any new transactions. If any existing transaction
 	 * is flushed, and this is called, then queries will reflect the point the DB was synced
 	 * up to (on success) without interference from REPEATABLE-READ snapshots.
 	 *
-	 * @param DBPrimaryPos $pos
-	 * @param int $timeout The maximum number of seconds to wait for synchronisation
-	 * @return int|null Zero if the replica DB was past that position already,
-	 *   greater than zero if we waited for some period of time, less than
-	 *   zero if it timed out, and null on error
-	 * @throws DBError If an error occurs, {@see query}
-	 * @since 1.37
-	 */
-	public function primaryPosWait( DBPrimaryPos $pos, $timeout );
-
-	/**
-	 * @deprecated since 1.37; use primaryPosWait() instead.
-	 * @param DBPrimaryPos $pos
+	 * @param DBMasterPos $pos
 	 * @param int $timeout The maximum number of seconds to wait for synchronisation
 	 * @return int|null Zero if the replica DB was past that position already,
 	 *   greater than zero if we waited for some period of time, less than
 	 *   zero if it timed out, and null on error
 	 * @throws DBError If an error occurs, {@see query}
 	 */
-	public function masterPosWait( DBPrimaryPos $pos, $timeout );
+	public function masterPosWait( DBMasterPos $pos, $timeout );
 
 	/**
 	 * Get the replication position of this replica DB
 	 *
-	 * @return DBPrimaryPos|bool False if this is not a replica DB
+	 * @return DBMasterPos|bool False if this is not a replica DB
 	 * @throws DBError If an error occurs, {@see query}
 	 */
 	public function getReplicaPos();
 
 	/**
-	 * Get the position of this primary DB
+	 * Get the position of this master
 	 *
-	 * @return DBPrimaryPos|bool False if this is not a primary DB
-	 * @throws DBError If an error occurs, {@see query}
-	 * @since 1.37
-	 */
-	public function getPrimaryPos();
-
-	/**
-	 * @deprecated since 1.37; use getPrimaryPos() instead.
-	 * @return DBPrimaryPos|bool False if this is not a primary DB
+	 * @return DBMasterPos|bool False if this is not a master
 	 * @throws DBError If an error occurs, {@see query}
 	 */
 	public function getMasterPos();
 
 	/**
 	 * @return bool Whether the DB is marked as read-only server-side
-	 * @throws DBError If an error occurs, {@see query}
 	 * @since 1.28
 	 */
 	public function serverIsReadOnly();
 
 	/**
-	 * Run a callback when the current transaction commits or rolls back
+	 * Run a callback as soon as the current transaction commits or rolls back
 	 *
-	 * An error is thrown if no transaction is pending.
+	 * An error is thrown if no transaction is pending. Queries in the function will run in
+	 * AUTOCOMMIT mode unless there are begin() calls. Callbacks must commit any transactions
+	 * that they begin.
 	 *
-	 * When transaction round mode (DBO_TRX) is set, the callback will run at the end
-	 * of the round, just after all peer transactions COMMIT/ROLLBACK.
+	 * This is useful for combining cooperative locks and DB transactions.
 	 *
-	 * This IDatabase instance will start off in auto-commit mode when the callback starts.
-	 * The use of other IDatabase handles from the callback should be avoided unless they are
-	 * known to be in auto-commit mode. Callbacks that create transactions via begin() or
-	 * startAtomic() must have matching calls to commit()/endAtomic().
+	 * Note this is called when the whole transaction is resolved. To take action immediately
+	 * when an atomic section is cancelled, use onAtomicSectionCancel().
 	 *
-	 * Use this method only for the following purposes:
-	 *   - (a) Release of cooperative locks on resources
-	 *   - (b) Cancellation of in-proccess deferred tasks
+	 * @note do not assume that *other* IDatabase instances will be AUTOCOMMIT mode
 	 *
 	 * The callback takes the following arguments:
-	 *   - How the current atomic section (if any) or overall transaction (otherwise) ended
-	 *     (IDatabase::TRIGGER_COMMIT or IDatabase::TRIGGER_ROLLBACK)
+	 *   - How the transaction ended (IDatabase::TRIGGER_COMMIT or IDatabase::TRIGGER_ROLLBACK)
 	 *   - This IDatabase instance (since 1.32)
-	 *
-	 * Callbacks will execute in the order they were enqueued.
-	 *
-	 * @note Use onAtomicSectionCancel() to take action as soon as an atomic section is cancelled
 	 *
 	 * @param callable $callback
 	 * @param string $fname Caller name
@@ -1737,7 +1642,7 @@ interface IDatabase {
 	public function onTransactionResolution( callable $callback, $fname = __METHOD__ );
 
 	/**
-	 * Run a callback when the current transaction commits or now if there is none
+	 * Run a callback as soon as there is no transaction pending
 	 *
 	 * If there is a transaction and it is rolled back, then the callback is cancelled.
 	 *
@@ -1745,24 +1650,25 @@ interface IDatabase {
 	 * of the round, just after all peer transactions COMMIT. If the transaction round
 	 * is rolled back, then the callback is cancelled.
 	 *
-	 * This IDatabase instance will start off in auto-commit mode when the callback starts.
-	 * The use of other IDatabase handles from the callback should be avoided unless they are
-	 * known to be in auto-commit mode. Callbacks that create transactions via begin() or
-	 * startAtomic() must have matching calls to commit()/endAtomic().
+	 * Queries in the function will run in AUTOCOMMIT mode unless there are begin() calls.
+	 * Callbacks must commit any transactions that they begin.
 	 *
-	 * Use this method only for the following purposes:
-	 *   - (a) RDBMS updates, prone to lock timeouts/deadlocks, that do not require
-	 *         atomicity with respect to the updates in the current transaction (if any)
-	 *   - (b) Purges to lightweight cache services due to RDBMS updates
-	 *   - (c) Updates to secondary DBs/stores that must only commit once the updates in
-	 *         the current transaction (if any) are committed (e.g. insert user account row
-	 *         to DB1, then, initialize corresponding LDAP account)
+	 * This is useful for updates to different systems or when separate transactions are needed.
+	 * For example, one might want to enqueue jobs into a system outside the database, but only
+	 * after the database is updated so that the jobs will see the data when they actually run.
+	 * It can also be used for updates that easily suffer from lock timeouts and deadlocks,
+	 * but where atomicity is not essential.
+	 *
+	 * Avoid using IDatabase instances aside from this one in the callback, unless such instances
+	 * never have IDatabase::DBO_TRX set. This keeps callbacks from interfering with one another.
+	 *
+	 * Updates will execute in the order they were enqueued.
+	 *
+	 * @note do not assume that *other* IDatabase instances will be AUTOCOMMIT mode
 	 *
 	 * The callback takes the following arguments:
 	 *   - How the transaction ended (IDatabase::TRIGGER_COMMIT or IDatabase::TRIGGER_IDLE)
 	 *   - This IDatabase instance (since 1.32)
-	 *
-	 * Callbacks will execute in the order they were enqueued.
 	 *
 	 * @param callable $callback
 	 * @param string $fname Caller name
@@ -1788,22 +1694,19 @@ interface IDatabase {
 	 * If there is a transaction and it is rolled back, then the callback is cancelled.
 	 *
 	 * When transaction round mode (DBO_TRX) is set, the callback will run at the end
-	 * of the round, just after all peer transactions COMMIT. If the transaction round
+	 * of the round, just before all peer transactions COMMIT. If the transaction round
 	 * is rolled back, then the callback is cancelled.
 	 *
-	 * If there is no current transaction, one will be created to wrap the callback.
-	 * Callbacks cannot use begin()/commit() to manage transactions. The use of other
-	 * IDatabase handles from the callback should be avoided.
+	 * Callbacks must not start nor commit any transactions. If no transaction is active,
+	 * then a transaction will wrap the callback.
 	 *
-	 * Use this method only for the following purposes:
-	 *   - a) RDBMS updates, prone to lock timeouts/deadlocks, that require atomicity
-	 *        with respect to the updates in the current transaction (if any)
-	 *   - b) Purges to lightweight cache services due to RDBMS updates
+	 * This is useful for updates that easily suffer from lock timeouts and deadlocks,
+	 * but where atomicity is strongly desired for these updates and some related updates.
+	 *
+	 * Updates will execute in the order they were enqueued.
 	 *
 	 * The callback takes the one argument:
 	 *   - This IDatabase instance (since 1.32)
-	 *
-	 * Callbacks will execute in the order they were enqueued.
 	 *
 	 * @param callable $callback
 	 * @param string $fname Caller name
@@ -2038,7 +1941,7 @@ interface IDatabase {
 	 * @param callable $callback Callback that issues DB updates
 	 * @param string $cancelable Pass self::ATOMIC_CANCELABLE to use a
 	 *  savepoint and enable self::cancelAtomic() for this section.
-	 * @return mixed Result of the callback (since 1.28)
+	 * @return mixed $res Result of the callback (since 1.28)
 	 * @throws DBError If an error occurs, {@see query}
 	 * @throws Exception If an error occurs in the callback
 	 * @since 1.27; prior to 1.31 this did a rollback() instead of
@@ -2117,7 +2020,7 @@ interface IDatabase {
 	 * This is intended for clearing out REPEATABLE-READ snapshots so that callers can
 	 * see a new point-in-time of the database. This is useful when one of many transaction
 	 * rounds finished and significant time will pass in the script's lifetime. It is also
-	 * useful to call on a replica DB after waiting on replication to catch up to the primary DB.
+	 * useful to call on a replica DB after waiting on replication to catch up to the master.
 	 *
 	 * @param string $fname Calling function name
 	 * @param string $flush Flush flag, set to situationally valid IDatabase::FLUSHING_*
@@ -2266,11 +2169,10 @@ interface IDatabase {
 	 * @param string $lockName Name of lock to aquire
 	 * @param string $method Name of the calling method
 	 * @param int $timeout Acquisition timeout in seconds (0 means non-blocking)
-	 * @param int $flags Bit field of IDatabase::LOCK_* constants
 	 * @return bool Success
 	 * @throws DBError If an error occurs, {@see query}
 	 */
-	public function lock( $lockName, $method, $timeout = 5, $flags = 0 );
+	public function lock( $lockName, $method, $timeout = 5 );
 
 	/**
 	 * Release a lock

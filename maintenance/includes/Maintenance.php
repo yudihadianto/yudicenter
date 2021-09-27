@@ -25,6 +25,7 @@ use MediaWiki\MediaWikiServices;
 use MediaWiki\Shell\Shell;
 use Wikimedia\Rdbms\IDatabase;
 use Wikimedia\Rdbms\IMaintainableDatabase;
+use Wikimedia\Rdbms\LBFactory;
 
 /**
  * Abstract maintenance class for quickly writing and churning out
@@ -44,14 +45,13 @@ use Wikimedia\Rdbms\IMaintainableDatabase;
  * bar is the option value of the option for param foo
  * baz is the arg value at index 0 in the arg list
  *
- * WARNING: the constructor, shouldExecute(), setup(), finalSetup(), getName()
- * and loadSettings() are called before Setup.php is complete, which means most of the
+ * WARNING: the constructor, shouldExecute(), setup(), getName() and
+ * loadSettings() are called before Setup.php is run, which means most of the
  * common infrastructure, like logging or autoloading, is not available. Be
  * careful when changing these methods or the ones called from them. Likewise,
- * be careful with the constructor when subclassing. MediaWikiServices instance
- * is not yet available at this point.
+ * be careful with the constructor when subclassing.
  *
- * @stable to extend
+ * @stable for subclassing
  *
  * @since 1.16
  * @ingroup Maintenance
@@ -175,7 +175,7 @@ abstract class Maintenance {
 	 * Default constructor. Children should call this *first* if implementing
 	 * their own constructors
 	 *
-	 * @stable to call
+	 * @stable for calling
 	 */
 	public function __construct() {
 		$this->addDefaultParams();
@@ -428,7 +428,7 @@ abstract class Maintenance {
 	/**
 	 * Throw some output to the user. Scripts can call this with no fears,
 	 * as we handle all --quiet stuff here
-	 * @stable to override
+	 * @stable for overriding
 	 * @param string $out The text to show to the user
 	 * @param mixed|null $channel Unique identifier for the channel. See function outputChanneled.
 	 */
@@ -457,7 +457,7 @@ abstract class Maintenance {
 	/**
 	 * Throw an error to the user. Doesn't respect --quiet, so don't use
 	 * this for non-error output
-	 * @stable to override
+	 * @stable for overriding
 	 * @param string $err The error to display
 	 * @param int $die Deprecated since 1.31, use Maintenance::fatalError() instead
 	 */
@@ -480,11 +480,10 @@ abstract class Maintenance {
 	/**
 	 * Output a message and terminate the current script.
 	 *
-	 * @stable to override
+	 * @stable for overriding
 	 * @param string $msg Error message
 	 * @param int $exitCode PHP exit status. Should be in range 1-254.
 	 * @since 1.31
-	 * @return never
 	 */
 	protected function fatalError( $msg, $exitCode = 1 ) {
 		$this->error( $msg );
@@ -543,7 +542,7 @@ abstract class Maintenance {
 	 *    Maintenance::DB_NONE  -  For no DB access at all
 	 *    Maintenance::DB_STD   -  For normal DB access, default
 	 *    Maintenance::DB_ADMIN -  For admin DB access
-	 * @stable to override
+	 * @stable for overriding
 	 * @return int
 	 */
 	public function getDbType() {
@@ -592,7 +591,7 @@ abstract class Maintenance {
 
 	/**
 	 * @since 1.24
-	 * @stable to override
+	 * @stable for overriding
 	 * @return Config
 	 */
 	public function getConfig() {
@@ -651,16 +650,59 @@ abstract class Maintenance {
 	}
 
 	/**
-	 * This method used to be for internal use by doMaintenance.php to apply
-	 * some optional global state to LBFactory for debugging purposes.
-	 *
-	 * This is now handled lazily by ServiceWiring.
-	 *
-	 * @deprecated since 1.37 No longer needed.
+	 * Set triggers like when to try to run deferred updates
 	 * @since 1.28
 	 */
 	public function setAgentAndTriggers() {
-		wfDeprecated( __METHOD__, '1.37' );
+		if ( function_exists( 'posix_getpwuid' ) ) {
+			$agent = posix_getpwuid( posix_geteuid() )['name'];
+		} else {
+			$agent = 'sysadmin';
+		}
+		$agent .= '@' . wfHostname();
+
+		$lbFactory = MediaWikiServices::getInstance()->getDBLoadBalancerFactory();
+		// Add a comment for easy SHOW PROCESSLIST interpretation
+		$lbFactory->setAgentName(
+			mb_strlen( $agent ) > 15 ? mb_substr( $agent, 0, 15 ) . '...' : $agent
+		);
+		self::setLBFactoryTriggers( $lbFactory, $this->getConfig() );
+	}
+
+	/**
+	 * @param LBFactory $LBFactory
+	 * @param Config $config
+	 * @since 1.28
+	 */
+	public static function setLBFactoryTriggers( LBFactory $LBFactory, Config $config ) {
+		$services = MediaWikiServices::getInstance();
+		$stats = $services->getStatsdDataFactory();
+		// Hook into period lag checks which often happen in long-running scripts
+		$lbFactory = $services->getDBLoadBalancerFactory();
+		$lbFactory->setWaitForReplicationListener(
+			__METHOD__,
+			static function () use ( $stats, $config ) {
+				// Check config in case of JobRunner and unit tests
+				if ( $config->get( 'CommandLineMode' ) ) {
+					DeferredUpdates::tryOpportunisticExecute( 'run' );
+				}
+				// Try to periodically flush buffered metrics to avoid OOMs
+				MediaWiki::emitBufferedStatsdData( $stats, $config );
+			}
+		);
+		// Check for other windows to run them. A script may read or do a few writes
+		// to the master but mostly be writing to something else, like a file store.
+		$lbFactory->getMainLB()->setTransactionListener(
+			__METHOD__,
+			static function ( $trigger ) use ( $stats, $config ) {
+				// Check config in case of JobRunner and unit tests
+				if ( $config->get( 'CommandLineMode' ) && $trigger === IDatabase::TRIGGER_COMMIT ) {
+					DeferredUpdates::tryOpportunisticExecute( 'run' );
+				}
+				// Try to periodically flush buffered metrics to avoid OOMs
+				MediaWiki::emitBufferedStatsdData( $stats, $config );
+			}
+		);
 	}
 
 	/**
@@ -748,7 +790,7 @@ abstract class Maintenance {
 	 * to allow sysadmins to explicitly set one if they'd prefer to override
 	 * defaults (or for people using Suhosin which yells at you for trying
 	 * to disable the limits)
-	 * @stable to override
+	 * @stable for overriding
 	 * @return string
 	 */
 	public function memoryLimit() {
@@ -951,7 +993,7 @@ abstract class Maintenance {
 
 	/**
 	 * Run some validation checks on the params, etc
-	 * @stable to override
+	 * @stable for overriding
 	 */
 	public function validateParamsAndArgs() {
 		$die = false;
@@ -984,7 +1026,7 @@ abstract class Maintenance {
 
 	/**
 	 * Handle the special variables that are global to all scripts
-	 * @stable to override
+	 * @stable for overriding
 	 */
 	protected function loadSpecialVars() {
 		if ( $this->hasOption( 'dbuser' ) ) {
@@ -1124,7 +1166,7 @@ abstract class Maintenance {
 
 	/**
 	 * Handle some last-minute setup here.
-	 * @stable to override
+	 * @stable for overriding
 	 */
 	public function finalSetup() {
 		global $wgCommandLineMode, $wgServer, $wgShowExceptionDetails, $wgShowHostnames;
@@ -1152,15 +1194,10 @@ abstract class Maintenance {
 		}
 		if ( $this->hasOption( 'dbgroupdefault' ) ) {
 			$wgDBDefaultGroup = $this->getOption( 'dbgroupdefault', null );
-			// TODO: once MediaWikiServices::getInstance() starts throwing exceptions
-			// and not deprecation warnings for premature access to service container,
-			// we can remove this line. This method is called before Setup.php,
-			// so it would be guaranteed DBLoadBalancerFactory is not yet initialized.
-			if ( MediaWikiServices::hasInstance() ) {
-				$service = MediaWikiServices::getInstance()->peekService( 'DBLoadBalancerFactory' );
-				if ( $service ) {
-					$service->destroy();
-				}
+
+			$service = MediaWikiServices::getInstance()->peekService( 'DBLoadBalancerFactory' );
+			if ( $service ) {
+				$service->destroy();
 			}
 		}
 
@@ -1181,15 +1218,9 @@ abstract class Maintenance {
 				$wgLBFactoryConf['serverTemplate']['user'] = $wgDBuser;
 				$wgLBFactoryConf['serverTemplate']['password'] = $wgDBpassword;
 			}
-			// TODO: once MediaWikiServices::getInstance() starts throwing exceptions
-			// and not deprecation warnings for premature access to service container,
-			// we can remove this line. This method is called before Setup.php,
-			// so it would be guaranteed DBLoadBalancerFactory is not yet initialized.
-			if ( MediaWikiServices::hasInstance() ) {
-				$service = MediaWikiServices::getInstance()->peekService( 'DBLoadBalancerFactory' );
-				if ( $service ) {
-					$service->destroy();
-				}
+			$service = MediaWikiServices::getInstance()->peekService( 'DBLoadBalancerFactory' );
+			if ( $service ) {
+				$service->destroy();
 			}
 		}
 
@@ -1210,7 +1241,7 @@ abstract class Maintenance {
 
 	/**
 	 * Execute a callback function at the end of initialisation
-	 * @stable to override
+	 * @stable for overriding
 	 */
 	protected function afterFinalSetup() {
 		if ( defined( 'MW_CMDLINE_CALLBACK' ) ) {
@@ -1240,7 +1271,7 @@ abstract class Maintenance {
 			!MediaWikiServices::getInstance()->isServiceDisabled( 'DBLoadBalancerFactory' )
 		) {
 			$lbFactory = MediaWikiServices::getInstance()->getDBLoadBalancerFactory();
-			$lbFactory->commitPrimaryChanges( get_class( $this ) );
+			$lbFactory->commitMasterChanges( get_class( $this ) );
 			// @TODO: make less assumptions about deferred updates being coupled to the DB
 			DeferredUpdates::doUpdates();
 		}
@@ -1248,7 +1279,7 @@ abstract class Maintenance {
 		wfLogProfilingData();
 
 		if ( $lbFactory ) {
-			$lbFactory->commitPrimaryChanges( 'doMaintenance' );
+			$lbFactory->commitMasterChanges( 'doMaintenance' );
 			$lbFactory->shutdown( $lbFactory::SHUTDOWN_NO_CHRONPROT );
 		}
 	}
@@ -1296,7 +1327,7 @@ abstract class Maintenance {
 	 */
 	public function purgeRedundantText( $delete = true ) {
 		# Data should come off the master, wrapped in a transaction
-		$dbw = $this->getDB( DB_PRIMARY );
+		$dbw = $this->getDB( DB_MASTER );
 		$this->beginTransaction( $dbw, __METHOD__ );
 
 		# Get "active" text records via the content table
@@ -1352,9 +1383,9 @@ abstract class Maintenance {
 	 *
 	 * This function has the same parameters as LoadBalancer::getConnection().
 	 *
-	 * @stable to override
+	 * @stable for overriding
 	 *
-	 * @param int $db DB index (DB_REPLICA/DB_PRIMARY)
+	 * @param int $db DB index (DB_REPLICA/DB_MASTER)
 	 * @param string|string[] $groups default: empty array
 	 * @param string|bool $dbDomain default: current wiki
 	 * @return IMaintainableDatabase
@@ -1372,7 +1403,7 @@ abstract class Maintenance {
 
 	/**
 	 * Sets database object to be returned by getDB().
-	 * @stable to override
+	 * @stable for overriding
 	 *
 	 * @param IMaintainableDatabase $db
 	 */
@@ -1647,33 +1678,5 @@ abstract class Maintenance {
 			$ids
 		);
 		return array_filter( $ids );
-	}
-
-	/**
-	 * @param string $errorMsg Error message to be displayed if the passed --user or --userid
-	 *  does not result in a valid existing user object.
-	 *
-	 * @since 1.37
-	 *
-	 * @return User
-	 */
-	protected function validateUserOption( $errorMsg ) {
-		$user = null;
-		if ( $this->hasOption( "user" ) ) {
-			$user = User::newFromName( $this->getOption( 'user' ) );
-		} elseif ( $this->hasOption( "userid" ) ) {
-			$user = User::newFromId( $this->getOption( 'userid' ) );
-		} else {
-			$this->fatalError( $errorMsg );
-		}
-		if ( !$user || !$user->getId() ) {
-			if ( $this->hasOption( "user" ) ) {
-				$this->fatalError( "No such user: " . $this->getOption( 'user' ) );
-			} elseif ( $this->hasOption( "userid" ) ) {
-				$this->fatalError( "No such user id: " . $this->getOption( 'userid' ) );
-			}
-		}
-
-		return $user;
 	}
 }

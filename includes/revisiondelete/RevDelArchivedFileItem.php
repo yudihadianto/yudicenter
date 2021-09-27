@@ -67,7 +67,7 @@ class RevDelArchivedFileItem extends RevDelFileItem {
 	}
 
 	public function setBits( $bits ) {
-		$dbw = wfGetDB( DB_PRIMARY );
+		$dbw = wfGetDB( DB_MASTER );
 		$dbw->update( 'filearchive',
 			[ 'fa_deleted' => $bits ],
 			[
@@ -92,7 +92,7 @@ class RevDelArchivedFileItem extends RevDelFileItem {
 			$key = $this->file->getKey();
 			$link = $this->getLinkRenderer()->makeLink( $undelete, $date, [],
 				[
-					'target' => $this->list->getPageName(),
+					'target' => $this->list->title->getPrefixedText(),
 					'file' => $key,
 					'token' => $this->list->getUser()->getEditToken( $key )
 				]
@@ -109,7 +109,7 @@ class RevDelArchivedFileItem extends RevDelFileItem {
 		$file = $this->file;
 		$user = $this->list->getUser();
 		$ret = [
-			'title' => $this->list->getPageName(),
+			'title' => $this->list->title->getPrefixedText(),
 			'timestamp' => wfTimestamp( TS_ISO_8601, $file->getTimestamp() ),
 			'width' => $file->getWidth(),
 			'height' => $file->getHeight(),
@@ -122,24 +122,22 @@ class RevDelArchivedFileItem extends RevDelFileItem {
 			$ret += [
 				'url' => SpecialPage::getTitleFor( 'Revisiondelete' )->getLinkURL(
 					[
-						'target' => $this->list->getPageName(),
+						'target' => $this->list->title->getPrefixedText(),
 						'file' => $file->getKey(),
 						'token' => $user->getEditToken( $file->getKey() )
 					]
 				),
 			];
 		}
-		$uploader = $file->getUploader( ArchivedFile::FOR_THIS_USER, $user );
-		if ( $uploader ) {
+		if ( $file->userCan( RevisionRecord::DELETED_USER, $user ) ) {
 			$ret += [
-				'userid' => $uploader->getId(),
-				'user' => $uploader->getName(),
+				'userid' => $file->getUser( 'id' ),
+				'user' => $file->getUser( 'text' ),
 			];
 		}
-		$comment = $file->getDescription( ArchivedFile::FOR_THIS_USER, $user );
-		if ( $comment ) {
+		if ( $file->userCan( RevisionRecord::DELETED_COMMENT, $user ) ) {
 			$ret += [
-				'comment' => $comment,
+				'comment' => $file->getRawDescription(),
 			];
 		}
 

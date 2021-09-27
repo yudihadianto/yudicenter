@@ -20,6 +20,8 @@
  * @file
  */
 
+use MediaWiki\MediaWikiServices;
+
 /**
  * @ingroup API
  */
@@ -32,23 +34,6 @@ class ApiFileRevert extends ApiBase {
 
 	/** @var array */
 	protected $params;
-
-	/** @var RepoGroup */
-	private $repoGroup;
-
-	/**
-	 * @param ApiMain $main
-	 * @param string $action
-	 * @param RepoGroup $repoGroup
-	 */
-	public function __construct(
-		ApiMain $main,
-		$action,
-		RepoGroup $repoGroup
-	) {
-		parent::__construct( $main, $action );
-		$this->repoGroup = $repoGroup;
-	}
 
 	public function execute() {
 		$this->useTransactionalTimeLimit();
@@ -68,7 +53,7 @@ class ApiFileRevert extends ApiBase {
 			0,
 			false,
 			false,
-			$this->getAuthority()
+			$this->getUser()
 		);
 
 		if ( $status->isGood() ) {
@@ -95,7 +80,7 @@ class ApiFileRevert extends ApiBase {
 				[ 'apierror-invalidtitle', wfEscapeWikiText( $this->params['filename'] ) ]
 			);
 		}
-		$localRepo = $this->repoGroup->getLocalRepo();
+		$localRepo = MediaWikiServices::getInstance()->getRepoGroup()->getLocalRepo();
 
 		// Check if the file really exists
 		$this->file = $localRepo->newFile( $title );

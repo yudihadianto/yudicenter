@@ -28,8 +28,6 @@
  * @ingroup Maintenance
  */
 
-use MediaWiki\MediaWikiServices;
-
 require_once __DIR__ . '/Maintenance.php';
 
 /**
@@ -67,9 +65,7 @@ class DumpRenderer extends Maintenance {
 		}
 
 		$source = new ImportStreamSource( $this->getStdin() );
-		$importer = MediaWikiServices::getInstance()
-			->getWikiImporterFactory()
-			->getWikiImporter( $source );
+		$importer = new WikiImporter( $source, $this->getConfig() );
 
 		$importer->setRevisionCallback(
 			[ $this, 'handleRevision' ] );

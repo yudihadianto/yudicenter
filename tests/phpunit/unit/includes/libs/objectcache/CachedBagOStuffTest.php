@@ -91,7 +91,7 @@ class CachedBagOStuffTest extends PHPUnit\Framework\TestCase {
 	 */
 	public function testExpire() {
 		$backend = $this->getMockBuilder( HashBagOStuff::class )
-			->onlyMethods( [ 'deleteObjectsExpiringBefore' ] )
+			->setMethods( [ 'deleteObjectsExpiringBefore' ] )
 			->getMock();
 		$backend->expects( $this->once() )
 			->method( 'deleteObjectsExpiringBefore' )
@@ -107,7 +107,7 @@ class CachedBagOStuffTest extends PHPUnit\Framework\TestCase {
 	public function testMakeKey() {
 		$backend = $this->getMockBuilder( HashBagOStuff::class )
 			->setConstructorArgs( [ [ 'keyspace' => 'magic' ] ] )
-			->onlyMethods( [ 'makeKey' ] )
+			->setMethods( [ 'makeKey' ] )
 			->getMock();
 		$backend->method( 'makeKey' )
 			->willReturn( 'special/logic' );
@@ -128,7 +128,7 @@ class CachedBagOStuffTest extends PHPUnit\Framework\TestCase {
 	public function testMakeGlobalKey() {
 		$backend = $this->getMockBuilder( HashBagOStuff::class )
 			->setConstructorArgs( [ [ 'keyspace' => 'magic' ] ] )
-			->onlyMethods( [ 'makeGlobalKey' ] )
+			->setMethods( [ 'makeGlobalKey' ] )
 			->getMock();
 		$backend->method( 'makeGlobalKey' )
 			->willReturn( 'special/logic' );

@@ -49,16 +49,8 @@
 			.length;
 	}
 
-	/**
-	 * Like String#charAt, but return the pair of UTF-16 surrogates for characters outside of BMP.
-	 *
-	 * @param {string} string
-	 * @param {number} offset Offset to extract the character
-	 * @param {boolean} [backwards] Use backwards direction to detect UTF-16 surrogates,
-	 *                              defaults to false
-	 * @return {string}
-	 */
-	function charAt( string, offset, backwards ) {
+	// Like String#charAt, but return the pair of UTF-16 surrogates for characters outside of BMP.
+	function codePointAt( string, offset, backwards ) {
 		// We don't need to check for offsets at the beginning or end of string,
 		// String#slice will simply return a shorter (or empty) substring.
 		var maybePair = backwards ?
@@ -102,8 +94,8 @@
 		// Count same characters from the left, first.
 		// (if "foo" -> "foofoo", assume addition was at the end).
 		while ( startMatches < matchesLen ) {
-			oldChar = charAt( oldVal, startMatches, false );
-			newChar = charAt( newVal, startMatches, false );
+			oldChar = codePointAt( oldVal, startMatches, false );
+			newChar = codePointAt( newVal, startMatches, false );
 			if ( oldChar !== newChar ) {
 				break;
 			}
@@ -111,8 +103,8 @@
 		}
 
 		while ( endMatches < ( matchesLen - startMatches ) ) {
-			oldChar = charAt( oldVal, oldVal.length - 1 - endMatches, true );
-			newChar = charAt( newVal, newVal.length - 1 - endMatches, true );
+			oldChar = codePointAt( oldVal, oldVal.length - 1 - endMatches, true );
+			newChar = codePointAt( newVal, newVal.length - 1 - endMatches, true );
 			if ( oldChar !== newChar ) {
 				break;
 			}
@@ -206,7 +198,6 @@
 	module.exports = {
 		byteLength: byteLength,
 		codePointLength: codePointLength,
-		charAt: charAt,
 		trimByteLength: trimByteLength,
 		trimCodePointLength: trimCodePointLength
 	};

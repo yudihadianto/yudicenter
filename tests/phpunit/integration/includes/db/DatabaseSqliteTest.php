@@ -17,7 +17,7 @@ class DatabaseSqliteTest extends \MediaWikiIntegrationTestCase {
 	/** @var DatabaseSqlite */
 	protected $db;
 
-	protected function setUp(): void {
+	protected function setUp() : void {
 		parent::setUp();
 
 		if ( !Sqlite::isPresent() ) {
@@ -46,7 +46,6 @@ class DatabaseSqliteTest extends \MediaWikiIntegrationTestCase {
 				'tablePrefix' => '',
 				'cliMode' => true,
 				'agent' => 'unit-tests',
-				'serverName' => null,
 				'flags' => DBO_DEFAULT,
 				'variables' => [],
 				'profiler' => null,
@@ -59,7 +58,7 @@ class DatabaseSqliteTest extends \MediaWikiIntegrationTestCase {
 				'errorLogger' => null,
 				'deprecationLogger' => new NullLogger(),
 				'srvCache' => new HashBagOStuff(),
-			] ] )->onlyMethods( array_merge(
+			] ] )->setMethods( array_merge(
 				[ 'query' ],
 				$version ? [ 'getServerVersion' ] : []
 			) )->getMock();

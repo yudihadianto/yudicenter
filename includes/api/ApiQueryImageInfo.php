@@ -20,7 +20,6 @@
  * @file
  */
 
-use MediaWiki\BadFileLookup;
 use MediaWiki\MediaWikiServices;
 
 /**
@@ -32,57 +31,20 @@ class ApiQueryImageInfo extends ApiQueryBase {
 	public const TRANSFORM_LIMIT = 50;
 	private static $transformCount = 0;
 
-	/** @var RepoGroup */
-	private $repoGroup;
-
-	/** @var Language */
-	private $contentLanguage;
-
-	/** @var BadFileLookup */
-	private $badFileLookup;
-
-	/**
-	 * @param ApiQuery $query
-	 * @param string $moduleName
-	 * @param string|RepoGroup|null $prefixOrRepoGroup
-	 * @param RepoGroup|Language|null $repoGroupOrContentLanguage
-	 * @param Language|BadFileLookup|null $contentLanguageOrBadFileLookup
-	 * @param BadFileLookup|null $badFileLookupOrUnused
-	 */
-	public function __construct(
-		ApiQuery $query,
-		$moduleName,
-		$prefixOrRepoGroup = null,
-		$repoGroupOrContentLanguage = null,
-		$contentLanguageOrBadFileLookup = null,
-		$badFileLookupOrUnused = null
-	) {
-		// We allow a subclass to override the prefix, to create a related API module.
-		// The ObjectFactory is injecting the services without the prefix.
-		if ( !is_string( $prefixOrRepoGroup ) ) {
+	public function __construct( ApiQuery $query, $moduleName, $prefix = 'ii' ) {
+		// We allow a subclass to override the prefix, to create a related API
+		// module. Some other parts of MediaWiki construct this with a null
+		// $prefix, which used to be ignored when this only took two arguments
+		if ( $prefix === null ) {
 			$prefix = 'ii';
-			$repoGroup = $prefixOrRepoGroup;
-			$contentLanguage = $repoGroupOrContentLanguage;
-			$badFileLookup = $contentLanguageOrBadFileLookup;
-			// $badFileLookupOrUnused is null in this case
-		} else {
-			$prefix = $prefixOrRepoGroup;
-			$repoGroup = $repoGroupOrContentLanguage;
-			$contentLanguage = $contentLanguageOrBadFileLookup;
-			$badFileLookup = $badFileLookupOrUnused;
 		}
 		parent::__construct( $query, $moduleName, $prefix );
-		// This class is extended and therefor fallback to global state - T259960
-		$services = MediaWikiServices::getInstance();
-		$this->repoGroup = $repoGroup ?? $services->getRepoGroup();
-		$this->contentLanguage = $contentLanguage ?? $services->getContentLanguage();
-		$this->badFileLookup = $badFileLookup ?? $services->getBadFileLookup();
 	}
 
 	public function execute() {
 		$params = $this->extractRequestParams();
 
-		$prop = array_fill_keys( $params['prop'], true );
+		$prop = array_flip( $params['prop'] );
 
 		$scale = $this->getScale( $params );
 
@@ -91,7 +53,7 @@ class ApiQueryImageInfo extends ApiQueryBase {
 			'language' => $params['extmetadatalanguage'],
 			'multilang' => $params['extmetadatamultilang'],
 			'extmetadatafilter' => $params['extmetadatafilter'],
-			'revdelUser' => $this->getAuthority(),
+			'revdelUser' => $this->getUser(),
 		];
 
 		if ( isset( $params['badfilecontexttitle'] ) ) {
@@ -125,18 +87,20 @@ class ApiQueryImageInfo extends ApiQueryBase {
 				}
 			}
 
-			$performer = $this->getAuthority();
-			$findTitles = array_map( static function ( $title ) use ( $performer ) {
+			$user = $this->getUser();
+			$findTitles = array_map( static function ( $title ) use ( $user ) {
 				return [
 					'title' => $title,
-					'private' => $performer,
+					'private' => $user,
 				];
 			}, $titles );
 
+			$services = MediaWikiServices::getInstance();
+			$repoGroup = $services->getRepoGroup();
 			if ( $params['localonly'] ) {
-				$images = $this->repoGroup->getLocalRepo()->findFiles( $findTitles );
+				$images = $repoGroup->getLocalRepo()->findFiles( $findTitles );
 			} else {
-				$images = $this->repoGroup->findFiles( $findTitles );
+				$images = $repoGroup->findFiles( $findTitles );
 			}
 
 			$result = $this->getResult();
@@ -148,7 +112,7 @@ class ApiQueryImageInfo extends ApiQueryBase {
 				if ( !isset( $images[$title] ) ) {
 					if ( isset( $prop['uploadwarning'] ) || isset( $prop['badfile'] ) ) {
 						// uploadwarning and badfile need info about non-existing files
-						$images[$title] = $this->repoGroup->getLocalRepo()->newFile( $title );
+						$images[$title] = $repoGroup->getLocalRepo()->newFile( $title );
 						// Doesn't exist, so set an empty image repository
 						$info['imagerepository'] = '';
 					} else {
@@ -181,7 +145,8 @@ class ApiQueryImageInfo extends ApiQueryBase {
 					$info['imagerepository'] = $img->getRepoName();
 				}
 				if ( isset( $prop['badfile'] ) ) {
-					$info['badfile'] = (bool)$this->badFileLookup->isBadFile( $title, $badFileContextTitle );
+					$info['badfile'] = (bool)$services->getBadFileLookup()
+						->isBadFile( $title, $badFileContextTitle );
 				}
 
 				$fit = $result->addValue( [ 'query', 'pages' ], (int)$pageId, $info );
@@ -404,8 +369,8 @@ class ApiQueryImageInfo extends ApiQueryBase {
 	 *    'version': The metadata version for the metadata option
 	 *    'language': The language for extmetadata property
 	 *    'multilang': Return all translations in extmetadata property
-	 *    'revdelUser': Authority to use when checking whether to show revision-deleted fields.
-	 * @return array
+	 *    'revdelUser': User to use when checking whether to show revision-deleted fields.
+	 * @return array Result array
 	 */
 	public static function getInfo( $file, $prop, $result, $thumbParams = null, $opts = false ) {
 		$anyHidden = false;
@@ -433,28 +398,36 @@ class ApiQueryImageInfo extends ApiQueryBase {
 			$vals['timestamp'] = wfTimestamp( TS_ISO_8601, $file->getTimestamp() );
 		}
 
+		// Handle external callers who don't pass revdelUser
+		if ( isset( $opts['revdelUser'] ) && $opts['revdelUser'] ) {
+			$revdelUser = $opts['revdelUser'];
+			$canShowField = static function ( $field ) use ( $file, $revdelUser ) {
+				return $file->userCan( $field, $revdelUser );
+			};
+		} else {
+			$canShowField = static function ( $field ) use ( $file ) {
+				return !$file->isDeleted( $field );
+			};
+		}
+
 		$user = isset( $prop['user'] );
 		$userid = isset( $prop['userid'] );
 
 		if ( ( $user || $userid ) && $exists ) {
-			if ( isset( $opts['revdelUser'] ) && $opts['revdelUser'] ) {
-				$uploader = $file->getUploader( File::FOR_THIS_USER, $opts['revdelUser'] );
-			} else {
-				$uploader = $file->getUploader( File::FOR_PUBLIC );
-			}
-			if ( $uploader ) {
-				if ( $user ) {
-					$vals['user'] = $uploader->getName();
-				}
-				if ( $userid ) {
-					$vals['userid'] = $uploader->getId();
-				}
-				if ( !$uploader->isRegistered() ) {
-					$vals['anon'] = true;
-				}
-			} else {
+			if ( $file->isDeleted( File::DELETED_USER ) ) {
 				$vals['userhidden'] = true;
 				$anyHidden = true;
+			}
+			if ( $canShowField( File::DELETED_USER ) ) {
+				if ( $user ) {
+					$vals['user'] = $file->getUser();
+				}
+				if ( $userid ) {
+					$vals['userid'] = $file->getUser( 'id' );
+				}
+				if ( !$file->getUser( 'id' ) ) {
+					$vals['anon'] = true;
+				}
 			}
 		}
 
@@ -482,21 +455,18 @@ class ApiQueryImageInfo extends ApiQueryBase {
 		$comment = isset( $prop['comment'] );
 
 		if ( ( $pcomment || $comment ) && $exists ) {
-			if ( isset( $opts['revdelUser'] ) && $opts['revdelUser'] ) {
-				$description = $file->getDescription( File::FOR_THIS_USER, $opts['revdelUser'] );
-			} else {
-				$description = $file->getDescription( File::FOR_PUBLIC );
-			}
-			if ( $description ) {
-				if ( $pcomment ) {
-					$vals['parsedcomment'] = Linker::formatComment( $description, $file->getTitle() );
-				}
-				if ( $comment ) {
-					$vals['comment'] = $description;
-				}
-			} else {
+			if ( $file->isDeleted( File::DELETED_COMMENT ) ) {
 				$vals['commenthidden'] = true;
 				$anyHidden = true;
+			}
+			if ( $canShowField( File::DELETED_COMMENT ) ) {
+				if ( $pcomment ) {
+					$vals['parsedcomment'] = Linker::formatComment(
+						$file->getDescription( File::RAW ), $file->getTitle() );
+				}
+				if ( $comment ) {
+					$vals['comment'] = $file->getDescription( File::RAW );
+				}
 			}
 		}
 
@@ -525,12 +495,8 @@ class ApiQueryImageInfo extends ApiQueryBase {
 			$vals['suppressed'] = true;
 		}
 
-		// Early return, tidier than indenting all following things one level
-		if ( isset( $opts['revdelUser'] ) && $opts['revdelUser']
-			&& !$file->userCan( File::DELETED_FILE, $opts['revdelUser'] )
-		) {
-			return $vals;
-		} elseif ( $file->isDeleted( File::DELETED_FILE ) ) {
+		if ( !$canShowField( File::DELETED_FILE ) ) {
+			// Early return, tidier than indenting all following things one level
 			return $vals;
 		}
 
@@ -594,7 +560,9 @@ class ApiQueryImageInfo extends ApiQueryBase {
 		}
 
 		if ( $meta && $exists ) {
-			$metadata = $file->getMetadataArray();
+			Wikimedia\suppressWarnings();
+			$metadata = unserialize( $file->getMetadata() );
+			Wikimedia\restoreWarnings();
 			if ( $metadata && $version !== 'latest' ) {
 				$metadata = $file->convertMetadataVersion( $metadata, $version );
 			}
@@ -616,7 +584,7 @@ class ApiQueryImageInfo extends ApiQueryBase {
 			$extmetaArray = $format->fetchExtendedMetadata( $file );
 			if ( $opts['extmetadatafilter'] ) {
 				$extmetaArray = array_intersect_key(
-					$extmetaArray, array_fill_keys( $opts['extmetadatafilter'], true )
+					$extmetaArray, array_flip( $opts['extmetadatafilter'] )
 				);
 			}
 			$vals['extmetadata'] = $extmetaArray;
@@ -741,7 +709,7 @@ class ApiQueryImageInfo extends ApiQueryBase {
 			'extmetadatalanguage' => [
 				ApiBase::PARAM_TYPE => 'string',
 				ApiBase::PARAM_DFLT =>
-					$this->contentLanguage->getCode(),
+					MediaWikiServices::getInstance()->getContentLanguage()->getCode(),
 			],
 			'extmetadatamultilang' => [
 				ApiBase::PARAM_TYPE => 'boolean',
@@ -805,7 +773,7 @@ class ApiQueryImageInfo extends ApiQueryBase {
 				'uploadwarning' => 'apihelp-query+imageinfo-paramvalue-prop-uploadwarning',
 				'badfile' => 'apihelp-query+imageinfo-paramvalue-prop-badfile',
 			],
-			array_fill_keys( $filter, true )
+			array_flip( $filter )
 		);
 	}
 

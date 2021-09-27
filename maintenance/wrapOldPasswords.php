@@ -67,7 +67,7 @@ class WrapOldPasswords extends Maintenance {
 		$update = $this->hasOption( 'update' );
 
 		// Get a list of password types that are applicable
-		$dbw = $this->getDB( DB_PRIMARY );
+		$dbw = $this->getDB( DB_MASTER );
 		$typeCond = 'user_password' . $dbw->buildLike( ":$firstType:", $dbw->anyString() );
 
 		$count = 0;

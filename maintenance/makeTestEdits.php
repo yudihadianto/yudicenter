@@ -57,7 +57,7 @@ class MakeTestEdits extends Maintenance {
 			$content = ContentHandler::makeContent( wfRandomString(), $title );
 			$summary = "Change " . wfRandomString( 6 );
 
-			$page->doUserEditContent( $content, $user, $summary );
+			$page->doEditContent( $content, $summary, 0, false, $user );
 
 			$this->output( "Edited $title\n" );
 			if ( $i && ( $i % $this->getBatchSize() ) == 0 ) {

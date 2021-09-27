@@ -32,6 +32,7 @@
 					$summary.data( 'origtext' ) !== $summary.textSelection( 'getContents' );
 			},
 
+			message: mw.msg( 'editwarning-warning' ),
 			namespace: 'editwarning'
 		} );
 

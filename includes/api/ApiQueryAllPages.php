@@ -19,6 +19,7 @@
  *
  * @file
  */
+use MediaWiki\MediaWikiServices;
 
 /**
  * Query module to enumerate all available pages.
@@ -27,27 +28,12 @@
  */
 class ApiQueryAllPages extends ApiQueryGeneratorBase {
 
-	/** @var NamespaceInfo */
-	private $namespaceInfo;
-
-	/** @var GenderCache */
-	private $genderCache;
-
 	/**
 	 * @param ApiQuery $query
 	 * @param string $moduleName
-	 * @param NamespaceInfo $namespaceInfo
-	 * @param GenderCache $genderCache
 	 */
-	public function __construct(
-		ApiQuery $query,
-		$moduleName,
-		NamespaceInfo $namespaceInfo,
-		GenderCache $genderCache
-	) {
+	public function __construct( ApiQuery $query, $moduleName ) {
 		parent::__construct( $query, $moduleName, 'ap' );
-		$this->namespaceInfo = $namespaceInfo;
-		$this->genderCache = $genderCache;
 	}
 
 	public function execute() {
@@ -221,7 +207,7 @@ class ApiQueryAllPages extends ApiQueryGeneratorBase {
 		}
 
 		if ( $forceNameTitleIndex ) {
-			$this->addOption( 'USE INDEX', 'page_name_title' );
+			$this->addOption( 'USE INDEX', 'name_title' );
 		}
 
 		$limit = $params['limit'];
@@ -229,12 +215,13 @@ class ApiQueryAllPages extends ApiQueryGeneratorBase {
 		$res = $this->select( __METHOD__ );
 
 		// Get gender information
-		if ( $this->namespaceInfo->hasGenderDistinction( $params['namespace'] ) ) {
+		$services = MediaWikiServices::getInstance();
+		if ( $services->getNamespaceInfo()->hasGenderDistinction( $params['namespace'] ) ) {
 			$users = [];
 			foreach ( $res as $row ) {
 				$users[] = $row->page_title;
 			}
-			$this->genderCache->doQuery( $users, __METHOD__ );
+			$services->getGenderCache()->doQuery( $users, __METHOD__ );
 			$res->rewind(); // reset
 		}
 

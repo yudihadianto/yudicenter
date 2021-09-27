@@ -33,7 +33,7 @@ class RevDelArchiveItem extends RevDelRevisionItem {
 				$row,
 				RevisionFactory::READ_NORMAL,
 				null,
-				[ 'page_id' => $list->getPage()->getId() ]
+				[ 'page_id' => $list->title->getArticleID() ]
 			);
 
 		return $revRecord;
@@ -65,12 +65,12 @@ class RevDelArchiveItem extends RevDelRevisionItem {
 	}
 
 	public function setBits( $bits ) {
-		$dbw = wfGetDB( DB_PRIMARY );
+		$dbw = wfGetDB( DB_MASTER );
 		$dbw->update( 'archive',
 			[ 'ar_deleted' => $bits ],
 			[
-				'ar_namespace' => $this->list->getPage()->getNamespace(),
-				'ar_title' => $this->list->getPage()->getDBkey(),
+				'ar_namespace' => $this->list->title->getNamespace(),
+				'ar_title' => $this->list->title->getDBkey(),
 				// use timestamp for index
 				'ar_timestamp' => $this->row->ar_timestamp,
 				'ar_rev_id' => $this->row->ar_rev_id,
@@ -94,7 +94,7 @@ class RevDelArchiveItem extends RevDelRevisionItem {
 			$date,
 			[],
 			[
-				'target' => $this->list->getPageName(),
+				'target' => $this->list->title->getPrefixedText(),
 				'timestamp' => $this->revisionRecord->getTimestamp()
 			]
 		);
@@ -110,7 +110,7 @@ class RevDelArchiveItem extends RevDelRevisionItem {
 			$this->list->msg( 'diff' )->text(),
 			[],
 			[
-				'target' => $this->list->getPageName(),
+				'target' => $this->list->title->getPrefixedText(),
 				'diff' => 'prev',
 				'timestamp' => $this->revisionRecord->getTimestamp()
 			]

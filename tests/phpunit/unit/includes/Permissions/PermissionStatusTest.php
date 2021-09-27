@@ -20,7 +20,6 @@
 
 namespace MediaWiki\Tests\Unit\Permissions;
 
-use MediaWiki\Block\Block;
 use MediaWiki\Permissions\PermissionStatus;
 use MediaWikiUnitTestCase;
 
@@ -35,17 +34,6 @@ class PermissionStatusTest extends MediaWikiUnitTestCase {
 		$this->assertTrue( $status->isOK() );
 		$this->assertTrue( $status->isGood() );
 		$this->assertEmpty( $status->getErrors() );
-	}
-
-	public function testBlock() {
-		$status = PermissionStatus::newEmpty();
-
-		$this->assertNull( $status->getBlock() );
-
-		$block = $this->createMock( Block::class );
-		$status->setBlock( $block );
-
-		$this->assertSame( $block, $status->getBlock() );
 	}
 
 }

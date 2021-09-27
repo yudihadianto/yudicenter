@@ -2,7 +2,7 @@
 /**
  * Helps EditPage build textboxes
  *
- * (C) Copyright 2017 Kunal Mehta <legoktm@debian.org>
+ * (C) Copyright 2017 Kunal Mehta <legoktm@member.fsf.org>
  *
  * This program is free software; you can redistribute it and/or modify
  * it under the terms of the GNU General Public License as published by
@@ -25,10 +25,9 @@
 namespace MediaWiki\EditPage;
 
 use MediaWiki\MediaWikiServices;
-use MediaWiki\Page\PageIdentity;
-use MediaWiki\User\UserIdentity;
 use Sanitizer;
 use Title;
+use User;
 
 /**
  * Helps EditPage build textboxes
@@ -70,25 +69,24 @@ class TextboxBuilder {
 	}
 
 	/**
-	 * @param PageIdentity $page
+	 * @param Title $title
 	 * @return string[]
 	 */
-	public function getTextboxProtectionCSSClasses( PageIdentity $page ) {
+	public function getTextboxProtectionCSSClasses( Title $title ) {
 		$classes = []; // Textarea CSS
-		$services = MediaWikiServices::getInstance();
-		if ( $services->getRestrictionStore()->isProtected( $page, 'edit' ) &&
-			$services->getPermissionManager()
-				->getNamespaceRestrictionLevels( $page->getNamespace() ) !== [ '' ]
+		if ( $title->isProtected( 'edit' ) &&
+			MediaWikiServices::getInstance()->getPermissionManager()
+				->getNamespaceRestrictionLevels( $title->getNamespace() ) !== [ '' ]
 		) {
 			# Is the title semi-protected?
-			if ( $services->getRestrictionStore()->isSemiProtected( $page ) ) {
+			if ( $title->isSemiProtected() ) {
 				$classes[] = 'mw-textarea-sprotected';
 			} else {
 				# Then it must be protected based on static groups (regular)
 				$classes[] = 'mw-textarea-protected';
 			}
 			# Is the title cascade-protected?
-			if ( $services->getRestrictionStore()->isCascadeProtected( $page ) ) {
+			if ( $title->isCascadeProtected() ) {
 				$classes[] = 'mw-textarea-cprotected';
 			}
 		}
@@ -99,13 +97,11 @@ class TextboxBuilder {
 	/**
 	 * @param string $name
 	 * @param mixed[] $customAttribs
-	 * @param UserIdentity $user
-	 * @param PageIdentity $page
+	 * @param User $user
+	 * @param Title $title
 	 * @return mixed[]
 	 */
-	public function buildTextboxAttribs(
-		$name, array $customAttribs, UserIdentity $user, PageIdentity $page
-	) {
+	public function buildTextboxAttribs( $name, array $customAttribs, User $user, Title $title ) {
 		$attribs = $customAttribs + [
 				'accesskey' => ',',
 				'id' => $name,
@@ -120,8 +116,7 @@ class TextboxBuilder {
 		// * mw-editfont-monospace
 		// * mw-editfont-sans-serif
 		// * mw-editfont-serif
-		$userOptionsLookup = MediaWikiServices::getInstance()->getUserOptionsLookup();
-		$class = 'mw-editfont-' . $userOptionsLookup->getOption( $user, 'editfont' );
+		$class = 'mw-editfont-' . $user->getOption( 'editfont' );
 
 		if ( isset( $attribs['class'] ) ) {
 			if ( is_string( $attribs['class'] ) ) {
@@ -133,7 +128,6 @@ class TextboxBuilder {
 			$attribs['class'] = $class;
 		}
 
-		$title = Title::castFromPageIdentity( $page );
 		$pageLang = $title->getPageLanguage();
 		$attribs['lang'] = $pageLang->getHtmlCode();
 		$attribs['dir'] = $pageLang->getDir();

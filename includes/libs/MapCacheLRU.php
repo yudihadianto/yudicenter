@@ -20,6 +20,7 @@
  * @file
  * @ingroup Cache
  */
+use Wikimedia\Assert\Assert;
 use Wikimedia\LightweightObjectStore\ExpirationAwareness;
 
 /**
@@ -57,11 +58,11 @@ class MapCacheLRU implements ExpirationAwareness, Serializable {
 
 	/**
 	 * @param int $maxKeys Maximum number of entries allowed (min 1)
+	 * @throws Exception When $maxKeys is not an int or not above zero
 	 */
-	public function __construct( int $maxKeys ) {
-		if ( $maxKeys <= 0 ) {
-			throw new InvalidArgumentException( '$maxKeys must be above zero' );
-		}
+	public function __construct( $maxKeys ) {
+		Assert::parameterType( 'integer', $maxKeys, '$maxKeys' );
+		Assert::parameter( $maxKeys > 0, '$maxKeys', 'must be above zero' );
 
 		$this->maxCacheKeys = $maxKeys;
 		// Use the current time as the default "as of" timestamp of entries
@@ -134,20 +135,22 @@ class MapCacheLRU implements ExpirationAwareness, Serializable {
 	/**
 	 * Check if a key exists
 	 *
-	 * @param string|int $key
+	 * @param string $key
 	 * @param float $maxAge Ignore items older than this many seconds [default: INF]
 	 * @return bool
 	 * @since 1.32 Added $maxAge
 	 */
 	public function has( $key, $maxAge = INF ) {
-		// Optimization: Forego type check because array_key_exists does it already (T275673)
-		return array_key_exists( $key, $this->cache )
-			&& (
-				// Optimization: Avoid expensive getAge/getCurrentTime for common case (T275673)
-				$maxAge === INF
-				|| $maxAge <= 0
-				|| $this->getAge( $key ) <= $maxAge
-			);
+		if ( !is_int( $key ) && !is_string( $key ) ) {
+			throw new UnexpectedValueException(
+				__METHOD__ . ': invalid key; must be string or integer.' );
+		}
+
+		if ( !array_key_exists( $key, $this->cache ) ) {
+			return false;
+		}
+
+		return ( $maxAge <= 0 || $this->getAge( $key ) <= $maxAge );
 	}
 
 	/**
@@ -185,18 +188,19 @@ class MapCacheLRU implements ExpirationAwareness, Serializable {
 	public function setField( $key, $field, $value, $initRank = self::RANK_TOP ) {
 		if ( $this->has( $key ) ) {
 			$this->ping( $key );
-
-			if ( !is_array( $this->cache[$key] ) ) {
-				$type = gettype( $this->cache[$key] );
-				throw new UnexpectedValueException( "Cannot add field to non-array value ('$key' is $type)" );
-			}
 		} else {
 			$this->set( $key, [], $initRank );
 		}
 
-		if ( !is_string( $field ) && !is_int( $field ) ) {
-			trigger_error( "Field keys must be string or integer (key '$key')", E_USER_WARNING );
-			return;
+		if ( !is_int( $field ) && !is_string( $field ) ) {
+			throw new UnexpectedValueException(
+				__METHOD__ . ": invalid field for '$key'; must be string or integer." );
+		}
+
+		if ( !is_array( $this->cache[$key] ) ) {
+			$type = gettype( $this->cache[$key] );
+
+			throw new UnexpectedValueException( "The value of '$key' ($type) is not an array." );
 		}
 
 		$this->cache[$key][$field] = $value;
@@ -213,14 +217,16 @@ class MapCacheLRU implements ExpirationAwareness, Serializable {
 	public function hasField( $key, $field, $maxAge = INF ) {
 		$value = $this->get( $key );
 
-		return is_array( $value )
-			// Optimization: Forego $field type check because array_key_exists does it already (T275673)
-			&& array_key_exists( $field, $value )
-			&& (
-				$maxAge === INF
-				|| $maxAge <= 0
-				|| $this->getAge( $key, $field ) <= $maxAge
-			);
+		if ( !is_int( $field ) && !is_string( $field ) ) {
+			throw new UnexpectedValueException(
+				__METHOD__ . ": invalid field for '$key'; must be string or integer." );
+		}
+
+		if ( !is_array( $value ) || !array_key_exists( $field, $value ) ) {
+			return false;
+		}
+
+		return ( $maxAge <= 0 || $this->getAge( $key, $field ) <= $maxAge );
 	}
 
 	/**
@@ -265,7 +271,7 @@ class MapCacheLRU implements ExpirationAwareness, Serializable {
 		if ( $this->has( $key, $maxAge ) ) {
 			$value = $this->get( $key );
 		} else {
-			$value = $callback();
+			$value = call_user_func( $callback );
 			if ( $value !== false ) {
 				$this->set( $key, $value, $rank );
 			}
@@ -307,12 +313,12 @@ class MapCacheLRU implements ExpirationAwareness, Serializable {
 	 *
 	 * @param int $maxKeys Maximum number of entries allowed (min 1)
 	 * @return void
+	 * @throws Exception When $maxKeys is not an int or not above zero
 	 * @since 1.32
 	 */
-	public function setMaxSize( int $maxKeys ) {
-		if ( $maxKeys <= 0 ) {
-			throw new InvalidArgumentException( '$maxKeys must be above zero' );
-		}
+	public function setMaxSize( $maxKeys ) {
+		Assert::parameterType( 'integer', $maxKeys, '$maxKeys' );
+		Assert::parameter( $maxKeys > 0, '$maxKeys', 'must be above zero' );
 
 		$this->maxCacheKeys = $maxKeys;
 		while ( count( $this->cache ) > $this->maxCacheKeys ) {

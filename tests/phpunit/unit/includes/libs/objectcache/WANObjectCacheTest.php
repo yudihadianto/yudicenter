@@ -22,8 +22,8 @@ class WANObjectCacheTest extends PHPUnit\Framework\TestCase {
 	use MediaWikiCoversValidator;
 
 	/**
-	 * @param array $params
-	 * @return array [ WANObjectCache, HashBagOStuff ]
+	 * @param array $params [optional]
+	 * @return WANObjectCache[]|HashBagOStuff[] (WANObjectCache, BagOStuff)
 	 */
 	private function newWanCache( array $params = [] ) {
 		if ( isset( $params['broadcastRoutingPrefix'] ) ) {
@@ -836,8 +836,8 @@ class WANObjectCacheTest extends PHPUnit\Framework\TestCase {
 
 		// Mock the BagOStuff to assure only one getMulti() call given process caching
 		$localBag = $this->getMockBuilder( HashBagOStuff::class )
-			->onlyMethods( [ 'getMulti' ] )->getMock();
-		$localBag->expects( $this->once() )->method( 'getMulti' )->willReturn( [
+			->setMethods( [ 'getMulti' ] )->getMock();
+		$localBag->expects( $this->exactly( 1 ) )->method( 'getMulti' )->willReturn( [
 			'WANCache:v:' . 'k1' => 'val-id1',
 			'WANCache:v:' . 'k2' => 'val-id2'
 		] );
@@ -873,7 +873,7 @@ class WANObjectCacheTest extends PHPUnit\Framework\TestCase {
 		$deferredCbs = [];
 		$bag = new HashBagOStuff();
 		$cache = $this->getMockBuilder( WANObjectCache::class )
-			->onlyMethods( [ 'worthRefreshExpiring', 'worthRefreshPopular' ] )
+			->setMethods( [ 'worthRefreshExpiring', 'worthRefreshPopular' ] )
 			->setConstructorArgs( [
 				[
 					'cache' => $bag,
@@ -967,7 +967,7 @@ class WANObjectCacheTest extends PHPUnit\Framework\TestCase {
 
 		$wasSet = 0;
 		$genFunc = static function ( array $ids, array &$ttls, array &$setOpts ) use (
-			&$wasSet
+			&$wasSet, &$priorValue, &$priorAsOf
 		) {
 			$newValues = [];
 			foreach ( $ids as $id ) {
@@ -1115,7 +1115,7 @@ class WANObjectCacheTest extends PHPUnit\Framework\TestCase {
 		$deferredCbs = [];
 		$bag = new HashBagOStuff();
 		$cache = $this->getMockBuilder( WANObjectCache::class )
-			->onlyMethods( [ 'worthRefreshExpiring', 'worthRefreshPopular' ] )
+			->setMethods( [ 'worthRefreshExpiring', 'worthRefreshPopular' ] )
 			->setConstructorArgs( [
 				[
 					'cache' => $bag,
@@ -1126,8 +1126,8 @@ class WANObjectCacheTest extends PHPUnit\Framework\TestCase {
 			] )
 			->getMock();
 
-		$cache->method( 'worthRefreshExpiring' )->willReturn( $expiring );
-		$cache->method( 'worthRefreshPopular' )->willReturn( $popular );
+		$cache->expects( $this->any() )->method( 'worthRefreshExpiring' )->willReturn( $expiring );
+		$cache->expects( $this->any() )->method( 'worthRefreshPopular' )->willReturn( $popular );
 
 		$wasSet = 0;
 		$keyedIds = new ArrayIterator( $idsByKey );
@@ -1209,7 +1209,7 @@ class WANObjectCacheTest extends PHPUnit\Framework\TestCase {
 		$cache->setMockTime( $mockWallClock );
 
 		$calls = 0;
-		$func = static function () use ( &$calls, $value ) {
+		$func = static function () use ( &$calls, $value, $cache, $key ) {
 			++$calls;
 			return $value;
 		};
@@ -1287,10 +1287,10 @@ class WANObjectCacheTest extends PHPUnit\Framework\TestCase {
 		$ret = $cache->getWithSetCallback( $key, 300, $func, [ 'lockTSE' => 5 ] );
 		$this->assertSame( $value, $ret );
 		$this->assertSame( $value, $cache->get( $key, $curTTL ), 'Value was populated' );
-		$this->assertEqualsWithDelta( 30.0, $curTTL, 0.01, 'Value has reduced logical TTL' );
+		$this->assertEqualsWithDelta( 1.0, $curTTL, 0.01, 'Value has reduced logical TTL' );
 		$this->assertSame( 1, $calls, 'Value was generated' );
 
-		$mockWallClock += 32; // low logical TTL expired
+		$mockWallClock += 2; // low logical TTL expired
 
 		$ret = $cache->getWithSetCallback( $key, 300, $func, [ 'lockTSE' => 5 ] );
 		$this->assertSame( $value, $ret );
@@ -1858,38 +1858,36 @@ class WANObjectCacheTest extends PHPUnit\Framework\TestCase {
 		list( $cache ) = $this->newWanCache();
 		$key = wfRandomString();
 
-		$mockWallClock = 1549343530.0053;
-		$priorTime = floor( $mockWallClock ); // reference time
+		$mockWallClock = 1549343530.2053;
+		$priorTime = $mockWallClock; // reference time
 		$cache->setMockTime( $mockWallClock );
 
+		$mockWallClock += 0.100;
 		$t0 = $cache->getCheckKeyTime( $key );
 		$this->assertGreaterThanOrEqual( $priorTime, $t0, 'Check key auto-created' );
 
-		$mockWallClock += 1.100;
-		$priorTime = floor( $mockWallClock );
+		$priorTime = $mockWallClock;
+		$mockWallClock += 0.100;
 		$cache->touchCheckKey( $key );
 		$t1 = $cache->getCheckKeyTime( $key );
 		$this->assertGreaterThanOrEqual( $priorTime, $t1, 'Check key created' );
 
-		$mockWallClock += 1.100;
 		$t2 = $cache->getCheckKeyTime( $key );
 		$this->assertSame( $t1, $t2, 'Check key time did not change' );
 
-		$mockWallClock += 1.100;
+		$mockWallClock += 0.100;
 		$cache->touchCheckKey( $key );
 		$t3 = $cache->getCheckKeyTime( $key );
 		$this->assertGreaterThan( $t2, $t3, 'Check key time increased' );
 
-		$mockWallClock += 1.100;
 		$t4 = $cache->getCheckKeyTime( $key );
 		$this->assertSame( $t3, $t4, 'Check key time did not change' );
 
-		$mockWallClock += 1.100;
+		$mockWallClock += 0.100;
 		$cache->resetCheckKey( $key );
 		$t5 = $cache->getCheckKeyTime( $key );
 		$this->assertGreaterThan( $t4, $t5, 'Check key time increased' );
 
-		$mockWallClock += 1.100;
 		$t6 = $cache->getCheckKeyTime( $key );
 		$this->assertSame( $t5, $t6, 'Check key time did not change' );
 	}
@@ -1985,7 +1983,7 @@ class WANObjectCacheTest extends PHPUnit\Framework\TestCase {
 	 */
 	public function testReap_fail() {
 		$backend = $this->getMockBuilder( EmptyBagOStuff::class )
-			->onlyMethods( [ 'get', 'changeTTL' ] )->getMock();
+			->setMethods( [ 'get', 'changeTTL' ] )->getMock();
 		$backend->expects( $this->once() )->method( 'get' )
 			->willReturn( [
 				0 => 1,
@@ -2027,13 +2025,6 @@ class WANObjectCacheTest extends PHPUnit\Framework\TestCase {
 		$this->assertSame( $v, $cache->get( $key ), "Repl-lagged value written (no walltime)." );
 
 		$key = wfRandomString();
-		$cache->get( $key );
-		$now += 15;
-		$opts = [ 'lag' => 300, 'since' => $now ];
-		$cache->set( $key, $v, 30, $opts );
-		$this->assertSame( $v, $cache->get( $key ), "Repl-lagged value written (auto-walltime)." );
-
-		$key = wfRandomString();
 		$opts = [ 'lag' => 0, 'since' => $now - 300, 'walltime' => 0.1 ];
 		$cache->set( $key, $v, 30, $opts );
 		$this->assertSame( false, $cache->get( $key ), "Trx-lagged value written." );
@@ -2044,21 +2035,14 @@ class WANObjectCacheTest extends PHPUnit\Framework\TestCase {
 		$this->assertSame( $v, $cache->get( $key ), "Trx-lagged value written (no walltime)." );
 
 		$key = wfRandomString();
-		$cache->get( $key );
-		$now += 15;
-		$opts = [ 'lag' => 0, 'since' => $now - 300 ];
-		$cache->set( $key, $v, 30, $opts );
-		$this->assertSame( false, $cache->get( $key ), "Trx-lagged value not written (auto-walltime)." );
-
-		$key = wfRandomString();
 		$opts = [ 'lag' => 5, 'since' => $now - 5, 'walltime' => 0.1 ];
 		$cache->set( $key, $v, 30, $opts );
 		$this->assertSame( false, $cache->get( $key ), "Trx-lagged value written." );
 
 		$key = wfRandomString();
-		$opts = [ 'lag' => 3, 'since' => $now - 3 ];
+		$opts = [ 'lag' => 5, 'since' => $now - 5 ];
 		$cache->set( $key, $v, 30, $opts );
-		$this->assertSame( $v, $cache->get( $key ), "Lagged value written (no walltime)." );
+		$this->assertSame( false, $cache->get( $key ), "Lagged value not written (no walltime)." );
 	}
 
 	/**
@@ -2076,7 +2060,7 @@ class WANObjectCacheTest extends PHPUnit\Framework\TestCase {
 
 	public function testMcRouterSupport() {
 		$localBag = $this->getMockBuilder( EmptyBagOStuff::class )
-			->onlyMethods( [ 'set', 'delete' ] )->getMock();
+			->setMethods( [ 'set', 'delete' ] )->getMock();
 		$localBag->expects( $this->never() )->method( 'set' );
 		$localBag->expects( $this->never() )->method( 'delete' );
 		$wanCache = new WANObjectCache( [
@@ -2100,7 +2084,7 @@ class WANObjectCacheTest extends PHPUnit\Framework\TestCase {
 
 	public function testMcRouterSupportBroadcastDelete() {
 		$localBag = $this->getMockBuilder( EmptyBagOStuff::class )
-			->onlyMethods( [ 'set' ] )->getMock();
+			->setMethods( [ 'set' ] )->getMock();
 		$wanCache = new WANObjectCache( [
 			'cache' => $localBag,
 			'broadcastRoutingPrefix' => '/*/mw-wan/',
@@ -2114,7 +2098,7 @@ class WANObjectCacheTest extends PHPUnit\Framework\TestCase {
 
 	public function testMcRouterSupportBroadcastTouchCK() {
 		$localBag = $this->getMockBuilder( EmptyBagOStuff::class )
-			->onlyMethods( [ 'set' ] )->getMock();
+			->setMethods( [ 'set' ] )->getMock();
 		$wanCache = new WANObjectCache( [
 			'cache' => $localBag,
 			'broadcastRoutingPrefix' => '/*/mw-wan/',
@@ -2128,7 +2112,7 @@ class WANObjectCacheTest extends PHPUnit\Framework\TestCase {
 
 	public function testMcRouterSupportBroadcastResetCK() {
 		$localBag = $this->getMockBuilder( EmptyBagOStuff::class )
-			->onlyMethods( [ 'delete' ] )->getMock();
+			->setMethods( [ 'delete' ] )->getMock();
 		$wanCache = new WANObjectCache( [
 			'cache' => $localBag,
 			'broadcastRoutingPrefix' => '/*/mw-wan/',
@@ -2145,7 +2129,7 @@ class WANObjectCacheTest extends PHPUnit\Framework\TestCase {
 		$cache = new WANObjectCache( [ 'cache' => $bag ] );
 		$key = $cache->makeGlobalKey( 'The whole of the Law' );
 
-		$now = floor( microtime( true ) );
+		$now = microtime( true );
 		$cache->setMockTime( $now );
 
 		$cache->set( $key, 'Do what thou Wilt' );
@@ -2234,7 +2218,7 @@ class WANObjectCacheTest extends PHPUnit\Framework\TestCase {
 	 */
 	public function testGetQoS() {
 		$backend = $this->getMockBuilder( HashBagOStuff::class )
-			->onlyMethods( [ 'getQoS' ] )->getMock();
+			->setMethods( [ 'getQoS' ] )->getMock();
 		$backend->expects( $this->once() )->method( 'getQoS' )
 			->willReturn( BagOStuff::QOS_UNKNOWN );
 		$wanCache = new WANObjectCache( [ 'cache' => $backend ] );
@@ -2250,7 +2234,7 @@ class WANObjectCacheTest extends PHPUnit\Framework\TestCase {
 	 */
 	public function testMakeKey() {
 		$backend = $this->getMockBuilder( HashBagOStuff::class )
-			->onlyMethods( [ 'makeKey' ] )->getMock();
+			->setMethods( [ 'makeKey' ] )->getMock();
 		$backend->expects( $this->once() )->method( 'makeKey' )
 			->willReturn( 'special' );
 
@@ -2266,7 +2250,7 @@ class WANObjectCacheTest extends PHPUnit\Framework\TestCase {
 	 */
 	public function testMakeGlobalKey() {
 		$backend = $this->getMockBuilder( HashBagOStuff::class )
-			->onlyMethods( [ 'makeGlobalKey' ] )->getMock();
+			->setMethods( [ 'makeGlobalKey' ] )->getMock();
 		$backend->expects( $this->once() )->method( 'makeGlobalKey' )
 			->willReturn( 'special' );
 

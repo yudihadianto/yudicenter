@@ -20,9 +20,8 @@
  * @file
  */
 
+use MediaWiki\MediaWikiServices;
 use MediaWiki\Page\MovePageFactory;
-use MediaWiki\User\UserOptionsLookup;
-use MediaWiki\Watchlist\WatchlistManager;
 
 /**
  * API Module to move pages
@@ -35,27 +34,17 @@ class ApiMove extends ApiBase {
 	/** @var MovePageFactory */
 	private $movePageFactory;
 
-	/** @var RepoGroup */
-	private $repoGroup;
-
 	public function __construct(
 		ApiMain $mainModule,
 		$moduleName,
-		MovePageFactory $movePageFactory,
-		RepoGroup $repoGroup,
-		WatchlistManager $watchlistManager,
-		UserOptionsLookup $userOptionsLookup
+		MovePageFactory $movePageFactory
 	) {
 		parent::__construct( $mainModule, $moduleName );
 
 		$this->movePageFactory = $movePageFactory;
-		$this->repoGroup = $repoGroup;
 
-		// Variables needed in ApiWatchlistTrait trait
 		$this->watchlistExpiryEnabled = $this->getConfig()->get( 'WatchlistExpiry' );
 		$this->watchlistMaxDuration = $this->getConfig()->get( 'WatchlistExpiryMaxDuration' );
-		$this->watchlistManager = $watchlistManager;
-		$this->userOptionsLookup = $userOptionsLookup;
 	}
 
 	public function execute() {
@@ -89,9 +78,10 @@ class ApiMove extends ApiBase {
 		}
 		$toTalk = $toTitle->getTalkPageIfDefined();
 
+		$repoGroup = MediaWikiServices::getInstance()->getRepoGroup();
 		if ( $toTitle->getNamespace() === NS_FILE
-			&& !$this->repoGroup->getLocalRepo()->findFile( $toTitle )
-			&& $this->repoGroup->findFile( $toTitle )
+			&& !$repoGroup->getLocalRepo()->findFile( $toTitle )
+			&& $repoGroup->findFile( $toTitle )
 		) {
 			if ( !$params['ignorewarnings'] &&
 				$this->getAuthority()->isAllowed( 'reupload-shared' ) ) {

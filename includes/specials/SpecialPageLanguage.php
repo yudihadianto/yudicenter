@@ -197,7 +197,7 @@ class SpecialPageLanguage extends FormSpecialPage {
 			$newLanguage,
 			$data['reason'] ?? '',
 			[],
-			$this->loadBalancer->getConnectionRef( ILoadBalancer::DB_PRIMARY )
+			$this->loadBalancer->getConnectionRef( ILoadBalancer::DB_MASTER )
 		);
 	}
 
@@ -228,7 +228,7 @@ class SpecialPageLanguage extends FormSpecialPage {
 		}
 
 		// Load the page language from DB
-		$dbw = $dbw ?? wfGetDB( DB_PRIMARY );
+		$dbw = $dbw ?? wfGetDB( DB_MASTER );
 		$oldLanguage = $dbw->selectField(
 			'page',
 			'page_lang',

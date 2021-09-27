@@ -15,8 +15,8 @@ use Shellbox\Client;
 class ShellboxClientFactory {
 	/** @var HttpRequestFactory */
 	private $requestFactory;
-	/** @var (string|false|null)[]|null */
-	private $urls;
+	/** @var string|null */
+	private $url;
 	/** @var string|null */
 	private $key;
 
@@ -27,23 +27,22 @@ class ShellboxClientFactory {
 	 * @internal Use MediaWikiServices::getShellboxClientFactory()
 	 * @param HttpRequestFactory $requestFactory The factory which will be used
 	 *   to make HTTP clients.
-	 * @param (string|false|null)[]|null $urls The Shellbox base URL mapping
+	 * @param string|null $url The Shellbox base URL
 	 * @param string|null $key The shared secret key used for HMAC authentication
 	 */
-	public function __construct( HttpRequestFactory $requestFactory, $urls, $key ) {
+	public function __construct( HttpRequestFactory $requestFactory, $url, $key ) {
 		$this->requestFactory = $requestFactory;
-		$this->urls = $urls;
+		$this->url = $url;
 		$this->key = $key;
 	}
 
 	/**
 	 * Test whether remote Shellbox is enabled by configuration.
 	 *
-	 * @param string|null $service Same as the service option for getClient.
 	 * @return bool
 	 */
-	public function isEnabled( ?string $service = null ): bool {
-		return $this->getUrl( $service ) !== null;
+	public function isEnabled() {
+		return $this->url !== null && strlen( $this->key );
 	}
 
 	/**
@@ -52,34 +51,20 @@ class ShellboxClientFactory {
 	 *
 	 * @param array $options Associative array of options:
 	 *   - timeout: The request timeout in seconds
-	 *   - service: the shellbox backend name to get the URL from the mapping
 	 * @return Client
 	 * @throws \RuntimeException
 	 */
 	public function getClient( array $options = [] ) {
-		$url = $this->getUrl( $options['service'] ?? null );
-		if ( $url === null ) {
+		if ( !$this->isEnabled() ) {
 			throw new \RuntimeException( 'To use a remote shellbox to run shell commands, ' .
-				'$wgShellboxUrls and $wgShellboxSecretKey must be configured.' );
+				'$wgShellboxUrl and $wgShellboxSecretKey must be configured.' );
 		}
 
 		return new Client(
 			new ShellboxHttpClient( $this->requestFactory,
 				$options['timeout'] ?? self::DEFAULT_TIMEOUT ),
-			new Uri( $url ),
+			new Uri( $this->url ),
 			$this->key
 		);
 	}
-
-	private function getUrl( ?string $service ): ?string {
-		if ( $this->urls === null || !strlen( $this->key ) ) {
-			return null;
-		}
-		$url = $this->urls[$service] ?? $this->urls['default'] ?? null;
-		if ( !is_string( $url ) ) {
-			return null;
-		}
-		return $url;
-	}
-
 }

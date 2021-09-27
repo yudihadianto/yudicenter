@@ -35,7 +35,7 @@ class EditConstraintRunnerTest extends MediaWikiUnitTestCase {
 
 	private function getConstraint( $result ) {
 		$constraint = $this->getMockBuilder( IEditConstraint::class )
-			->onlyMethods( [ 'checkConstraint' ] )
+			->setMethods( [ 'checkConstraint' ] )
 			->getMockForAbstractClass();
 		$constraint->expects( $this->once() )
 			->method( 'checkConstraint' )

@@ -11,7 +11,6 @@ trait NonSerializableTrait {
 
 	/**
 	 * @throws LogicException always
-	 * @return never
 	 */
 	public function __sleep() {
 		throw new LogicException( 'Instances of ' . get_class( $this ) . ' are not serializable!' );

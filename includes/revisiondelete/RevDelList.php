@@ -19,7 +19,6 @@
  * @ingroup RevisionDelete
  */
 
-use MediaWiki\Page\PageIdentity;
 use MediaWiki\Revision\RevisionRecord;
 use Wikimedia\Rdbms\LBFactory;
 
@@ -41,17 +40,17 @@ abstract class RevDelList extends RevisionListBase {
 
 	/**
 	 * @param IContextSource $context
-	 * @param PageIdentity $page
+	 * @param Title $title
 	 * @param array $ids
 	 * @param LBFactory $lbFactory
 	 */
 	public function __construct(
 		IContextSource $context,
-		PageIdentity $page,
+		Title $title,
 		array $ids,
 		LBFactory $lbFactory
 	) {
-		parent::__construct( $context, $page );
+		parent::__construct( $context, $title );
 
 		// ids is a protected variable in RevisionListBase
 		$this->ids = $ids;
@@ -139,7 +138,7 @@ abstract class RevDelList extends RevisionListBase {
 
 		// CAS-style checks are done on the _deleted fields so the select
 		// does not need to use FOR UPDATE nor be in the atomic section
-		$dbw = $this->lbFactory->getMainLB()->getConnectionRef( DB_PRIMARY );
+		$dbw = $this->lbFactory->getMainLB()->getConnectionRef( DB_MASTER );
 		$this->res = $this->doQuery( $dbw );
 
 		$status->merge( $this->acquireItemLocks() );
@@ -156,7 +155,7 @@ abstract class RevDelList extends RevisionListBase {
 			__METHOD__
 		);
 
-		$missing = array_fill_keys( $this->ids, true );
+		$missing = array_flip( $this->ids );
 		$this->clearFileOps();
 		$idsForLog = [];
 		$authorActors = [];
@@ -278,7 +277,7 @@ abstract class RevDelList extends RevisionListBase {
 		$status->merge( $this->doPreCommitUpdates() );
 		if ( !$status->isOK() ) {
 			// Fatal error, such as no configured archive directory or I/O failures
-			$this->lbFactory->rollbackPrimaryChanges( __METHOD__ );
+			$this->lbFactory->rollbackMasterChanges( __METHOD__ );
 			return $status;
 		}
 
@@ -333,21 +332,12 @@ abstract class RevDelList extends RevisionListBase {
 	}
 
 	/**
-	 * Reload the list data from the primary DB. This can be done after setVisibility()
+	 * Reload the list data from the master DB. This can be done after setVisibility()
 	 * to allow $item->getHTML() to show the new data.
-	 * @since 1.37
-	 */
-	public function reloadFromPrimary() {
-		$dbw = $this->lbFactory->getMainLB()->getConnectionRef( DB_PRIMARY );
-		$this->res = $this->doQuery( $dbw );
-	}
-
-	/**
-	 * @deprecated since 1.37; please use reloadFromPrimary() instead.
 	 */
 	public function reloadFromMaster() {
-		wfDeprecated( __METHOD__, '1.37' );
-		$this->reloadFromPrimary();
+		$dbw = $this->lbFactory->getMainLB()->getConnectionRef( DB_MASTER );
+		$this->res = $this->doQuery( $dbw );
 	}
 
 	/**

@@ -43,6 +43,8 @@ $( function () {
 	}
 } );
 
-require( './stash.js' );
+if ( mw.config.get( 'wgAjaxEditStash' ) ) {
+	require( './stash.js' );
+}
 
 require( './watchlistExpiry.js' );

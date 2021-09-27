@@ -34,12 +34,12 @@ abstract class FormSpecialPageTestCase extends SpecialPageTestBase {
 		$checkExecutePermissions = $this->getMethod( $special, 'checkExecutePermissions' );
 
 		$user = $this->getMockBuilder( User::class )
-			->onlyMethods( [ 'getBlock' ] )
+			->setMethods( [ 'getBlock' ] )
 			->getMock();
 		$user->method( 'getBlock' )
 			->willReturn( new DatabaseBlock( [
 				'address' => '127.0.8.1',
-				'by' => $user,
+				'by' => $user->getId(),
 				'reason' => 'sitewide block',
 				'timestamp' => time(),
 				'sitewide' => true,
@@ -58,12 +58,12 @@ abstract class FormSpecialPageTestCase extends SpecialPageTestBase {
 		$checkExecutePermissions = $this->getMethod( $special, 'checkExecutePermissions' );
 
 		$user = $this->getMockBuilder( User::class )
-			->onlyMethods( [ 'getBlock' ] )
+			->setMethods( [ 'getBlock' ] )
 			->getMock();
 		$user->method( 'getBlock' )
 			->willReturn( new DatabaseBlock( [
 				'address' => '127.0.8.1',
-				'by' => $user,
+				'by' => $user->getId(),
 				'reason' => 'partial block',
 				'timestamp' => time(),
 				'sitewide' => false,

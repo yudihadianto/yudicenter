@@ -23,6 +23,7 @@ namespace MediaWiki\User;
 use MediaWiki\Config\ServiceOptions;
 use MediaWiki\DAO\WikiAwareEntity;
 use Psr\Log\LoggerInterface;
+use WikiMap;
 use Wikimedia\Rdbms\ILBFactory;
 use Wikimedia\Rdbms\ILoadBalancer;
 
@@ -94,7 +95,7 @@ class ActorStoreFactory {
 		// During the transition from User, we still have old User objects
 		// representing users from a different wiki, so we still have IDatabase::getDomainId
 		// passed as $wikiId, so we need to remap it back to LOCAL.
-		if ( is_string( $wikiId ) && $this->loadBalancerFactory->getLocalDomainID() === $wikiId ) {
+		if ( is_string( $wikiId ) && WikiMap::isCurrentWikiDbDomain( $wikiId ) ) {
 			$wikiId = WikiAwareEntity::LOCAL;
 		}
 

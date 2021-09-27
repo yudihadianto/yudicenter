@@ -22,6 +22,11 @@ class ParserOutputTest extends MediaWikiLangTestCase {
 		] );
 	}
 
+	protected function tearDown(): void {
+		MWTimestamp::setFakeTime( null );
+		parent::tearDown();
+	}
+
 	/**
 	 * Overrides SerializationTestTrait::getClassToTest
 	 * @return string
@@ -381,44 +386,6 @@ EOF
 
 		$this->expectException( LogicException::class );
 		$po->getText();
-	}
-
-	public function provideGetText_absoluteURLs() {
-		yield 'empty' => [
-			'text' => '',
-			'expectedText' => '',
-		];
-		yield 'no-links' => [
-			'text' => '<p>test</p>',
-			'expectedText' => '<p>test</p>',
-		];
-		yield 'simple link' => [
-			'text' => '<a href="/wiki/Test">test</a>',
-			'expectedText' => '<a href="//TEST_SERVER/wiki/Test">test</a>',
-		];
-		yield 'already absolute, relative' => [
-			'text' => '<a href="//TEST_SERVER/wiki/Test">test</a>',
-			'expectedText' => '<a href="//TEST_SERVER/wiki/Test">test</a>',
-		];
-		yield 'already absolute, https' => [
-			'text' => '<a href="https://TEST_SERVER/wiki/Test">test</a>',
-			'expectedText' => '<a href="https://TEST_SERVER/wiki/Test">test</a>',
-		];
-		yield 'external' => [
-			'text' => '<a href="https://en.wikipedia.org/wiki/Test">test</a>',
-			'expectedText' => '<a href="https://en.wikipedia.org/wiki/Test">test</a>',
-		];
-	}
-
-	/**
-	 * @dataProvider provideGetText_absoluteURLs
-	 */
-	public function testGetText_absoluteURLs( string $text, string $expectedText ) {
-		$this->setMwGlobals( [
-			'wgServer' => '//TEST_SERVER'
-		] );
-		$parserOutput = new ParserOutput( $text );
-		$this->assertSame( $expectedText, $parserOutput->getText( [ 'absoluteURLs' => true ] ) );
 	}
 
 	/**

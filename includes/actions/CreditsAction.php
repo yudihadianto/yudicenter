@@ -23,36 +23,12 @@
  * @author <evan@wikitravel.org>
  */
 
-use MediaWiki\Linker\LinkRenderer;
-use MediaWiki\User\UserFactory;
+use MediaWiki\MediaWikiServices;
 
 /**
  * @ingroup Actions
  */
 class CreditsAction extends FormlessAction {
-
-	/** @var LinkRenderer */
-	private $linkRenderer;
-
-	/** @var UserFactory */
-	private $userFactory;
-
-	/**
-	 * @param Page $page
-	 * @param IContextSource $context
-	 * @param LinkRenderer $linkRenderer
-	 * @param UserFactory $userFactory
-	 */
-	public function __construct(
-		Page $page,
-		IContextSource $context,
-		LinkRenderer $linkRenderer,
-		UserFactory $userFactory
-	) {
-		parent::__construct( $page, $context );
-		$this->linkRenderer = $linkRenderer;
-		$this->userFactory = $userFactory;
-	}
 
 	public function getName() {
 		return 'credits';
@@ -108,7 +84,7 @@ class CreditsAction extends FormlessAction {
 	 */
 	private function getAuthor() {
 		$page = $this->getWikiPage();
-		$user = $this->userFactory->newFromName( $page->getUserText(), UserFactory::RIGOR_NONE );
+		$user = User::newFromName( $page->getUserText(), false );
 
 		$timestamp = $page->getTimestamp();
 		if ( $timestamp ) {
@@ -234,7 +210,12 @@ class CreditsAction extends FormlessAction {
 			$real = $user->getName();
 		}
 
-		return Linker::userLink( $user->getId(), $user->getName(), $real );
+		$page = $user->isAnon()
+			? SpecialPage::getTitleFor( 'Contributions', $user->getName() )
+			: $user->getUserPage();
+
+		return MediaWikiServices::getInstance()
+			->getLinkRenderer()->makeLink( $page, $real );
 	}
 
 	/**
@@ -258,7 +239,7 @@ class CreditsAction extends FormlessAction {
 	 * @return string HTML link
 	 */
 	protected function othersLink() {
-		return $this->linkRenderer->makeKnownLink(
+		return MediaWikiServices::getInstance()->getLinkRenderer()->makeKnownLink(
 			$this->getTitle(),
 			$this->msg( 'others' )->text(),
 			[],

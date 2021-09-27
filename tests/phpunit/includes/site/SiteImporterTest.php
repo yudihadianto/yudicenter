@@ -38,8 +38,9 @@ class SiteImporterTest extends MediaWikiIntegrationTestCase {
 				$this->assertSitesEqual( $expectedSites, $sites );
 			} ) );
 
-		$store->method( 'getSites' )
-			->willReturn( new SiteList() );
+		$store->expects( $this->any() )
+			->method( 'getSites' )
+			->will( $this->returnValue( new SiteList() ) );
 
 		$errorHandler = $this->getMockBuilder( Psr\Log\LoggerInterface::class )->getMock();
 		$errorHandler->expects( $this->exactly( $errorCount ) )

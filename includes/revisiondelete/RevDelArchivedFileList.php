@@ -19,7 +19,6 @@
  * @ingroup RevisionDelete
  */
 
-use MediaWiki\Page\PageIdentity;
 use Wikimedia\Rdbms\IDatabase;
 use Wikimedia\Rdbms\LBFactory;
 
@@ -30,7 +29,7 @@ class RevDelArchivedFileList extends RevDelFileList {
 
 	/**
 	 * @param IContextSource $context
-	 * @param PageIdentity $page
+	 * @param Title $title
 	 * @param array $ids
 	 * @param LBFactory $lbFactory
 	 * @param HtmlCacheUpdater $htmlCacheUpdater
@@ -38,7 +37,7 @@ class RevDelArchivedFileList extends RevDelFileList {
 	 */
 	public function __construct(
 		IContextSource $context,
-		PageIdentity $page,
+		Title $title,
 		array $ids,
 		LBFactory $lbFactory,
 		HtmlCacheUpdater $htmlCacheUpdater,
@@ -46,7 +45,7 @@ class RevDelArchivedFileList extends RevDelFileList {
 	) {
 		parent::__construct(
 			$context,
-			$page,
+			$title,
 			$ids,
 			$lbFactory,
 			$htmlCacheUpdater,

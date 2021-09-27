@@ -4,11 +4,10 @@ namespace MediaWiki\Rest\Handler;
 
 use MalformedTitleException;
 use MediaWiki\Languages\LanguageNameUtils;
-use MediaWiki\Page\ExistingPageRecord;
-use MediaWiki\Page\PageLookup;
 use MediaWiki\Rest\LocalizedHttpException;
 use MediaWiki\Rest\Response;
 use MediaWiki\Rest\SimpleHandler;
+use Title;
 use TitleFormatter;
 use TitleParser;
 use Wikimedia\Message\MessageValue;
@@ -37,45 +36,37 @@ class LanguageLinksHandler extends SimpleHandler {
 	/** @var TitleParser */
 	private $titleParser;
 
-	/** @var PageLookup */
-	private $pageLookup;
-
 	/**
-	 * @var ExistingPageRecord|false|null
+	 * @var Title|bool|null
 	 */
-	private $page = false;
+	private $title = null;
 
 	/**
 	 * @param ILoadBalancer $loadBalancer
 	 * @param LanguageNameUtils $languageNameUtils
 	 * @param TitleFormatter $titleFormatter
 	 * @param TitleParser $titleParser
-	 * @param PageLookup $pageLookup
 	 */
 	public function __construct(
 		ILoadBalancer $loadBalancer,
 		LanguageNameUtils $languageNameUtils,
 		TitleFormatter $titleFormatter,
-		TitleParser $titleParser,
-		PageLookup $pageLookup
+		TitleParser $titleParser
 	) {
 		$this->loadBalancer = $loadBalancer;
 		$this->languageNameUtils = $languageNameUtils;
 		$this->titleFormatter = $titleFormatter;
 		$this->titleParser = $titleParser;
-		$this->pageLookup = $pageLookup;
 	}
 
 	/**
-	 * @return ExistingPageRecord|null
+	 * @return Title|bool Title or false if unable to retrieve title
 	 */
-	private function getPage(): ?ExistingPageRecord {
-		if ( $this->page === false ) {
-			$this->page = $this->pageLookup->getExistingPageByText(
-					$this->getValidatedParams()['title']
-				);
+	private function getTitle() {
+		if ( $this->title === null ) {
+			$this->title = Title::newFromText( $this->getValidatedParams()['title'] ) ?? false;
 		}
-		return $this->page;
+		return $this->title;
 	}
 
 	/**
@@ -84,8 +75,8 @@ class LanguageLinksHandler extends SimpleHandler {
 	 * @throws LocalizedHttpException
 	 */
 	public function run( $title ) {
-		$page = $this->getPage();
-		if ( !$page ) {
+		$titleObj = $this->getTitle();
+		if ( !$titleObj || !$titleObj->getArticleID() ) {
 			throw new LocalizedHttpException(
 				new MessageValue( 'rest-nonexistent-title',
 					[ new ScalarParam( ParamType::PLAINTEXT, $title ) ]
@@ -93,7 +84,7 @@ class LanguageLinksHandler extends SimpleHandler {
 				404
 			);
 		}
-		if ( !$this->getAuthority()->authorizeRead( 'read', $page ) ) {
+		if ( !$this->getAuthority()->authorizeRead( 'read', $titleObj ) ) {
 			throw new LocalizedHttpException(
 				new MessageValue( 'rest-permission-denied-title',
 					[ new ScalarParam( ParamType::PLAINTEXT, $title ) ] ),
@@ -102,7 +93,7 @@ class LanguageLinksHandler extends SimpleHandler {
 		}
 
 		return $this->getResponseFactory()
-			->createJson( $this->fetchLinks( $page->getId() ) );
+			->createJson( $this->fetchLinks( $titleObj->getArticleID() ) );
 	}
 
 	private function fetchLinks( $pageId ) {
@@ -147,34 +138,37 @@ class LanguageLinksHandler extends SimpleHandler {
 
 	/**
 	 * @return string|null
+	 * @throws LocalizedHttpException
 	 */
 	protected function getETag(): ?string {
-		$page = $this->getPage();
-		if ( !$page ) {
+		$title = $this->getTitle();
+		if ( !$title || !$title->getArticleID() ) {
 			return null;
 		}
 
 		// XXX: use hash of the rendered HTML?
-		return '"' . $page->getLatest() . '@' . wfTimestamp( TS_MW, $page->getTouched() ) . '"';
+		return '"' . $title->getLatestRevID() . '@' . wfTimestamp( TS_MW, $title->getTouched() ) . '"';
 	}
 
 	/**
 	 * @return string|null
+	 * @throws LocalizedHttpException
 	 */
 	protected function getLastModified(): ?string {
-		$page = $this->getPage();
-		if ( !$page ) {
+		$title = $this->getTitle();
+		if ( !$title || !$title->getArticleID() ) {
 			return null;
 		}
 
-		return $page->getTouched();
+		return $title->getTouched();
 	}
 
 	/**
 	 * @return bool
 	 */
 	protected function hasRepresentation() {
-		return (bool)$this->getPage();
+		$title = $this->getTitle();
+		return $title ? $title->exists() : false;
 	}
 
 }

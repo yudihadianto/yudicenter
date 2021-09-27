@@ -21,9 +21,7 @@
 
 namespace MediaWiki\Auth;
 
-use MediaWiki\User\UserNameUtils;
 use User;
-use Wikimedia\Rdbms\ILoadBalancer;
 
 /**
  * A primary authentication provider that uses the password field in the 'user' table.
@@ -37,20 +35,15 @@ class LocalPasswordPrimaryAuthenticationProvider
 	/** @var bool If true, this instance is for legacy logins only. */
 	protected $loginOnly = false;
 
-	/** @var ILoadBalancer */
-	private $loadBalancer;
-
 	/**
-	 * @param ILoadBalancer $loadBalancer
 	 * @param array $params Settings
 	 *  - loginOnly: If true, the local passwords are for legacy logins only:
 	 *    the local password will be invalidated when authentication is changed
 	 *    and new users will not have a valid local password set.
 	 */
-	public function __construct( ILoadBalancer $loadBalancer, $params = [] ) {
+	public function __construct( $params = [] ) {
 		parent::__construct( $params );
 		$this->loginOnly = !empty( $params['loginOnly'] );
-		$this->loadBalancer = $loadBalancer;
 	}
 
 	/**
@@ -93,7 +86,7 @@ class LocalPasswordPrimaryAuthenticationProvider
 			return AuthenticationResponse::newAbstain();
 		}
 
-		$username = $this->userNameUtils->getCanonical( $req->username, UserNameUtils::RIGOR_USABLE );
+		$username = User::getCanonicalName( $req->username, 'usable' );
 		if ( $username === false ) {
 			return AuthenticationResponse::newAbstain();
 		}
@@ -102,7 +95,7 @@ class LocalPasswordPrimaryAuthenticationProvider
 			'user_id', 'user_password', 'user_password_expires',
 		];
 
-		$dbr = $this->loadBalancer->getConnectionRef( DB_REPLICA );
+		$dbr = wfGetDB( DB_REPLICA );
 		$row = $dbr->selectRow(
 			'user',
 			$fields,
@@ -147,8 +140,8 @@ class LocalPasswordPrimaryAuthenticationProvider
 		if ( $this->getPasswordFactory()->needsUpdate( $pwhash ) ) {
 			$newHash = $this->getPasswordFactory()->newFromPlaintext( $req->password );
 			$fname = __METHOD__;
-			\DeferredUpdates::addCallableUpdate( function () use ( $newHash, $oldRow, $fname ) {
-				$dbw = $this->loadBalancer->getConnectionRef( DB_PRIMARY );
+			\DeferredUpdates::addCallableUpdate( static function () use ( $newHash, $oldRow, $fname ) {
+				$dbw = wfGetDB( DB_MASTER );
 				$dbw->update(
 					'user',
 					[ 'user_password' => $newHash->toString() ],
@@ -168,12 +161,12 @@ class LocalPasswordPrimaryAuthenticationProvider
 	}
 
 	public function testUserCanAuthenticate( $username ) {
-		$username = $this->userNameUtils->getCanonical( $username, UserNameUtils::RIGOR_USABLE );
+		$username = User::getCanonicalName( $username, 'usable' );
 		if ( $username === false ) {
 			return false;
 		}
 
-		$dbr = $this->loadBalancer->getConnectionRef( DB_REPLICA );
+		$dbr = wfGetDB( DB_REPLICA );
 		$row = $dbr->selectRow(
 			'user',
 			[ 'user_password' ],
@@ -194,13 +187,13 @@ class LocalPasswordPrimaryAuthenticationProvider
 	}
 
 	public function testUserExists( $username, $flags = User::READ_NORMAL ) {
-		$username = $this->userNameUtils->getCanonical( $username, UserNameUtils::RIGOR_USABLE );
+		$username = User::getCanonicalName( $username, 'usable' );
 		if ( $username === false ) {
 			return false;
 		}
 
 		list( $db, $options ) = \DBAccessObjectUtils::getDBOptions( $flags );
-		return (bool)$this->loadBalancer->getConnectionRef( $db )->selectField(
+		return (bool)wfGetDB( $db )->selectField(
 			[ 'user' ],
 			'user_id',
 			[ 'user_name' => $username ],
@@ -223,9 +216,9 @@ class LocalPasswordPrimaryAuthenticationProvider
 				return \StatusValue::newGood();
 			}
 
-			$username = $this->userNameUtils->getCanonical( $req->username, UserNameUtils::RIGOR_USABLE );
+			$username = User::getCanonicalName( $req->username, 'usable' );
 			if ( $username !== false ) {
-				$row = $this->loadBalancer->getConnectionRef( DB_PRIMARY )->selectRow(
+				$row = wfGetDB( DB_MASTER )->selectRow(
 					'user',
 					[ 'user_id' ],
 					[ 'user_name' => $username ],
@@ -249,8 +242,7 @@ class LocalPasswordPrimaryAuthenticationProvider
 	}
 
 	public function providerChangeAuthenticationData( AuthenticationRequest $req ) {
-		$username = $req->username !== null ?
-			$this->userNameUtils->getCanonical( $req->username, UserNameUtils::RIGOR_USABLE ) : false;
+		$username = $req->username !== null ? User::getCanonicalName( $req->username, 'usable' ) : false;
 		if ( $username === false ) {
 			return;
 		}
@@ -268,7 +260,7 @@ class LocalPasswordPrimaryAuthenticationProvider
 		}
 
 		if ( $pwhash ) {
-			$dbw = $this->loadBalancer->getConnectionRef( DB_PRIMARY );
+			$dbw = wfGetDB( DB_MASTER );
 			$dbw->update(
 				'user',
 				[

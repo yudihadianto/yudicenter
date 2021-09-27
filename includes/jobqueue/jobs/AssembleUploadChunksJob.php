@@ -121,7 +121,7 @@ class AssembleUploadChunksJob extends Job {
 			);
 			$this->setLastError( get_class( $e ) . ": " . $e->getMessage() );
 			// To be extra robust.
-			MWExceptionHandler::rollbackPrimaryChangesAndLog( $e );
+			MWExceptionHandler::rollbackMasterChangesAndLog( $e );
 
 			return false;
 		}

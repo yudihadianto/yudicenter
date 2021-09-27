@@ -28,7 +28,6 @@ use MediaWiki\User\UserEditTracker;
 use MediaWiki\User\UserFactory;
 use MediaWiki\User\UserIdentity;
 use Psr\Log\LoggerInterface;
-use TitleFactory;
 
 class UserBlockCommandFactory implements BlockUserFactory, UnblockUserFactory {
 	/**
@@ -60,12 +59,6 @@ class UserBlockCommandFactory implements BlockUserFactory, UnblockUserFactory {
 	/** @var LoggerInterface */
 	private $logger;
 
-	/** @var TitleFactory */
-	private $titleFactory;
-
-	/** @var BlockActionInfo */
-	private $blockActionInfo;
-
 	/**
 	 * @internal Use only in ServiceWiring
 	 */
@@ -81,8 +74,6 @@ class UserBlockCommandFactory implements BlockUserFactory, UnblockUserFactory {
 	 * @param UserFactory $userFactory
 	 * @param UserEditTracker $userEditTracker
 	 * @param LoggerInterface $logger
-	 * @param TitleFactory $titleFactory
-	 * @param BlockActionInfo $blockActionInfo
 	 */
 	public function __construct(
 		ServiceOptions $options,
@@ -93,9 +84,7 @@ class UserBlockCommandFactory implements BlockUserFactory, UnblockUserFactory {
 		BlockRestrictionStore $blockRestrictionStore,
 		UserFactory $userFactory,
 		UserEditTracker $userEditTracker,
-		LoggerInterface $logger,
-		TitleFactory $titleFactory,
-		BlockActionInfo $blockActionInfo
+		LoggerInterface $logger
 	) {
 		$options->assertRequiredOptions( self::CONSTRUCTOR_OPTIONS );
 
@@ -108,8 +97,6 @@ class UserBlockCommandFactory implements BlockUserFactory, UnblockUserFactory {
 		$this->userFactory = $userFactory;
 		$this->userEditTracker = $userEditTracker;
 		$this->logger = $logger;
-		$this->titleFactory = $titleFactory;
-		$this->blockActionInfo = $blockActionInfo;
 	}
 
 	/**
@@ -133,7 +120,7 @@ class UserBlockCommandFactory implements BlockUserFactory, UnblockUserFactory {
 		array $blockOptions = [],
 		array $blockRestrictions = [],
 		$tags = []
-	): BlockUser {
+	) : BlockUser {
 		if ( $tags === null ) {
 			$tags = [];
 		}
@@ -143,13 +130,11 @@ class UserBlockCommandFactory implements BlockUserFactory, UnblockUserFactory {
 			$this->blockRestrictionStore,
 			$this->blockPermissionCheckerFactory,
 			$this->blockUtils,
-			$this->blockActionInfo,
 			$this->hookContainer,
 			$this->blockStore,
 			$this->userFactory,
 			$this->userEditTracker,
 			$this->logger,
-			$this->titleFactory,
 			$target,
 			$performer,
 			$expiry,
@@ -173,7 +158,7 @@ class UserBlockCommandFactory implements BlockUserFactory, UnblockUserFactory {
 		Authority $performer,
 		string $reason,
 		array $tags = []
-	): UnblockUser {
+	) : UnblockUser {
 		return new UnblockUser(
 			$this->blockPermissionCheckerFactory,
 			$this->blockStore,

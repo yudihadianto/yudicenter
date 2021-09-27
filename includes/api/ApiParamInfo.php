@@ -21,7 +21,6 @@
  */
 
 use MediaWiki\ExtensionInfo;
-use MediaWiki\User\UserFactory;
 
 /**
  * @ingroup API
@@ -33,21 +32,8 @@ class ApiParamInfo extends ApiBase {
 	/** @var RequestContext */
 	private $context;
 
-	/** @var UserFactory */
-	private $userFactory;
-
-	/**
-	 * @param ApiMain $main
-	 * @param string $action
-	 * @param UserFactory $userFactory
-	 */
-	public function __construct(
-		ApiMain $main,
-		$action,
-		UserFactory $userFactory
-	) {
+	public function __construct( ApiMain $main, $action ) {
 		parent::__construct( $main, $action );
-		$this->userFactory = $userFactory;
 	}
 
 	public function execute() {
@@ -56,7 +42,7 @@ class ApiParamInfo extends ApiBase {
 
 		$this->helpFormat = $params['helpformat'];
 		$this->context = new RequestContext;
-		$this->context->setUser( $this->userFactory->newAnonymous() ); // anon to avoid caching issues
+		$this->context->setUser( new User ); // anon to avoid caching issues
 		$this->context->setLanguage( $this->getMain()->getLanguage() );
 
 		if ( is_array( $params['modules'] ) ) {

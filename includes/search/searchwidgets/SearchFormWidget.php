@@ -3,11 +3,10 @@
 namespace MediaWiki\Search\SearchWidgets;
 
 use Html;
-use ILanguageConverter;
 use MediaWiki\HookContainer\HookContainer;
 use MediaWiki\HookContainer\HookRunner;
+use MediaWiki\MediaWikiServices;
 use MediaWiki\Widget\SearchInputWidget;
-use NamespaceInfo;
 use SearchEngineConfig;
 use SpecialSearch;
 use Xml;
@@ -23,33 +22,23 @@ class SearchFormWidget {
 	private $hookContainer;
 	/** @var HookRunner */
 	private $hookRunner;
-	/** @var ILanguageConverter */
-	private $languageConverter;
-	/** @var NamespaceInfo */
-	private $namespaceInfo;
 
 	/**
 	 * @param SpecialSearch $specialSearch
 	 * @param SearchEngineConfig $searchConfig
 	 * @param HookContainer $hookContainer
-	 * @param ILanguageConverter $languageConverter
-	 * @param NamespaceInfo $namespaceInfo
 	 * @param array $profiles
 	 */
 	public function __construct(
 		SpecialSearch $specialSearch,
 		SearchEngineConfig $searchConfig,
 		HookContainer $hookContainer,
-		ILanguageConverter $languageConverter,
-		NamespaceInfo $namespaceInfo,
 		array $profiles
 	) {
 		$this->specialSearch = $specialSearch;
 		$this->searchConfig = $searchConfig;
 		$this->hookContainer = $hookContainer;
 		$this->hookRunner = new HookRunner( $hookContainer );
-		$this->languageConverter = $languageConverter;
-		$this->namespaceInfo = $namespaceInfo;
 		$this->profiles = $profiles;
 	}
 
@@ -74,7 +63,8 @@ class SearchFormWidget {
 	) {
 		$user = $this->specialSearch->getUser();
 
-		$form = Xml::openElement(
+		return '<div class="mw-search-form-wrapper">' .
+			Xml::openElement(
 				'form',
 				[
 					'id' => $isPowerSearch ? 'powersearch' : 'search',
@@ -83,22 +73,17 @@ class SearchFormWidget {
 					'action' => wfScript(),
 				]
 			) .
-				Html::rawElement(
-					'div',
-					[ 'id' => 'mw-search-top-table' ],
-					$this->shortDialogHtml( $profile, $term, $numResults, $totalResults, $offset, $options )
-				) .
-				Html::rawElement( 'div', [ 'class' => 'mw-search-visualclear' ] ) .
-				Html::rawElement(
-					'div',
-					[ 'class' => 'mw-search-profile-tabs' ],
+				'<div id="mw-search-top-table">' .
+					$this->shortDialogHtml( $profile, $term, $numResults, $totalResults, $offset, $options ) .
+				'</div>' .
+				"<div class='mw-search-visualclear'></div>" .
+				"<div class='mw-search-profile-tabs'>" .
 					$this->profileTabsHtml( $profile, $term ) .
-						Html::rawElement( 'div', [ 'style' => 'clear:both' ] )
-				) .
+					"<div style='clear:both'></div>" .
+				"</div>" .
 				$this->optionsHtml( $term, $isPowerSearch, $profile ) .
-			Xml::closeElement( 'form' );
-
-		return Html::rawElement( 'div', [ 'class' => 'mw-search-form-wrapper' ], $form );
+			'</form>' .
+		'</div>';
 	}
 
 	/**
@@ -197,11 +182,9 @@ class SearchFormWidget {
 			);
 		}
 
-		return Html::rawElement(
-			'div',
-			[ 'class' => 'search-types' ],
-			Html::rawElement( 'ul', [], implode( '', $items ) )
-		);
+		return "<div class='search-types'>" .
+			"<ul>" . implode( '', $items ) . "</ul>" .
+		"</div>";
 	}
 
 	/**
@@ -213,7 +196,7 @@ class SearchFormWidget {
 	protected function startsWithImage( $term ) {
 		$parts = explode( ':', $term );
 		return count( $parts ) > 1
-			? $this->specialSearch->getContentLanguage()->getNsIndex( $parts[0] ) ===
+			? MediaWikiServices::getInstance()->getContentLanguage()->getNsIndex( $parts[0] ) ===
 				NS_FILE
 			: false;
 	}
@@ -276,34 +259,35 @@ class SearchFormWidget {
 	protected function powerSearchBox( $term, array $opts ) {
 		$rows = [];
 		$activeNamespaces = $this->specialSearch->getNamespaces();
+		$langConverter = $this->specialSearch->getLanguage();
 		foreach ( $this->searchConfig->searchableNamespaces() as $namespace => $name ) {
-			$subject = $this->namespaceInfo->getSubject( $namespace );
+			$subject = MediaWikiServices::getInstance()->getNamespaceInfo()->
+				getSubject( $namespace );
 			if ( !isset( $rows[$subject] ) ) {
 				$rows[$subject] = "";
 			}
 
-			$name = $this->languageConverter->convertNamespace( $namespace );
+			$name = $langConverter->convertNamespace( $namespace );
 			if ( $name === '' ) {
 				$name = $this->specialSearch->msg( 'blanknamespace' )->text();
 			}
 
-			$rows[$subject] .= Html::rawElement(
-				'td',
-				[],
-				Xml::checkLabel(
-					$name,
-					"ns{$namespace}",
-					"mw-search-ns{$namespace}",
-					in_array( $namespace, $activeNamespaces )
-				)
-			);
+			$rows[$subject] .=
+				'<td>' .
+					Xml::checkLabel(
+						$name,
+						"ns{$namespace}",
+						"mw-search-ns{$namespace}",
+						in_array( $namespace, $activeNamespaces )
+					) .
+				'</td>';
 		}
 
 		// Lays out namespaces in multiple floating two-column tables so they'll
 		// be arranged nicely while still accomodating diferent screen widths
 		$tableRows = [];
 		foreach ( $rows as $row ) {
-			$tableRows[] = Html::rawElement( 'tr', [], $row );
+			$tableRows[] = "<tr>{$row}</tr>";
 		}
 		$namespaceTables = [];
 		foreach ( array_chunk( $tableRows, 4 ) as $chunk ) {
@@ -320,7 +304,7 @@ class SearchFormWidget {
 			$hidden .= Html::hidden( $key, $value );
 		}
 
-		$divider = Html::rawElement( 'div', [ 'class' => 'divider' ], '' );
+		$divider = "<div class='divider'></div>";
 
 		// Stuff to feed SpecialSearch::saveNamespaces()
 		$user = $this->specialSearch->getUser();
@@ -340,37 +324,25 @@ class SearchFormWidget {
 			);
 		}
 
-		// Temporary variables to reduce nesting needed
-		$toggleBoxContents =
-			Html::rawElement( 'label', [], $this->specialSearch->msg( 'powersearch-togglelabel' )->escaped() ) .
-			Html::rawElement(
-				'input',
-				[
-					'type' => 'button',
-					'id' => 'mw-search-toggleall',
-					'value' => $this->specialSearch->msg( 'powersearch-toggleall' )->text(),
-				]
-			) .
-			Html::rawElement(
-				'input',
-				[
-					'type' => 'button',
-					'id' => 'mw-search-togglenone',
-					'value' => $this->specialSearch->msg( 'powersearch-togglenone' )->text(),
-				]
-			);
-		$fieldSetContents =
-			Html::rawElement( 'legend', [], $this->specialSearch->msg( 'powersearch-legend' )->escaped() ) .
-			Html::rawElement( 'h4', [], $this->specialSearch->msg( 'powersearch-ns' )->parse() ) .
+		return "<fieldset id='mw-searchoptions'>" .
+			"<legend>" . $this->specialSearch->msg( 'powersearch-legend' )->escaped() . '</legend>' .
+			"<h4>" . $this->specialSearch->msg( 'powersearch-ns' )->parse() . '</h4>' .
 			// Handled by JavaScript if available
-			Html::rawElement(
-				'div',
-				[ 'id' => 'mw-search-togglebox' ],
-				$toggleBoxContents
+			'<div id="mw-search-togglebox">' .
+			'<label>' . $this->specialSearch->msg( 'powersearch-togglelabel' )->escaped() . '</label>' .
+			'<input type="button" id="mw-search-toggleall" value="' .
+			$this->specialSearch->msg( 'powersearch-toggleall' )->escaped() . '"/>' .
+			'<input type="button" id="mw-search-togglenone" value="' .
+			$this->specialSearch->msg( 'powersearch-togglenone' )->escaped() . '"/>' .
+			'</div>' .
+			$divider .
+			implode(
+				$divider,
+				$showSections
 			) .
-			$divider . implode( $divider, $showSections ) . $hidden . $remember;
-
-		return Html::rawElement( 'fieldset', [ 'id' => 'mw-searchoptions' ], $fieldSetContents );
+			$hidden .
+			$remember .
+		"</fieldset>";
 	}
 
 	/**

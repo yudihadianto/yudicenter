@@ -285,7 +285,10 @@ class SpecialRandomInCategory extends FormSpecialPage {
 			[
 				'cl_to' => $this->category->getDBkey(),
 			],
-			__METHOD__
+			__METHOD__,
+			[
+				'LIMIT' => 1
+			]
 		);
 		if ( !$res ) {
 			throw new MWException( 'No entries in category' );

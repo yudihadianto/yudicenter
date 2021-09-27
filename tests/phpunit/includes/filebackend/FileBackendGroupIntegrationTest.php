@@ -1,9 +1,12 @@
 <?php
 
 use MediaWiki\FileBackend\LockManager\LockManagerGroupFactory;
+use MediaWiki\MediaWikiServices;
 
 /**
  * @coversDefaultClass FileBackendGroup
+ * @covers ::singleton
+ * @covers ::destroySingleton
  */
 class FileBackendGroupIntegrationTest extends MediaWikiIntegrationTestCase {
 	use FileBackendGroupTestTrait;
@@ -12,11 +15,11 @@ class FileBackendGroupIntegrationTest extends MediaWikiIntegrationTestCase {
 		return wfWikiID();
 	}
 
-	private function getLockManagerGroupFactory( $domain ): LockManagerGroupFactory {
-		return $this->getServiceContainer()->getLockManagerGroupFactory();
+	private function getLockManagerGroupFactory( $domain ) : LockManagerGroupFactory {
+		return MediaWikiServices::getInstance()->getLockManagerGroupFactory();
 	}
 
-	private function newObj( array $options = [] ): FileBackendGroup {
+	private function newObj( array $options = [] ) : FileBackendGroup {
 		$globals = [ 'DirectoryMode', 'FileBackends', 'ForeignFileRepos', 'LocalFileRepo' ];
 		foreach ( $globals as $global ) {
 			$this->setMwGlobals(
@@ -42,11 +45,11 @@ class FileBackendGroupIntegrationTest extends MediaWikiIntegrationTestCase {
 			array_diff( array_keys( $options ), $globals, array_keys( $serviceMembers ) ) );
 
 		$this->resetServices();
+		FileBackendGroup::destroySingleton();
 
-		$services = $this->getServiceContainer();
-		$services->resetServiceForTesting( 'FileBackendGroup' );
+		$services = MediaWikiServices::getInstance();
 
-		$obj = $services->getFileBackendGroup();
+		$obj = FileBackendGroup::singleton();
 
 		foreach ( $serviceMembers as $key => $name ) {
 			$this->$key = $services->getService( $name );

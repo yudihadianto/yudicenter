@@ -22,8 +22,6 @@
  */
 
 use MediaWiki\HookContainer\ProtectedHookAccessorTrait;
-use MediaWiki\Linker\LinkTarget;
-use MediaWiki\Page\PageReference;
 
 /**
  * Object handling generic submission, CSRF protection, layout and
@@ -65,7 +63,6 @@ use MediaWiki\Page\PageReference;
  *    'options-messages'    -- associative array mapping message keys to values.
  *                             Some field types support multi-level arrays.
  *                             Overwrites 'options' and 'options-message'.
- *    'options-messages-parse' -- Flag to parse the messages in 'options-messages'.
  *    'options-message'     -- message key or object to be parsed to extract the list of
  *                             options (like 'ipbreason-dropdown').
  *    'label-message'       -- message key or object for a message to use as the label.
@@ -558,7 +555,7 @@ class HTMLForm extends ContextSource {
 	 */
 	public function prepareForm() {
 		# Check if we have the info we need
-		if ( !$this->mTitle instanceof PageReference && $this->mTitle !== false ) {
+		if ( !$this->mTitle instanceof Title && $this->mTitle !== false ) {
 			throw new MWException( 'You must call setTitle() on an HTMLForm' );
 		}
 
@@ -1261,7 +1258,10 @@ class HTMLForm extends ContextSource {
 		}
 
 		if ( $this->mShowCancel ) {
-			$target = $this->getCancelTargetURL();
+			$target = $this->mCancelTarget ?: Title::newMainPage();
+			if ( $target instanceof Title ) {
+				$target = $target->getLocalURL();
+			}
 			$buttons .= Html::element(
 					'a',
 					[
@@ -1520,31 +1520,13 @@ class HTMLForm extends ContextSource {
 
 	/**
 	 * Sets the target where the user is redirected to after clicking cancel.
-	 * @param LinkTarget|PageReference|string $target Target as an object or an URL
+	 * @param Title|string $target Target as a Title object or an URL
 	 * @return HTMLForm $this for chaining calls
 	 * @since 1.27
 	 */
 	public function setCancelTarget( $target ) {
-		if ( $target instanceof PageReference ) {
-			$target = TitleValue::castPageToLinkTarget( $target );
-		}
-
 		$this->mCancelTarget = $target;
 		return $this;
-	}
-
-	/**
-	 * @since 1.37
-	 * @return string
-	 */
-	protected function getCancelTargetURL() {
-		if ( is_string( $this->mCancelTarget ) ) {
-			return $this->mCancelTarget;
-		} else {
-			// TODO: use a service to get the local URL for a LinkTarget, see T282283
-			$target = Title::castFromLinkTarget( $this->mCancelTarget ) ?: Title::newMainPage();
-			return $target->getLocalURL();
-		}
 	}
 
 	/**
@@ -1649,13 +1631,12 @@ class HTMLForm extends ContextSource {
 	/**
 	 * Set the title for form submission
 	 *
-	 * @param PageReference $t The page the form is on/should be posted to
+	 * @param Title $t Title of page the form is on/should be posted to
 	 *
 	 * @return HTMLForm $this for chaining calls (since 1.20)
 	 */
 	public function setTitle( $t ) {
-		// TODO: make mTitle a PageReference when we have a better way to get URLs, see T282283.
-		$this->mTitle = Title::castFromPageReference( $t );
+		$this->mTitle = $t;
 
 		return $this;
 	}
@@ -1664,7 +1645,9 @@ class HTMLForm extends ContextSource {
 	 * @return Title
 	 */
 	public function getTitle() {
-		return $this->mTitle ?: $this->getContext()->getTitle();
+		return $this->mTitle === false
+			? $this->getContext()->getTitle()
+			: $this->mTitle;
 	}
 
 	/**
@@ -1859,8 +1842,7 @@ class HTMLForm extends ContextSource {
 			$request = $this->getRequest();
 			if ( $field->skipLoadData( $request ) ) {
 				continue;
-			}
-			if ( !empty( $field->mParams['disabled'] ) ) {
+			} elseif ( !empty( $field->mParams['disabled'] ) ) {
 				$fieldData[$fieldname] = $field->getDefault();
 			} else {
 				$fieldData[$fieldname] = $field->loadDataFromRequest( $request );

@@ -7,6 +7,7 @@ use MediaWiki\MediaWikiServices;
 use Psr\Log\LoggerAwareInterface;
 use Psr\Log\LoggerInterface;
 use Psr\Log\NullLogger;
+use Wikimedia\Assert\Assert;
 
 /**
  * @ingroup ExternalStorage
@@ -30,9 +31,11 @@ class ExternalStoreFactory implements LoggerAwareInterface {
 	public function __construct(
 		array $externalStores,
 		array $defaultStores,
-		string $localDomainId,
+		$localDomainId,
 		LoggerInterface $logger = null
 	) {
+		Assert::parameterType( 'string', $localDomainId, '$localDomainId' );
+
 		$this->protocols = array_map( 'strtolower', $externalStores );
 		$this->writeBaseUrls = $defaultStores;
 		$this->localDomainId = $localDomainId;

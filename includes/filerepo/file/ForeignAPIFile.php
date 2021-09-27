@@ -20,9 +20,6 @@
  */
 
 use MediaWiki\MediaWikiServices;
-use MediaWiki\Permissions\Authority;
-use MediaWiki\User\UserIdentity;
-use MediaWiki\User\UserIdentityValue;
 
 /**
  * Foreign file accessible through api.php requests.
@@ -33,7 +30,7 @@ class ForeignAPIFile extends File {
 	/** @var bool */
 	private $mExists;
 	/** @var array */
-	private $mInfo;
+	private $mInfo = [];
 
 	protected $repoClass = ForeignAPIRepo::class;
 
@@ -188,17 +185,6 @@ class ForeignAPIFile extends File {
 	}
 
 	/**
-	 * @return array
-	 */
-	public function getMetadataArray(): array {
-		if ( isset( $this->mInfo['metadata'] ) ) {
-			return self::parseMetadata( $this->mInfo['metadata'] );
-		}
-
-		return [];
-	}
-
-	/**
 	 * @return array|null Extended metadata (see imageinfo API for format) or
 	 *   null on error
 	 */
@@ -208,33 +194,16 @@ class ForeignAPIFile extends File {
 
 	/**
 	 * @param mixed $metadata
-	 * @return array
-	 */
-	public static function parseMetadata( $metadata ) {
-		if ( !is_array( $metadata ) ) {
-			return [ '_error' => $metadata ];
-		}
-		'@phan-var array[] $metadata';
-		$ret = [];
-		foreach ( $metadata as $meta ) {
-			$ret[$meta['name']] = self::parseMetadataValue( $meta['value'] );
-		}
-
-		return $ret;
-	}
-
-	/**
-	 * @param mixed $metadata
 	 * @return mixed
 	 */
-	private static function parseMetadataValue( $metadata ) {
+	public static function parseMetadata( $metadata ) {
 		if ( !is_array( $metadata ) ) {
 			return $metadata;
 		}
 		'@phan-var array[] $metadata';
 		$ret = [];
 		foreach ( $metadata as $meta ) {
-			$ret[$meta['name']] = self::parseMetadataValue( $meta['value'] );
+			$ret[$meta['name']] = self::parseMetadata( $meta['value'] );
 		}
 
 		return $ret;
@@ -273,21 +242,24 @@ class ForeignAPIFile extends File {
 		return null;
 	}
 
-	public function getUploader( int $audience = self::FOR_PUBLIC, Authority $performer = null ): ?UserIdentity {
-		if ( isset( $this->mInfo['user'] ) ) {
-			// We don't know if the foreign repo will have a real interwiki prefix,
-			// treat this user as a foreign imported user. Maybe we can do better?
-			return UserIdentityValue::newExternal( $this->getRepoName(), $this->mInfo['user'] );
+	/**
+	 * @param string $type
+	 * @return int|null|string
+	 */
+	public function getUser( $type = 'text' ) {
+		if ( $type == 'text' ) {
+			return isset( $this->mInfo['user'] ) ? strval( $this->mInfo['user'] ) : null;
+		} else {
+			return 0; // What makes sense here, for a remote user?
 		}
-		return null;
 	}
 
 	/**
 	 * @param int $audience
-	 * @param Authority|null $performer
+	 * @param User|null $user
 	 * @return null|string
 	 */
-	public function getDescription( $audience = self::FOR_PUBLIC, Authority $performer = null ) {
+	public function getDescription( $audience = self::FOR_PUBLIC, User $user = null ) {
 		return isset( $this->mInfo['comment'] ) ? strval( $this->mInfo['comment'] ) : null;
 	}
 

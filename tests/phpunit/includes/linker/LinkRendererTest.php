@@ -3,21 +3,18 @@
 use MediaWiki\Linker\LinkRenderer;
 use MediaWiki\Linker\LinkRendererFactory;
 use MediaWiki\MediaWikiServices;
-use MediaWiki\Page\PageReference;
-use MediaWiki\Page\PageReferenceValue;
 
 /**
  * @covers MediaWiki\Linker\LinkRenderer
  */
 class LinkRendererTest extends MediaWikiLangTestCase {
-	use LinkCacheTestTrait;
 
 	/**
 	 * @var LinkRendererFactory
 	 */
 	private $factory;
 
-	protected function setUp(): void {
+	protected function setUp() : void {
 		parent::setUp();
 		$this->setMwGlobals( [
 			'wgArticlePath' => '/wiki/$1',
@@ -29,16 +26,8 @@ class LinkRendererTest extends MediaWikiLangTestCase {
 		$this->factory = MediaWikiServices::getInstance()->getLinkRendererFactory();
 	}
 
-	public function provideMergeAttribs() {
-		yield [ new TitleValue( NS_SPECIAL, 'BlankPage' ) ];
-		yield [ new PageReferenceValue( NS_SPECIAL, 'BlankPage', PageReference::LOCAL ) ];
-	}
-
-	/**
-	 * @dataProvider provideMergeAttribs
-	 * @covers \MediaWiki\Linker\LinkRenderer::makeBrokenLink
-	 */
-	public function testMergeAttribs( $target ) {
+	public function testMergeAttribs() {
+		$target = new TitleValue( NS_SPECIAL, 'Blankpage' );
 		$linkRenderer = $this->factory->create();
 		$link = $linkRenderer->makeBrokenLink( $target, null, [
 			// Appended to class
@@ -56,16 +45,8 @@ class LinkRendererTest extends MediaWikiLangTestCase {
 		);
 	}
 
-	public function provideMakeKnownLink() {
-		yield [ new TitleValue( NS_MAIN, 'Foobar' ) ];
-		yield [ new PageReferenceValue( NS_MAIN, 'Foobar', PageReference::LOCAL ) ];
-	}
-
-	/**
-	 * @dataProvider provideMakeKnownLink
-	 * @covers \MediaWiki\Linker\LinkRenderer::makeKnownLink
-	 */
-	public function testMakeKnownLink( $target ) {
+	public function testMakeKnownLink() {
+		$target = new TitleValue( NS_MAIN, 'Foobar' );
 		$linkRenderer = $this->factory->create();
 
 		// Query added
@@ -89,22 +70,9 @@ class LinkRendererTest extends MediaWikiLangTestCase {
 		);
 	}
 
-	public function provideMakeBrokenLink() {
-		yield [
-			new TitleValue( NS_MAIN, 'Foobar' ),
-			new TitleValue( NS_SPECIAL, 'Foobar' )
-		];
-		yield [
-			new PageReferenceValue( NS_MAIN, 'Foobar', PageReference::LOCAL ),
-			new PageReferenceValue( NS_SPECIAL, 'Foobar', PageReference::LOCAL )
-		];
-	}
-
-	/**
-	 * @dataProvider provideMakeBrokenLink
-	 * @covers \MediaWiki\Linker\LinkRenderer::makeBrokenLink
-	 */
-	public function testMakeBrokenLink( $target, $special ) {
+	public function testMakeBrokenLink() {
+		$target = new TitleValue( NS_MAIN, 'Foobar' );
+		$special = new TitleValue( NS_SPECIAL, 'Foobar' );
 		$linkRenderer = $this->factory->create();
 
 		// action=edit&redlink=1 added
@@ -129,32 +97,17 @@ class LinkRendererTest extends MediaWikiLangTestCase {
 		);
 
 		// fragment stripped
-		if ( $target instanceof LinkTarget ) {
-			$this->assertEquals(
-				'<a href="/w/index.php?title=Foobar&amp;action=foobar" class="new" '
-				. 'title="Foobar (page does not exist)">Foobar</a>',
-				$linkRenderer->makeBrokenLink( $target->createFragmentTarget( 'foobar' ) )
-			);
-		}
+		$this->assertEquals(
+			'<a href="/w/index.php?title=Foobar&amp;action=edit&amp;redlink=1" '
+			. 'class="new" title="Foobar (page does not exist)">Foobar</a>',
+			$linkRenderer->makeBrokenLink( $target->createFragmentTarget( 'foobar' ) )
+		);
 	}
 
-	public function provideMakeLink() {
-		yield [
-			new TitleValue( NS_SPECIAL, 'Foobar' ),
-			new TitleValue( NS_SPECIAL, 'BlankPage' )
-		];
-		yield [
-			new PageReferenceValue( NS_SPECIAL, 'Foobar', PageReference::LOCAL ),
-			new PageReferenceValue( NS_SPECIAL, 'BlankPage', PageReference::LOCAL )
-		];
-	}
-
-	/**
-	 * @dataProvider provideMakeLink
-	 * @covers \MediaWiki\Linker\LinkRenderer::makeLink
-	 */
-	public function testMakeLink( $foobar, $blankpage ) {
+	public function testMakeLink() {
 		$linkRenderer = $this->factory->create();
+		$foobar = new TitleValue( NS_SPECIAL, 'Foobar' );
+		$blankpage = new TitleValue( NS_SPECIAL, 'Blankpage' );
 		$this->assertEquals(
 			'<a href="/wiki/Special:Foobar" class="new" title="Special:Foobar '
 			. '(page does not exist)">foo</a>',
@@ -184,63 +137,66 @@ class LinkRendererTest extends MediaWikiLangTestCase {
 		);
 	}
 
-	public function provideGetLinkClasses() {
-		yield [
-			new TitleValue( NS_MAIN, 'FooBar' ),
-			new TitleValue( NS_MAIN, 'Redirect' ),
-			new TitleValue( NS_USER, 'Someuser' )
-		];
-		yield [
-			new PageReferenceValue( NS_MAIN, 'FooBar', PageReference::LOCAL ),
-			new PageReferenceValue( NS_MAIN, 'Redirect', PageReference::LOCAL ),
-			new PageReferenceValue( NS_USER, 'Someuser', PageReference::LOCAL )
-		];
-	}
-
-	/**
-	 * @dataProvider provideGetLinkClasses
-	 * @covers \MediaWiki\Linker\LinkRenderer::getLinkClasses
-	 */
-	public function testGetLinkClasses( $foobarTitle, $redirectTitle, $userTitle ) {
+	public function testGetLinkClasses() {
 		$services = MediaWikiServices::getInstance();
+		$wanCache = $services->getMainWANObjectCache();
 		$titleFormatter = $services->getTitleFormatter();
 		$nsInfo = $services->getNamespaceInfo();
 		$specialPageFactory = $services->getSpecialPageFactory();
 		$hookContainer = $services->getHookContainer();
-		$linkCache = $services->getLinkCache();
-		if ( $foobarTitle instanceof PageReference ) {
-			$cacheTitle = Title::castFromPageReference( $foobarTitle );
-		} else {
-			$cacheTitle = $foobarTitle;
-		}
-		$this->addGoodLinkObject( 1, $cacheTitle, 10, 0 );
-		if ( $redirectTitle instanceof PageReference ) {
-			$cacheTitle = Title::castFromPageReference( $redirectTitle );
-		} else {
-			$cacheTitle = $redirectTitle;
-		}
-		$this->addGoodLinkObject( 2, $cacheTitle, 10, 1 );
+		$loadBalancer = $services->getDBLoadBalancer();
+		$linkCache = new LinkCache( $titleFormatter, $wanCache, $nsInfo, $loadBalancer );
+		$foobarTitle = new TitleValue( NS_MAIN, 'FooBar' );
+		$redirectTitle = new TitleValue( NS_MAIN, 'Redirect' );
+		$userTitle = new TitleValue( NS_USER, 'Someuser' );
+		$linkCache->addGoodLinkObj(
+			1, // id
+			$foobarTitle,
+			10, // len
+			0 // redir
+		);
+		$linkCache->addGoodLinkObj(
+			2, // id
+			$redirectTitle,
+			10, // len
+			1 // redir
+		);
 
-		if ( $userTitle instanceof PageReference ) {
-			$cacheTitle = Title::castFromPageReference( $userTitle );
-		} else {
-			$cacheTitle = $userTitle;
-		}
-		$this->addGoodLinkObject( 3, $cacheTitle, 10, 0 );
+		$linkCache->addGoodLinkObj(
+			3, // id
+			$userTitle,
+			10, // len
+			0 // redir
+		);
 
 		$linkRenderer = new LinkRenderer( $titleFormatter, $linkCache,
 			$nsInfo, $specialPageFactory, $hookContainer );
+		$linkRenderer->setStubThreshold( 0 );
 		$this->assertSame(
 			'',
 			$linkRenderer->getLinkClasses( $foobarTitle )
 		);
+
+		$linkRenderer->setStubThreshold( 20 );
+		$this->assertEquals(
+			'stub',
+			$linkRenderer->getLinkClasses( $foobarTitle )
+		);
+
+		$linkRenderer->setStubThreshold( 0 );
 		$this->assertEquals(
 			'mw-redirect',
 			$linkRenderer->getLinkClasses( $redirectTitle )
 		);
+
+		$linkRenderer->setStubThreshold( 20 );
+		$this->assertSame(
+			'',
+			$linkRenderer->getLinkClasses( $userTitle )
+		);
 	}
 
-	protected function tearDown(): void {
+	protected function tearDown() : void {
 		Title::clearCaches();
 		parent::tearDown();
 	}

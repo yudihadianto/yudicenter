@@ -48,7 +48,7 @@ class AddRFCandPMIDInterwiki extends LoggedUpdateMaintenance {
 		if ( $interwikiCache !== false ) {
 			return true;
 		}
-		$dbw = $this->getDB( DB_PRIMARY );
+		$dbw = $this->getDB( DB_MASTER );
 		$rfc = $dbw->selectField(
 			'interwiki',
 			'iw_url',

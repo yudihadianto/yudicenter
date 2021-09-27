@@ -17,6 +17,7 @@ class PendingTextInputWidget extends TextInputWidget {
 			'disabled' => true,
 		], $config );
 
+		// Parent constructor
 		parent::__construct( $config );
 
 		// Initialization

@@ -20,8 +20,7 @@
  * @file
  */
 
-use MediaWiki\Languages\LanguageFactory;
-use MediaWiki\Languages\LanguageNameUtils;
+use MediaWiki\MediaWikiServices;
 
 /**
  * A query action to return messages from site message cache
@@ -30,57 +29,21 @@ use MediaWiki\Languages\LanguageNameUtils;
  */
 class ApiQueryAllMessages extends ApiQueryBase {
 
-	/** @var Language */
-	private $contentLanguage;
-
-	/** @var LanguageFactory */
-	private $languageFactory;
-
-	/** @var LanguageNameUtils */
-	private $languageNameUtils;
-
-	/** @var LocalisationCache */
-	private $localisationCache;
-
-	/** @var MessageCache */
-	private $messageCache;
-
-	/**
-	 * @param ApiQuery $query
-	 * @param string $moduleName
-	 * @param Language $contentLanguage
-	 * @param LanguageFactory $languageFactory
-	 * @param LanguageNameUtils $languageNameUtils
-	 * @param LocalisationCache $localisationCache
-	 * @param MessageCache $messageCache
-	 */
-	public function __construct(
-		ApiQuery $query,
-		$moduleName,
-		Language $contentLanguage,
-		LanguageFactory $languageFactory,
-		LanguageNameUtils $languageNameUtils,
-		LocalisationCache $localisationCache,
-		MessageCache $messageCache
-	) {
+	public function __construct( ApiQuery $query, $moduleName ) {
 		parent::__construct( $query, $moduleName, 'am' );
-		$this->contentLanguage = $contentLanguage;
-		$this->languageFactory = $languageFactory;
-		$this->languageNameUtils = $languageNameUtils;
-		$this->localisationCache = $localisationCache;
-		$this->messageCache = $messageCache;
 	}
 
 	public function execute() {
 		$params = $this->extractRequestParams();
+		$services = MediaWikiServices::getInstance();
 		if ( $params['lang'] === null ) {
 			$langObj = $this->getLanguage();
-		} elseif ( !$this->languageNameUtils->isValidCode( $params['lang'] ) ) {
+		} elseif ( !$services->getLanguageNameUtils()->isValidCode( $params['lang'] ) ) {
 			$this->dieWithError(
 				[ 'apierror-invalidlang', $this->encodeParamName( 'lang' ) ], 'invalidlang'
 			);
 		} else {
-			$langObj = $this->languageFactory->getLanguage( $params['lang'] );
+			$langObj = $services->getLanguageFactory()->getLanguage( $params['lang'] );
 		}
 
 		if ( $params['enableparser'] ) {
@@ -94,11 +57,12 @@ class ApiQueryAllMessages extends ApiQueryBase {
 			}
 		}
 
-		$prop = array_fill_keys( (array)$params['prop'], true );
+		$prop = array_flip( (array)$params['prop'] );
 
 		// Determine which messages should we print
 		if ( in_array( '*', $params['messages'] ) ) {
-			$message_names = $this->localisationCache->getSubitemList( $langObj->getCode(), 'messages' );
+			$message_names = $services->getLocalisationCache()
+				->getSubitemList( $langObj->getCode(), 'messages' );
 			if ( $params['includelocal'] ) {
 				$message_names = array_unique( array_merge(
 					$message_names,
@@ -106,7 +70,8 @@ class ApiQueryAllMessages extends ApiQueryBase {
 					// MediaWiki:msgkey page. We might theoretically miss messages that have no
 					// MediaWiki:msgkey page but do have a MediaWiki:msgkey/lang page, but that's
 					// just a stupid case.
-					$this->messageCache->getAllMessageKeys( $this->contentLanguage->getCode() )
+					$services->getMessageCache()
+						->getAllMessageKeys( $this->getConfig()->get( 'LanguageCode' ) )
 				) );
 			}
 			sort( $message_names );
@@ -155,7 +120,7 @@ class ApiQueryAllMessages extends ApiQueryBase {
 					$messages_target
 				),
 				$langObj->getCode(),
-				!$langObj->equals( $this->contentLanguage ),
+				!$langObj->equals( MediaWikiServices::getInstance()->getContentLanguage() ),
 				$this->getDB()
 			);
 
@@ -205,7 +170,7 @@ class ApiQueryAllMessages extends ApiQueryBase {
 				} else {
 					// Check if the parser is enabled:
 					if ( $params['enableparser'] ) {
-						$msgString = $msg->page( $title )->text();
+						$msgString = $msg->title( $title )->text();
 					} else {
 						$msgString = $msg->plain();
 					}

@@ -21,10 +21,12 @@ class ArticleTablesTest extends MediaWikiLangTestCase {
 		$this->setContentLang( 'es' );
 		$this->setUserLang( 'fr' );
 
-		$page->doUserEditContent(
+		$page->doEditContent(
 			new WikitextContent( '{{:{{int:history}}}}' ),
-			$user,
-			'Test code for T16404'
+			'Test code for T16404',
+			0,
+			false,
+			$user
 		);
 		$templates1 = $title->getTemplateLinksFrom();
 
@@ -32,11 +34,12 @@ class ArticleTablesTest extends MediaWikiLangTestCase {
 		$page = WikiPage::factory( $title ); // In order to force the re-rendering of the same wikitext
 
 		// We need an edit, a purge is not enough to regenerate the tables
-		$page->doUserEditContent(
+		$page->doEditContent(
 			new WikitextContent( '{{:{{int:history}}}}' ),
-			$user,
 			'Test code for T16404',
-			EDIT_UPDATE
+			EDIT_UPDATE,
+			false,
+			$user
 		);
 		$templates2 = $title->getTemplateLinksFrom();
 
@@ -45,6 +48,6 @@ class ArticleTablesTest extends MediaWikiLangTestCase {
 		 * @var Title[] $templates2
 		 */
 		$this->assertEquals( $templates1, $templates2 );
-		$this->assertSame( 'Historial', $templates1[0]->getFullText() );
+		$this->assertEquals( $templates1[0]->getFullText(), 'Historial' );
 	}
 }

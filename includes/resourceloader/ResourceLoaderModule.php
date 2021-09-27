@@ -127,19 +127,6 @@ abstract class ResourceLoaderModule implements LoggerAwareInterface {
 	}
 
 	/**
-	 * Provide overrides for skinStyles to modules that support that.
-	 *
-	 * This MUST be called after self::setName().
-	 *
-	 * @since 1.37
-	 * @see $wgResourceModuleSkinStyles
-	 * @param array $moduleSkinStyles
-	 */
-	public function setSkinStylesOverride( array $moduleSkinStyles ): void {
-		// Stub, only supported by FileModule currently.
-	}
-
-	/**
 	 * Inject the functions that load/save the indirect file path dependency list from storage
 	 *
 	 * @param callable $loadCallback Function of (module name, variant)
@@ -233,7 +220,8 @@ abstract class ResourceLoaderModule implements LoggerAwareInterface {
 	 */
 	public function getConfig() {
 		if ( $this->config === null ) {
-			throw new RuntimeException( 'Config accessed before it is set' );
+			// Ugh, fall back to default
+			$this->config = MediaWikiServices::getInstance()->getMainConfig();
 		}
 
 		return $this->config;
@@ -270,7 +258,7 @@ abstract class ResourceLoaderModule implements LoggerAwareInterface {
 	 * @internal For use only by ResourceLoader::getModule
 	 * @param HookContainer $hookContainer
 	 */
-	public function setHookContainer( HookContainer $hookContainer ): void {
+	public function setHookContainer( HookContainer $hookContainer ) : void {
 		$this->hookRunner = new HookRunner( $hookContainer );
 	}
 
@@ -281,44 +269,36 @@ abstract class ResourceLoaderModule implements LoggerAwareInterface {
 	 *   without notice.
 	 * @return HookRunner
 	 */
-	protected function getHookRunner(): HookRunner {
+	protected function getHookRunner() : HookRunner {
 		return $this->hookRunner;
 	}
 
 	/**
-	 * Get the URLs to load this module's JS code in debug mode.
+	 * Get the URL or URLs to load for this module's JS in debug mode.
+	 * The default behavior is to return a load.php?only=scripts URL for
+	 * the module, but file-based modules will want to override this to
+	 * load the files directly.
 	 *
-	 * The default behavior is to return a `load.php?only=scripts` URL for
-	 * the module. File-based modules may override this to load underlying
-	 * files directly.
-	 *
-	 * This function must only be called when:
-	 *
-	 * 1. We're in debug mode,
-	 * 2. there is no `only=` parameter and,
-	 * 3. self::supportsURLLoading() returns true.
-	 *
-	 * Point 2 is prevents an infinite loop, therefore this function
-	 * MUST return either an URL with an `only=` query, or a non-load.php URL.
+	 * This function is called only when 1) we're in debug mode, 2) there
+	 * is no only= parameter and 3) supportsURLLoading() returns true.
+	 * #2 is important to prevent an infinite loop, therefore this function
+	 * MUST return either an only= URL or a non-load.php URL.
 	 *
 	 * @stable to override
 	 * @param ResourceLoaderContext $context
 	 * @return string[]
 	 */
 	public function getScriptURLsForDebug( ResourceLoaderContext $context ) {
-		$rl = $context->getResourceLoader();
+		$resourceLoader = $context->getResourceLoader();
 		$derivative = new DerivativeResourceLoaderContext( $context );
 		$derivative->setModules( [ $this->getName() ] );
 		$derivative->setOnly( 'scripts' );
 		$derivative->setDebug( true );
 
-		$url = $rl->createLoaderURL(
+		$url = $resourceLoader->createLoaderURL(
 			$this->getSource(),
 			$derivative
 		);
-
-		// Expand debug URL in case we are another wiki's module source (T255367)
-		$url = $rl->expandUrl( $this->getConfig()->get( 'Server' ), $url );
 
 		return [ $url ];
 	}
@@ -778,8 +758,11 @@ abstract class ResourceLoaderModule implements LoggerAwareInterface {
 			// line break as separator which matches JavaScript native logic for implicitly
 			// ending statements even if a semi-colon is missing.
 			// Bugs: T29054, T162719.
-			if ( is_string( $scripts ) ) {
-				$scripts = ResourceLoader::ensureNewline( $scripts );
+			if ( is_string( $scripts )
+				&& strlen( $scripts )
+				&& substr( $scripts, -1 ) !== "\n"
+			) {
+				$scripts .= "\n";
 			}
 		}
 		$content['scripts'] = $scripts;
@@ -850,29 +833,20 @@ abstract class ResourceLoaderModule implements LoggerAwareInterface {
 	 * Get a string identifying the current version of this module in a given context.
 	 *
 	 * Whenever anything happens that changes the module's response (e.g. scripts, styles, and
-	 * messages) this value must change. This value is used to store module responses in caches,
-	 * both server-side (by a CDN, or other HTTP cache), and client-side (in `mw.loader.store`,
-	 * and in the browser's own HTTP cache).
+	 * messages) this value must change. This value is used to store module responses in cache.
+	 * (Both client-side and server-side.)
 	 *
-	 * The underlying methods called here for any given module should be quick because this
-	 * is called for potentially thousands of module bundles in the same request as part of the
-	 * ResourceLoaderStartUpModule, which is how we invalidate caches and propagate changes to
-	 * clients.
+	 * It is not recommended to override this directly. Use getDefinitionSummary() instead.
+	 * If overridden, one must call the parent getVersionHash(), append data and re-hash.
+	 *
+	 * This method should be quick because it is frequently run by ResourceLoaderStartUpModule to
+	 * propagate changes to the client and effectively invalidate cache.
 	 *
 	 * @since 1.26
-	 * @see self::getDefinitionSummary for how to customize version computation.
 	 * @param ResourceLoaderContext $context
-	 * @return string Hash formatted by ResourceLoader::makeHash
+	 * @return string Hash (should use ResourceLoader::makeHash)
 	 */
-	final public function getVersionHash( ResourceLoaderContext $context ) {
-		if ( $context->getDebug() ) {
-			// In debug mode, make uncached startup module extra fast by not computing any hashes.
-			// Server responses from load.php for individual modules already have no-cache so
-			// we don't need them. This also makes breakpoint debugging easier, as each module
-			// gets its own consistent URL. (T235672)
-			return '';
-		}
-
+	public function getVersionHash( ResourceLoaderContext $context ) {
 		// Cache this somewhat expensive operation. Especially because some classes
 		// (e.g. startup module) iterate more than once over all modules to get versions.
 		$contextHash = $context->getHash();
@@ -1063,7 +1037,7 @@ abstract class ResourceLoaderModule implements LoggerAwareInterface {
 	 *
 	 * @internal For internal use only.
 	 * @param ResourceLoaderContext $context
-	 * @return string
+	 * @return string Vary string
 	 */
 	public static function getVary( ResourceLoaderContext $context ) {
 		return implode( '|', [

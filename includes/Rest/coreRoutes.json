@@ -5,10 +5,8 @@
 		"services": [
 			"RevisionStore",
 			"NameTableStoreFactory",
-			"GroupPermissionsLookup",
-			"DBLoadBalancer",
-			"PageStore",
-			"TitleFormatter"
+			"PermissionManager",
+			"DBLoadBalancer"
 		]
 	},
 	{
@@ -17,11 +15,9 @@
 		"services": [
 			"RevisionStore",
 			"NameTableStoreFactory",
-			"GroupPermissionsLookup",
+			"PermissionManager",
 			"DBLoadBalancer",
-			"MainWANObjectCache",
-			"PageStore",
-			"ActorMigration"
+			"MainWANObjectCache"
 		]
 	},
 	{
@@ -39,7 +35,7 @@
 			"MainConfig",
 			"RevisionLookup",
 			"TitleFormatter",
-			"PageStore"
+			"TitleFactory"
 		],
 		"format": "bare"
 	},
@@ -70,8 +66,7 @@
 			"DBLoadBalancer",
 			"LanguageNameUtils",
 			"TitleFormatter",
-			"TitleParser",
-			"PageStore"
+			"TitleParser"
 		]
 	},
 	{
@@ -81,7 +76,7 @@
 			"MainConfig",
 			"RevisionLookup",
 			"TitleFormatter",
-			"PageStore"
+			"TitleFactory"
 		],
 		"format": "source"
 	},
@@ -92,7 +87,7 @@
 			"MainConfig",
 			"RevisionLookup",
 			"TitleFormatter",
-			"PageStore"
+			"TitleFactory"
 		],
 		"format": "bare"
 	},
@@ -103,9 +98,10 @@
 			"MainConfig",
 			"RevisionLookup",
 			"TitleFormatter",
+			"TitleFactory",
 			"ParserCacheFactory",
-			"GlobalIdGenerator",
-			"PageStore"
+			"WikiPageFactory",
+			"GlobalIdGenerator"
 		],
 		"format": "html"
 	},
@@ -116,9 +112,10 @@
 			"MainConfig",
 			"RevisionLookup",
 			"TitleFormatter",
+			"TitleFactory",
 			"ParserCacheFactory",
-			"GlobalIdGenerator",
-			"PageStore"
+			"WikiPageFactory",
+			"GlobalIdGenerator"
 		],
 		"format": "with_html"
 	},
@@ -127,16 +124,14 @@
 		"class": "MediaWiki\\Rest\\Handler\\MediaLinksHandler",
 		"services": [
 			"DBLoadBalancer",
-			"RepoGroup",
-			"PageStore"
+			"RepoGroup"
 		]
 	},
 	{
 		"path": "/v1/file/{title}",
 		"class": "MediaWiki\\Rest\\Handler\\MediaFileHandler",
 		"services": [
-			"RepoGroup",
-			"PageStore"
+			"RepoGroup"
 		]
 	},
 	{

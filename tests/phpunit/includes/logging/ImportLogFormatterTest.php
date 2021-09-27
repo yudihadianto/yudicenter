@@ -1,12 +1,11 @@
 <?php
 
-use MediaWiki\Tests\Unit\DummyServicesTrait;
+use MediaWiki\Interwiki\ClassicInterwikiLookup;
 
 /**
  * @covers ImportLogFormatter
  */
 class ImportLogFormatterTest extends LogFormatterTestCase {
-	use DummyServicesTrait;
 
 	/**
 	 * Provide different rows from the logging table to test
@@ -113,9 +112,14 @@ class ImportLogFormatterTest extends LogFormatterTestCase {
 	 */
 	public function testInterwikiLogDatabaseRows( $row, $extra ) {
 		// Setup importiw: as interwiki prefix
-		// DummyServicesTrait::getDummyInterwikiLookup
-		$interwikiLookup = $this->getDummyInterwikiLookup( [ 'importiw' ] );
-		$this->setService( 'InterwikiLookup', $interwikiLookup );
+		$this->setMwGlobals( [
+			'wgInterwikiCache' => ClassicInterwikiLookup::buildCdbHash( [
+			   [
+				   'iw_prefix' => 'importiw',
+					'iw_url' => 'wikipedia'
+			   ],
+			] ),
+		] );
 
 		$this->doTestLogFormatter( $row, $extra );
 	}

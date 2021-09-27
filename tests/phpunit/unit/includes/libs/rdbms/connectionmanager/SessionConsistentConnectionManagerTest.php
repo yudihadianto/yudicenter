@@ -36,7 +36,7 @@ class SessionConsistentConnectionManagerTest extends TestCase {
 		$lb->expects( $this->once() )
 			->method( 'getConnection' )
 			->with( DB_REPLICA )
-			->willReturn( $database );
+			->will( $this->returnValue( $database ) );
 
 		$manager = new SessionConsistentConnectionManager( $lb );
 		$actual = $manager->getReadConnection();
@@ -50,8 +50,8 @@ class SessionConsistentConnectionManagerTest extends TestCase {
 
 		$lb->expects( $this->once() )
 			->method( 'getConnection' )
-			->with( DB_PRIMARY )
-			->willReturn( $database );
+			->with( DB_MASTER )
+			->will( $this->returnValue( $database ) );
 
 		$manager = new SessionConsistentConnectionManager( $lb );
 		$manager->prepareForUpdates();
@@ -66,8 +66,8 @@ class SessionConsistentConnectionManagerTest extends TestCase {
 
 		$lb->expects( $this->once() )
 			->method( 'getConnection' )
-			->with( DB_PRIMARY )
-			->willReturn( $database );
+			->with( DB_MASTER )
+			->will( $this->returnValue( $database ) );
 
 		$manager = new SessionConsistentConnectionManager( $lb );
 		$actual = $manager->getWriteConnection();
@@ -81,8 +81,8 @@ class SessionConsistentConnectionManagerTest extends TestCase {
 
 		$lb->expects( $this->once() )
 			->method( 'getConnection' )
-			->with( DB_PRIMARY )
-			->willReturn( $database );
+			->with( DB_MASTER )
+			->will( $this->returnValue( $database ) );
 
 		$manager = new SessionConsistentConnectionManager( $lb );
 		$manager->prepareForUpdates();
@@ -96,7 +96,7 @@ class SessionConsistentConnectionManagerTest extends TestCase {
 		$lb->expects( $this->once() )
 			->method( 'reuseConnection' )
 			->with( $database )
-			->willReturn( null );
+			->will( $this->returnValue( null ) );
 
 		$manager = new SessionConsistentConnectionManager( $lb );
 		$manager->releaseConnection( $database );

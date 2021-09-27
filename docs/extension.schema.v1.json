@@ -227,6 +227,13 @@
 										"type": "string"
 									}
 								},
+								"loaderScripts": {
+									"type": ["string", "array"],
+									"description": "Scripts to include in the startup module",
+									"items": {
+										"type": "string"
+									}
+								},
 								"dependencies": {
 									"type": ["string", "array"],
 									"description": "Modules which must be loaded before this module",
@@ -273,7 +280,7 @@
 								},
 								"position": {
 									"type": "string",
-									"description": "Position on the page to load this module at (unused since MediaWiki 1.29)",
+									"description": "Position on the page to load this module at",
 									"enum": [
 										"bottom",
 										"top"
@@ -320,7 +327,7 @@
 								},
 								"position": {
 									"type": "string",
-									"description": "Position on the page to load this module at (unused since MediaWiki 1.29)",
+									"description": "Position on the page to load this module at",
 									"enum": [
 										"bottom",
 										"top"
@@ -388,8 +395,6 @@
 									"type": "object"
 								},
 								"position": {
-									"type": "string",
-									"description": "Position on the page to load this module at (unused since MediaWiki 1.29)",
 									"enum": [
 										"top",
 										"bottom"

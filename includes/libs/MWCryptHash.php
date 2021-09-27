@@ -33,8 +33,8 @@ class MWCryptHash {
 	 * The number of bytes outputted by the hash algorithm
 	 */
 	protected static $hashLength = [
-		'binary' => null,
-		'hex' => null,
+		true => null,
+		false => null,
 	];
 
 	/**
@@ -74,12 +74,12 @@ class MWCryptHash {
 	 * @return int Number of bytes the hash outputs
 	 */
 	public static function hashLength( $raw = true ) {
-		$key = $raw ? 'binary' : 'hex';
-		if ( self::$hashLength[$key] === null ) {
-			self::$hashLength[$key] = strlen( self::hash( '', $raw ) );
+		$raw = (bool)$raw;
+		if ( self::$hashLength[$raw] === null ) {
+			self::$hashLength[$raw] = strlen( self::hash( '', $raw ) );
 		}
 
-		return self::$hashLength[$key];
+		return self::$hashLength[$raw];
 	}
 
 	/**

@@ -3,8 +3,6 @@
 namespace MediaWiki\Tests\User;
 
 use FactoryArgTestTrait;
-use JobQueueGroup;
-use MediaWiki\JobQueue\JobQueueGroupFactory;
 use MediaWiki\User\UserGroupManager;
 use MediaWiki\User\UserGroupManagerFactory;
 use MediaWikiUnitTestCase;
@@ -35,7 +33,7 @@ class UserGroupManagerFactoryTest extends MediaWikiUnitTestCase {
 	}
 
 	protected function getIgnoredParamNames() {
-		return [ 'hookContainer', 'configuredReadOnlyMode', 'jobQueueGroupFactory' ];
+		return [ 'hookContainer', 'configuredReadOnlyMode' ];
 	}
 
 	protected function getOverriddenMockValueForParam( ReflectionParameter $param ) {
@@ -43,12 +41,6 @@ class UserGroupManagerFactoryTest extends MediaWikiUnitTestCase {
 			$mock = $this->createNoOpMock( ILBFactory::class, [ 'getMainLB' ] );
 			$mock->method( 'getMainLB' )
 				->willReturn( $this->createNoOpMock( ILoadBalancer::class ) );
-			return [ $mock ];
-		}
-		if ( $param->getType() && $param->getType()->getName() === JobQueueGroupFactory::class ) {
-			$mock = $this->createNoOpMock( JobQueueGroupFactory::class, [ 'makeJobQueueGroup' ] );
-			$mock->method( 'makeJobQueueGroup' )
-				->willReturn( $this->createNoOpMock( JobQueueGroup::class ) );
 			return [ $mock ];
 		}
 		return [];

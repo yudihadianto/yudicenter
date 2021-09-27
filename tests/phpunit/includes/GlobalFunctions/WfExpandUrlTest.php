@@ -7,109 +7,144 @@ class WfExpandUrlTest extends MediaWikiIntegrationTestCase {
 	/**
 	 * @dataProvider provideExpandableUrls
 	 */
-	public function testWfExpandUrl( string $input, array $conf,
-		string $currentProto, $defaultProto, string $expected
+	public function testWfExpandUrl( $fullUrl, $shortUrl, $defaultProto,
+		$server, $canServer, $httpsMode, $httpsPort, $message
 	) {
-		$this->setMwGlobals( $conf );
-		$this->setRequest( new FauxRequest( [], false, null, $currentProto ) );
-		$this->assertEquals( $expected, wfExpandUrl( $input, $defaultProto ) );
+		// Fake $wgServer, $wgCanonicalServer and $wgRequest->getProtocol()
+		// fake edit to fake globals
+		$this->setMwGlobals( [
+			'wgServer' => $server,
+			'wgCanonicalServer' => $canServer,
+			'wgHttpsPort' => $httpsPort
+		] );
+		$this->setRequest( new FauxRequest( [], false, null, $httpsMode ? 'https' : 'http' ) );
+
+		$this->assertEquals( $fullUrl, wfExpandUrl( $shortUrl, $defaultProto ), $message );
 	}
 
+	/**
+	 * Provider of URL examples for testing wfExpandUrl()
+	 *
+	 * @return array
+	 */
 	public static function provideExpandableUrls() {
 		$modes = [ 'http', 'https' ];
 		$servers = [
-			'http://example.com',
-			'https://example.com',
-			'//example.com',
+			'http' => 'http://example.com',
+			'https' => 'https://example.com',
+			'protocol-relative' => '//example.com'
 		];
 		$defaultProtos = [
 			'http' => PROTO_HTTP,
 			'https' => PROTO_HTTPS,
 			'protocol-relative' => PROTO_RELATIVE,
 			'current' => PROTO_CURRENT,
-			'canonical' => PROTO_CANONICAL,
+			'canonical' => PROTO_CANONICAL
 		];
 
-		foreach ( $modes as $currentProto ) {
-			foreach ( $servers as $server ) {
+		foreach ( $modes as $mode ) {
+			$httpsMode = $mode == 'https';
+			foreach ( $servers as $serverDesc => $server ) {
 				foreach ( $modes as $canServerMode ) {
 					$canServer = "$canServerMode://example2.com";
-					$conf = [
-						'wgServer' => $server,
-						'wgCanonicalServer' => $canServer,
-						'wgHttpsPort' => 443,
-					];
 					foreach ( $defaultProtos as $protoDesc => $defaultProto ) {
-						$case = "current: $currentProto, default: $protoDesc, server: $server, canonical: $canServer";
-						yield "No-op fully-qualified http URL ($case)" => [
-							'http://example.com',
-							$conf, $currentProto, $defaultProto,
-							'http://example.com',
+						yield [
+							'http://example.com', 'http://example.com',
+							$defaultProto, $server, $canServer, $httpsMode, 443,
+							"Testing fully qualified http URLs (no need to expand) "
+								. "(defaultProto: $protoDesc , wgServer: $server, "
+								. "wgCanonicalServer: $canServer, current request protocol: $mode )"
 						];
-						yield "No-op fully-qualified https URL ($case)" => [
-							'https://example.com',
-							$conf, $currentProto, $defaultProto,
-							'https://example.com',
+						yield [
+							'https://example.com', 'https://example.com',
+							$defaultProto, $server, $canServer, $httpsMode, 443,
+							"Testing fully qualified https URLs (no need to expand) "
+								. "(defaultProto: $protoDesc , wgServer: $server, "
+								. "wgCanonicalServer: $canServer, current request protocol: $mode )"
 						];
-						yield "No-op rootless path-only URL ($case)" => [
-							"wiki/FooBar",
-							$conf, $currentProto, $defaultProto,
-							'wiki/FooBar',
+						# Would be nice to support this, see fixme on wfExpandUrl()
+						yield [
+							"wiki/FooBar", 'wiki/FooBar',
+							$defaultProto, $server, $canServer, $httpsMode, 443,
+							"Test non-expandable relative URLs (defaultProto: $protoDesc, "
+								. "wgServer: $server, wgCanonicalServer: $canServer, "
+								. "current request protocol: $mode )"
 						];
 
 						// Determine expected protocol
-						if ( $protoDesc === 'protocol-relative' ) {
+						if ( $protoDesc == 'protocol-relative' ) {
 							$p = '';
-						} elseif ( $protoDesc === 'current' ) {
-							$p = "$currentProto:";
-						} elseif ( $protoDesc === 'canonical' ) {
+						} elseif ( $protoDesc == 'current' ) {
+							$p = "$mode:";
+						} elseif ( $protoDesc == 'canonical' ) {
 							$p = "$canServerMode:";
 						} else {
 							$p = $protoDesc . ':';
 						}
-						yield "Expand protocol-relative URL ($case)" => [
-							'//wikipedia.org',
-							$conf, $currentProto, $defaultProto,
-							"$p//wikipedia.org",
-						];
-
 						// Determine expected server name
-						if ( $protoDesc === 'canonical' ) {
+						if ( $protoDesc == 'canonical' ) {
 							$srv = $canServer;
-						} elseif ( $server === '//example.com' ) {
+						} elseif ( $serverDesc == 'protocol-relative' ) {
 							$srv = $p . $server;
 						} else {
 							$srv = $server;
 						}
-						yield "Expand path that starts with slash ($case)" => [
-							'/wiki/FooBar',
-							$conf, $currentProto, $defaultProto,
+
+						yield [
+							"$p//wikipedia.org", '//wikipedia.org',
+							$defaultProto, $server, $canServer, $httpsMode, 443,
+							"Test protocol-relative URL (defaultProto: $protoDesc, "
+								. "wgServer: $server, wgCanonicalServer: $canServer, "
+								. "current request protocol: $mode )"
+						];
+						yield [
 							"$srv/wiki/FooBar",
+							'/wiki/FooBar',
+							$defaultProto,
+							$server,
+							$canServer,
+							$httpsMode,
+							443,
+							"Testing expanding URL beginning with / (defaultProto: $protoDesc, "
+								. "wgServer: $server, wgCanonicalServer: $canServer, "
+								. "current request protocol: $mode )"
 						];
 					}
 				}
 			}
 		}
 
-		$confRel111 = [
-			'wgServer' => '//wiki.example.com',
-			'wgCanonicalServer' => 'http://wiki.example.com',
-			'wgHttpsPort' => 111,
-		];
-		yield "No-op foreign URL, ignore custom port config" => [
+		// Don't add HTTPS port to foreign URLs
+		yield [
 			'https://foreign.example.com/foo',
-			$confRel111, 'https', PROTO_HTTPS,
 			'https://foreign.example.com/foo',
+			PROTO_HTTPS,
+			'//wiki.example.com',
+			'http://wiki.example.com',
+			'https',
+			111,
+			"Don't add HTTPS port to foreign URLs"
 		];
-		yield "No-op foreign URL, preserve existing port" => [
+		yield [
 			'https://foreign.example.com:222/foo',
-			$confRel111, 'https', PROTO_HTTPS,
 			'https://foreign.example.com:222/foo',
+			PROTO_HTTPS,
+			'//wiki.example.com',
+			'http://wiki.example.com',
+			'https',
+			111,
+			"Don't overwrite HTTPS port of foreign URLs"
 		];
-		yield "Expand path with custom HTTPS port" => [
-			'/foo',
-			$confRel111, 'https', PROTO_HTTPS,
+		// Do add HTTPS port to local URLs
+		yield [
 			'https://wiki.example.com:111/foo',
+			'/foo',
+			PROTO_HTTPS,
+			'//wiki.example.com',
+			'http://wiki.example.com',
+			'https',
+			111,
+			"Do add HTTPS port to protocol-relative URLs"
 		];
 	}
 }

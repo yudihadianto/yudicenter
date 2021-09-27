@@ -19,10 +19,10 @@ class DatabaseSqliteRdbmsTest extends PHPUnit\Framework\TestCase {
 	private function getMockDb() {
 		$db = $this->getMockBuilder( DatabaseSqlite::class )
 			->disableOriginalConstructor()
-			->onlyMethods( [ 'open', 'query', 'addQuotes' ] )
+			->setMethods( [ 'open', 'query', 'addQuotes' ] )
 			->getMock();
 
-		$db->method( 'addQuotes' )->willReturnCallback(
+		$db->expects( $this->any() )->method( 'addQuotes' )->willReturnCallback(
 			static function ( $s ) {
 				return "'$s'";
 			}

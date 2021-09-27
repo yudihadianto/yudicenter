@@ -63,7 +63,7 @@ class RevisionSlots {
 	/**
 	 * @param SlotRecord[] $slots
 	 */
-	private function setSlotsInternal( array $slots ): void {
+	private function setSlotsInternal( array $slots ) {
 		Assert::parameterElementType( SlotRecord::class, $slots, '$slots' );
 
 		$this->slots = [];
@@ -90,7 +90,7 @@ class RevisionSlots {
 	 *        could not be lazy-loaded. See SlotRecord::getContent() for details.
 	 * @return Content
 	 */
-	public function getContent( $role ): Content {
+	public function getContent( $role ) {
 		// Return a copy to be safe. Immutable content objects return $this from copy().
 		return $this->getSlot( $role )->getContent()->copy();
 	}
@@ -105,16 +105,13 @@ class RevisionSlots {
 	 *        could not be lazy-loaded.
 	 * @return SlotRecord
 	 */
-	public function getSlot( $role ): SlotRecord {
+	public function getSlot( $role ) {
 		$slots = $this->getSlots();
 
 		if ( isset( $slots[$role] ) ) {
 			return $slots[$role];
 		} else {
-			throw new RevisionAccessException(
-				'No such slot: {role}',
-				[ 'role' => $role ]
-			);
+			throw new RevisionAccessException( 'No such slot: ' . $role );
 		}
 	}
 
@@ -125,7 +122,7 @@ class RevisionSlots {
 	 *
 	 * @return bool
 	 */
-	public function hasSlot( $role ): bool {
+	public function hasSlot( $role ) {
 		$slots = $this->getSlots();
 
 		return isset( $slots[$role] );
@@ -137,7 +134,7 @@ class RevisionSlots {
 	 *
 	 * @return string[]
 	 */
-	public function getSlotRoles(): array {
+	public function getSlotRoles() {
 		$slots = $this->getSlots();
 		return array_keys( $slots );
 	}
@@ -150,7 +147,7 @@ class RevisionSlots {
 	 *
 	 * @return int
 	 */
-	public function computeSize(): int {
+	public function computeSize() {
 		return array_reduce( $this->getPrimarySlots(), static function ( $accu, SlotRecord $slot ) {
 			return $accu + $slot->getSize();
 		}, 0 );
@@ -165,7 +162,7 @@ class RevisionSlots {
 	 *
 	 * @return SlotRecord[] revision slot/content rows, keyed by slot role name.
 	 */
-	public function getSlots(): array {
+	public function getSlots() {
 		if ( is_callable( $this->slots ) ) {
 			$slots = call_user_func( $this->slots );
 
@@ -192,7 +189,7 @@ class RevisionSlots {
 	 *
 	 * @return string
 	 */
-	public function computeSha1(): string {
+	public function computeSha1() {
 		$slots = $this->getPrimarySlots();
 		ksort( $slots );
 
@@ -215,7 +212,7 @@ class RevisionSlots {
 	 *
 	 * @return SlotRecord[]
 	 */
-	public function getOriginalSlots(): array {
+	public function getOriginalSlots() {
 		return array_filter(
 			$this->getSlots(),
 			static function ( SlotRecord $slot ) {
@@ -232,7 +229,7 @@ class RevisionSlots {
 	 *
 	 * @return SlotRecord[]
 	 */
-	public function getInheritedSlots(): array {
+	public function getInheritedSlots() {
 		return array_filter(
 			$this->getSlots(),
 			static function ( SlotRecord $slot ) {
@@ -247,7 +244,7 @@ class RevisionSlots {
 	 * @return SlotRecord[]
 	 * @since 1.36
 	 */
-	public function getPrimarySlots(): array {
+	public function getPrimarySlots() : array {
 		return array_filter(
 			$this->getSlots(),
 			static function ( SlotRecord $slot ) {
@@ -265,7 +262,7 @@ class RevisionSlots {
 	 *
 	 * @return bool
 	 */
-	public function hasSameContent( RevisionSlots $other ): bool {
+	public function hasSameContent( RevisionSlots $other ) {
 		if ( $other === $this ) {
 			return true;
 		}
@@ -300,7 +297,7 @@ class RevisionSlots {
 	 *
 	 * @return string[] a list of slot roles that are different.
 	 */
-	public function getRolesWithDifferentContent( RevisionSlots $other ): array {
+	public function getRolesWithDifferentContent( RevisionSlots $other ) {
 		if ( $other === $this ) {
 			return [];
 		}

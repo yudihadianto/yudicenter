@@ -19,7 +19,6 @@
  */
 
 use MediaWiki\MediaWikiServices;
-use MediaWiki\Page\PageReference;
 use Wikimedia\Assert\Assert;
 
 /**
@@ -29,14 +28,14 @@ use Wikimedia\Assert\Assert;
 class CdnCacheUpdate implements DeferrableUpdate, MergeableUpdate {
 	/** @var array[] List of (URL, rebound purge delay) tuples */
 	private $urlTuples = [];
-	/** @var array[] List of (PageReference, rebound purge delay) tuples */
-	private $pageTuples = [];
+	/** @var array[] List of (Title, rebound purge delay) tuples */
+	private $titleTuples = [];
 
 	/** @var int Maximum seconds of rebound purge delay (sanity) */
 	private const MAX_REBOUND_DELAY = 300;
 
 	/**
-	 * @param string[]|PageReference[] $targets Collection of URLs/titles to be purged from CDN
+	 * @param string[]|Title[] $targets Collection of URLs/titles to be purged from CDN
 	 * @param array $options Options map. Supports:
 	 *   - reboundDelay: how many seconds after the first purge to send a rebound purge.
 	 *      No rebound purge will be sent if this is not positive. [Default: 0]
@@ -48,8 +47,8 @@ class CdnCacheUpdate implements DeferrableUpdate, MergeableUpdate {
 		);
 
 		foreach ( $targets as $target ) {
-			if ( $target instanceof PageReference ) {
-				$this->pageTuples[] = [ $target, $delay ];
+			if ( $target instanceof Title ) {
+				$this->titleTuples[] = [ $target, $delay ];
 			} else {
 				$this->urlTuples[] = [ $target, $delay ];
 			}
@@ -62,20 +61,19 @@ class CdnCacheUpdate implements DeferrableUpdate, MergeableUpdate {
 		'@phan-var self $update';
 
 		$this->urlTuples = array_merge( $this->urlTuples, $update->urlTuples );
-		$this->pageTuples = array_merge( $this->pageTuples, $update->pageTuples );
+		$this->titleTuples = array_merge( $this->titleTuples, $update->titleTuples );
 	}
 
 	/**
 	 * Create an update object from an array of Title objects, or a TitleArray object
 	 *
-	 * @param PageReference[] $pages
+	 * @param Traversable|Title[] $titles
 	 * @param string[] $urls
-	 *
 	 * @return CdnCacheUpdate
 	 * @deprecated Since 1.35 Use HtmlCacheUpdater instead
 	 */
-	public static function newFromTitles( $pages, $urls = [] ) {
-		return new CdnCacheUpdate( array_merge( $pages, $urls ) );
+	public static function newFromTitles( $titles, $urls = [] ) {
+		return new CdnCacheUpdate( array_merge( $titles, $urls ) );
 	}
 
 	public function doUpdate() {
@@ -162,12 +160,12 @@ class CdnCacheUpdate implements DeferrableUpdate, MergeableUpdate {
 	 */
 	private function resolveReboundDelayByUrl() {
 		$services = MediaWikiServices::getInstance();
-		/** @var PageReference $page */
+		/** @var Title $title */
 
 		// Avoid multiple queries for HtmlCacheUpdater::getUrls() call
 		$lb = $services->getLinkBatchFactory()->newLinkBatch();
-		foreach ( $this->pageTuples as list( $page, $delay ) ) {
-			$lb->addObj( $page );
+		foreach ( $this->titleTuples as list( $title, $delay ) ) {
+			$lb->addObj( $title );
 		}
 		$lb->execute();
 
@@ -175,8 +173,8 @@ class CdnCacheUpdate implements DeferrableUpdate, MergeableUpdate {
 
 		// Resolve the titles into CDN URLs
 		$htmlCacheUpdater = $services->getHtmlCacheUpdater();
-		foreach ( $this->pageTuples as list( $page, $delay ) ) {
-			foreach ( $htmlCacheUpdater->getUrls( $page ) as $url ) {
+		foreach ( $this->titleTuples as list( $title, $delay ) ) {
+			foreach ( $htmlCacheUpdater->getUrls( $title ) as $url ) {
 				// Use the highest rebound for duplicate URLs in order to handle the most lag
 				$reboundDelayByUrl[$url] = max( $reboundDelayByUrl[$url] ?? 0, $delay );
 			}
@@ -230,9 +228,9 @@ class CdnCacheUpdate implements DeferrableUpdate, MergeableUpdate {
 		// Get sequential trx IDs for packet loss counting
 		$idGenerator = MediaWikiServices::getInstance()->getGlobalIdGenerator();
 		$ids = $idGenerator->newSequentialPerNodeIDs(
-			'squidhtcppurge',
-			32,
-			count( $urls )
+			'squidhtcppurge', 32,
+			count( $urls ),
+			$idGenerator::QUICK_VOLATILE
 		);
 
 		foreach ( $urls as $url ) {

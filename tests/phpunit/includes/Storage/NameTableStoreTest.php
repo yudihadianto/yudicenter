@@ -13,8 +13,9 @@ use PHPUnit\Framework\MockObject\MockObject;
 use Psr\Log\NullLogger;
 use RuntimeException;
 use WANObjectCache;
-use Wikimedia\Rdbms\DBConnRef;
+use Wikimedia\Rdbms\IDatabase;
 use Wikimedia\Rdbms\LoadBalancer;
+use Wikimedia\Rdbms\MaintainableDBConnRef;
 use Wikimedia\TestingAccessWrapper;
 
 /**
@@ -24,7 +25,7 @@ use Wikimedia\TestingAccessWrapper;
  */
 class NameTableStoreTest extends MediaWikiIntegrationTestCase {
 
-	protected function setUp(): void {
+	protected function setUp() : void {
 		parent::setUp();
 		$this->tablesUsed[] = 'slot_roles';
 	}
@@ -46,12 +47,18 @@ class NameTableStoreTest extends MediaWikiIntegrationTestCase {
 	}
 
 	/**
-	 * @param DBConnRef $db
+	 * @param IDatabase $db
 	 * @return LoadBalancer
 	 */
 	private function getMockLoadBalancer( $db ) {
-		$mock = $this->createMock( LoadBalancer::class );
-		$mock->method( 'getConnectionRef' )->willReturn( $db );
+		$mock = $this->getMockBuilder( LoadBalancer::class )
+			->disableOriginalConstructor()
+			->getMock();
+		$mock->expects( $this->any() )
+			->method( 'getConnectionRef' )
+			->willReturnCallback( static function ( $i ) use ( $mock, $db ) {
+				return new MaintainableDBConnRef( $mock, $db, $i );
+			} );
 		return $mock;
 	}
 
@@ -59,7 +66,7 @@ class NameTableStoreTest extends MediaWikiIntegrationTestCase {
 	 * @param null $insertCalls
 	 * @param null $selectCalls
 	 *
-	 * @return MockObject&DBConnRef
+	 * @return MockObject|IDatabase
 	 */
 	private function getProxyDb( $insertCalls = null, $selectCalls = null ) {
 		$proxiedMethods = [
@@ -76,7 +83,9 @@ class NameTableStoreTest extends MediaWikiIntegrationTestCase {
 			'rollback' => null,
 			'commit' => null,
 		];
-		$mock = $this->createMock( DBConnRef::class );
+		$mock = $this->getMockBuilder( IDatabase::class )
+			->disableOriginalConstructor()
+			->getMock();
 		foreach ( $proxiedMethods as $method => $count ) {
 			$mock->expects( is_int( $count ) ? $this->exactly( $count ) : $this->any() )
 				->method( $method )
@@ -379,7 +388,7 @@ class NameTableStoreTest extends MediaWikiIntegrationTestCase {
 
 		$db = $this->getProxyDb( 2 );
 		$db->method( 'insert' )
-			->willReturnCallback( static function () use ( &$insertCalls ) {
+			->willReturnCallback( static function () use ( &$insertCalls, $db ) {
 				$insertCalls++;
 				switch ( $insertCalls ) {
 					case 1:
@@ -396,6 +405,8 @@ class NameTableStoreTest extends MediaWikiIntegrationTestCase {
 			->getMock();
 		$lb->method( 'getConnectionRef' )
 			->willReturn( $db );
+		$lb->method( 'resolveDomainID' )
+			->willReturnArgument( 0 );
 
 		// Two instances hitting the real database using separate caches.
 		$store1 = new NameTableStore(
@@ -438,8 +449,7 @@ class NameTableStoreTest extends MediaWikiIntegrationTestCase {
 		$this->db->onTransactionResolution(
 			static function () use ( $store1, &$quuxId ) {
 				$quuxId = $store1->acquireId( 'quux' );
-			},
-			__METHOD__
+			}
 		);
 
 		$store1->acquireId( 'foo' );

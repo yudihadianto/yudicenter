@@ -31,14 +31,6 @@ class WinCacheBagOStuff extends MediumSpecificBagOStuff {
 	public function __construct( array $params = [] ) {
 		$params['segmentationSize'] = $params['segmentationSize'] ?? INF;
 		parent::__construct( $params );
-
-		if ( PHP_SAPI === 'cli' ) {
-			$this->attrMap[self::ATTR_DURABILITY] = ini_get( 'wincache.enablecli' )
-				? self::QOS_DURABILITY_SCRIPT
-				: self::QOS_DURABILITY_NONE;
-		} else {
-			$this->attrMap[self::ATTR_DURABILITY] = self::QOS_DURABILITY_SERVICE;
-		}
 	}
 
 	protected function doGet( $key, $flags = 0, &$casToken = null ) {
@@ -82,8 +74,7 @@ class WinCacheBagOStuff extends MediumSpecificBagOStuff {
 	}
 
 	protected function doSet( $key, $value, $exptime = 0, $flags = 0 ) {
-		$ttl = $this->getExpirationAsTTL( $exptime );
-		$result = wincache_ucache_set( $key, $this->getSerialized( $value, $key ), $ttl );
+		$result = wincache_ucache_set( $key, $this->getSerialized( $value, $key ), $exptime );
 
 		// false positive, wincache_ucache_set returns an empty array
 		// in some circumstances.
@@ -96,8 +87,7 @@ class WinCacheBagOStuff extends MediumSpecificBagOStuff {
 			return false; // avoid warnings
 		}
 
-		$ttl = $this->getExpirationAsTTL( $exptime );
-		$result = wincache_ucache_add( $key, $this->getSerialized( $value, $key ), $ttl );
+		$result = wincache_ucache_add( $key, $this->getSerialized( $value, $key ), $exptime );
 
 		// false positive, wincache_ucache_add returns an empty array
 		// in some circumstances.

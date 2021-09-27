@@ -91,6 +91,7 @@ class ParserOptions {
 	 * @var array
 	 */
 	private static $callbacks = [
+		'currentRevisionCallback' => true,
 		'currentRevisionRecordCallback' => true,
 		'templateCallback' => true,
 		'speculativeRevIdCallback' => true,
@@ -164,15 +165,6 @@ class ParserOptions {
 	}
 
 	/**
-	 * Resets lazy loaded options to null in the provided $options array
-	 * @param array $options
-	 * @return array
-	 */
-	private function nullifyLazyOption( array $options ): array {
-		return array_fill_keys( array_keys( self::getLazyOptions() ), null ) + $options;
-	}
-
-	/**
 	 * Get lazy-loaded options.
 	 *
 	 * This array should be initialised by the constructor. The return type
@@ -184,11 +176,6 @@ class ParserOptions {
 	 * @return array
 	 */
 	public static function getLazyOptions(): array {
-		// Trigger a call to the 'ParserOptionsRegister' hook if it hasn't
-		// already been called.
-		if ( self::$lazyOptions === null ) {
-			self::getDefaults();
-		}
 		return self::$lazyOptions;
 	}
 
@@ -611,23 +598,19 @@ class ParserOptions {
 
 	/**
 	 * Thumb size preferred by the user.
-	 * @deprecated since 1.37. Stub threshold feature has been removed. See T284917.
 	 * @return int
 	 */
 	public function getStubThreshold() {
-		wfDeprecated( __METHOD__, '1.37' );
-		return 0;
+		return $this->getOption( 'stubthreshold' );
 	}
 
 	/**
 	 * Thumb size preferred by the user.
-	 * @deprecated since 1.37. Stub threshold feature has been removed. See T284917.
 	 * @param int|null $x New value (null is no change)
 	 * @return int Old value
 	 */
 	public function setStubThreshold( $x ) {
-		wfDeprecated( __METHOD__, '1.37' );
-		return 0;
+		return $this->setOptionLegacy( 'stubthreshold', $x );
 	}
 
 	/**
@@ -712,8 +695,7 @@ class ParserOptions {
 	 * @return string
 	 */
 	private static function initDateFormat( ParserOptions $popt ) {
-		$userFactory = MediaWikiServices::getInstance()->getUserFactory();
-		return $userFactory->newFromUserIdentity( $popt->getUserIdentity() )->getDatePreference();
+		return $popt->getUser()->getDatePreference();
 	}
 
 	/**
@@ -860,12 +842,80 @@ class ParserOptions {
 
 	/**
 	 * Callback for current revision fetching; first argument to call_user_func().
+	 * @deprecated since 1.35, use getCurrentRevisionRecordCallback
+	 * @since 1.24
+	 * @return callable
+	 */
+	public function getCurrentRevisionCallback() {
+		wfDeprecated( __METHOD__, '1.35' );
+		$revCb = $this->getOption( 'currentRevisionCallback' );
+
+		// As a temporary measure, while both currentRevisionCallback and
+		// currentRevisionRecordCallback are supported, retrieving one that is
+		// not set first checks if the other is set, so that the end result works
+		// regardless of which setter was used, since  one extension may set a
+		// RevisionCallback and another may ask for the RevisionRecordCallback
+		if ( $revCb === [ Parser::class, 'statelessFetchRevision' ] ) {
+			// currentRevisionCallback is set to the default, check if
+			// currentRevisionRecordCallback is set (and not the default)
+			$revRecordCb = $this->getOption( 'currentRevisionRecordCallback' );
+			if ( $revRecordCb !== [ Parser::class, 'statelessFetchRevisionRecord' ] ) {
+				// currentRevisionRecordCallback is set and not the default,
+				// convert it
+				$revCb = static function ( Title $title, $parser = false ) use ( $revRecordCb ) {
+					$revRecord = call_user_func(
+						$revRecordCb,
+						$title,
+						$parser ?: null
+					);
+					if ( $revRecord ) {
+						return new Revision( $revRecord );
+					}
+					return false;
+				};
+			}
+		}
+		return $revCb;
+	}
+
+	/**
+	 * Callback for current revision fetching; first argument to call_user_func().
 	 * @internal
 	 * @since 1.35
 	 * @return callable
 	 */
 	public function getCurrentRevisionRecordCallback() {
-		return $this->getOption( 'currentRevisionRecordCallback' );
+		$revRecordCb = $this->getOption( 'currentRevisionRecordCallback' );
+
+		// See explanation above
+		if ( $revRecordCb === [ Parser::class, 'statelessFetchRevisionRecord' ] ) {
+			// currentRevisionRecordCallback is set to the default, check if
+			// currentRevisionCallback is set (and not the default)
+			$revCb = $this->getOption( 'currentRevisionCallback' );
+			if ( $revCb !== [ Parser::class, 'statelessFetchRevision' ] ) {
+				// currentRevisionCallback is set and not the default, convert it
+				$revRecordCb = static function ( Title $title, $parser = null ) use ( $revCb ) {
+					$rev = call_user_func( $revCb, $title, $parser ?? false );
+					if ( $rev ) {
+						return $rev->getRevisionRecord();
+					}
+					return false;
+				};
+			}
+		}
+		return $revRecordCb;
+	}
+
+	/**
+	 * Callback for current revision fetching; first argument to call_user_func().
+	 * @deprecated since 1.35, use setCurrentRevisionRecordCallback
+	 * @since 1.24
+	 * @param callable|null $x New value (null is no change)
+	 * @return callable Old value
+	 */
+	public function setCurrentRevisionCallback( $x ) {
+		wfDeprecated( __METHOD__, '1.35' );
+		return $this->setOptionLegacy( 'currentRevisionCallback', $x );
 	}
 
 	/**
@@ -1029,11 +1079,9 @@ class ParserOptions {
 	/**
 	 * Current user
 	 * @deprecated since 1.36. Use ::getUserIdentity instead.
-	 * Hard deprecated since 1.37.
 	 * @return User
 	 */
 	public function getUser() {
-		wfDeprecated( __METHOD__, '1.36' );
 		return MediaWikiServices::getInstance()
 			->getUserFactory()
 			->newFromUserIdentity( $this->mUser );
@@ -1051,10 +1099,19 @@ class ParserOptions {
 	/**
 	 * @warning For interaction with the parser cache, use
 	 *  WikiPage::makeParserOptions() or ParserOptions::newCanonical() instead.
-	 * @param UserIdentity $user
+	 * @param UserIdentity|null $user (null falls back to $wgUser and is deprecated since 1.36)
 	 * @param Language|null $lang
 	 */
-	public function __construct( UserIdentity $user, $lang = null ) {
+	public function __construct( $user = null, $lang = null ) {
+		if ( $user === null ) {
+			wfDeprecatedMsg( __CLASS__ . ' being created without a UserIdentity object', '1.36' );
+			global $wgUser;
+			if ( $wgUser === null ) {
+				$user = new User;
+			} else {
+				$user = $wgUser;
+			}
+		}
 		if ( $lang === null ) {
 			global $wgLang;
 			StubObject::unstub( $wgLang );
@@ -1122,25 +1179,35 @@ class ParserOptions {
 	 * @since 1.30
 	 * @since 1.32 Added string and IContextSource as options for the first parameter
 	 * @since 1.36 UserIdentity is also allowed
-	 * @param IContextSource|string|UserIdentity $context
+	 * @param IContextSource|string|UserIdentity|null $context
 	 *  - If an IContextSource, the options are initialized based on the source's UserIdentity and Language.
 	 *  - If the string 'canonical', the options are initialized with an anonymous user and
 	 *    the content language.
-	 *  - If a UserIdentity, the options are initialized for that UserIdentity
+	 *  - If a UserIdentity or null, the options are initialized for that UserIdentity
+	 *      falls back to $wgUser if null; fallback is deprecated since 1.35
 	 *    'userlang' is taken from the $userLang parameter, defaulting to $wgLang if that is null.
 	 * @param Language|StubObject|null $userLang (see above)
 	 * @return ParserOptions
 	 */
-	public static function newCanonical( $context, $userLang = null ) {
+	public static function newCanonical( $context = null, $userLang = null ) {
 		if ( $context instanceof IContextSource ) {
 			$ret = self::newFromContext( $context );
 		} elseif ( $context === 'canonical' ) {
 			$ret = self::newFromAnon();
-		} elseif ( $context instanceof UserIdentity ) {
+		} elseif ( $context instanceof UserIdentity || $context === null ) {
+			if ( $context === null ) {
+				wfDeprecated( __METHOD__ . ' with no user', '1.35' );
+
+				// Avoid sending out another deprecation notice from calling
+				// __construct with null
+				// TODO remove support for this instead
+				global $wgUser;
+				$context = $wgUser;
+			}
 			$ret = new self( $context, $userLang );
 		} else {
 			throw new InvalidArgumentException(
-				'$context must be an IContextSource, the string "canonical", or a UserIdentity'
+				'$context must be an IContextSource, the string "canonical", a UserIdentity, or null'
 			);
 		}
 
@@ -1155,7 +1222,7 @@ class ParserOptions {
 	 * @internal For testing
 	 */
 	public static function clearStaticCache() {
-		if ( !defined( 'MW_PHPUNIT_TEST' ) && !defined( 'MW_PARSER_TEST' ) ) {
+		if ( !defined( 'MW_PHPUNIT_TEST' ) ) {
 			throw new RuntimeException( __METHOD__ . ' is just for testing' );
 		}
 		self::$defaults = null;
@@ -1197,6 +1264,7 @@ class ParserOptions {
 				'printable' => false,
 				'allowUnsafeRawHtml' => true,
 				'wrapclass' => 'mw-parser-output',
+				'currentRevisionCallback' => [ Parser::class, 'statelessFetchRevision' ],
 				'currentRevisionRecordCallback' => [ Parser::class, 'statelessFetchRevisionRecord' ],
 				'templateCallback' => [ Parser::class, 'statelessFetchTemplate' ],
 				'speculativeRevIdCallback' => null,
@@ -1238,6 +1306,7 @@ class ParserOptions {
 			'magicRFCLinks' => $wgEnableMagicLinks['RFC'],
 			'numberheadings' => $userOptionsLookup->getDefaultOption( 'numberheadings' ),
 			'thumbsize' => $userOptionsLookup->getDefaultOption( 'thumbsize' ),
+			'stubthreshold' => 0,
 			'userlang' => $contentLanguage,
 		];
 	}
@@ -1266,16 +1335,15 @@ class ParserOptions {
 	 * @param Language $lang
 	 */
 	private function initialiseFromUser( UserIdentity $user, Language $lang ) {
-		// Initially lazy loaded option defaults must not be taken into account,
-		// otherwise lazy loading does not work. Setting a default for lazy option
-		// is useful for matching with canonical options.
-		$this->options = $this->nullifyLazyOption( self::getDefaults() );
+		$this->options = self::getDefaults();
 
 		$this->mUser = $user;
 		$services = MediaWikiServices::getInstance();
 		$optionsLookup = $services->getUserOptionsLookup();
 		$this->options['numberheadings'] = $optionsLookup->getOption( $user, 'numberheadings' );
 		$this->options['thumbsize'] = $optionsLookup->getOption( $user, 'thumbsize' );
+		$userObj = $services->getUserFactory()->newFromUserIdentity( $user );
+		$this->options['stubthreshold'] = $userObj->getStubThreshold();
 		$this->options['userlang'] = $lang;
 	}
 
@@ -1458,14 +1526,9 @@ class ParserOptions {
 			$confstr .= $this->mExtraKey;
 		}
 
-		$user = $services->getUserFactory()->newFromUserIdentity( $this->getUserIdentity() );
 		// Give a chance for extensions to modify the hash, if they have
 		// extra options or other effects on the parser cache.
-		Hooks::runner()->onPageRenderingHash(
-			$confstr,
-			$user,
-			$forOptions
-		);
+		Hooks::runner()->onPageRenderingHash( $confstr, $this->getUser(), $forOptions );
 
 		// Make it a valid memcached key fragment
 		$confstr = str_replace( ' ', '_', $confstr );

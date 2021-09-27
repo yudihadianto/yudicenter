@@ -43,7 +43,7 @@ class FauxSearchResultSetTest extends MediaWikiUnitTestCase {
 	private function getTitleMock( $titleText ) {
 		$title = $this->getMockBuilder( Title::class )
 			->disableOriginalConstructor()
-			->onlyMethods( [ 'getPrefixedText' ] )
+			->setMethods( [ 'getPrefixedText' ] )
 			->getMock();
 		$title->method( 'getPrefixedText' )->willReturn( $titleText );
 		return $title;

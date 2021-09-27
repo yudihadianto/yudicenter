@@ -130,9 +130,6 @@ class SpecialListRedirects extends QueryPage {
 			);
 		} else {
 			$title = Title::makeTitle( $row->namespace, $row->title );
-			if ( !$title->canExist() ) {
-				return null;
-			}
 			$page = $this->wikiPageFactory->newFromTitle( $title );
 
 			return $page->getRedirectTarget();

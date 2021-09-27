@@ -21,8 +21,8 @@
  * @ingroup SpecialPage
  */
 
-use MediaWiki\Cache\LinkBatchFactory;
-use MediaWiki\Permissions\GroupPermissionsLookup;
+use MediaWiki\Permissions\PermissionManager;
+use MediaWiki\User\UserFactory;
 use Wikimedia\Rdbms\ILoadBalancer;
 
 class SpecialNewFiles extends IncludableSpecialPage {
@@ -32,32 +32,44 @@ class SpecialNewFiles extends IncludableSpecialPage {
 	/** @var string[] */
 	protected $mediaTypes;
 
-	/** @var GroupPermissionsLookup */
-	private $groupPermissionsLookup;
+	/** @var PermissionManager */
+	private $permissionManager;
+
+	/** @var ActorMigration */
+	private $actorMigration;
 
 	/** @var ILoadBalancer */
 	private $loadBalancer;
 
-	/** @var LinkBatchFactory */
-	private $linkBatchFactory;
+	/** @var UserCache */
+	private $userCache;
+
+	/** @var UserFactory */
+	private $userFactory;
 
 	/**
 	 * @param MimeAnalyzer $mimeAnalyzer
-	 * @param GroupPermissionsLookup $groupPermissionsLookup
+	 * @param PermissionManager $permissionManager
+	 * @param ActorMigration $actorMigration
 	 * @param ILoadBalancer $loadBalancer
-	 * @param LinkBatchFactory $linkBatchFactory
+	 * @param UserCache $userCache
+	 * @param UserFactory $userFactory
 	 */
 	public function __construct(
 		MimeAnalyzer $mimeAnalyzer,
-		GroupPermissionsLookup $groupPermissionsLookup,
+		PermissionManager $permissionManager,
+		ActorMigration $actorMigration,
 		ILoadBalancer $loadBalancer,
-		LinkBatchFactory $linkBatchFactory
+		UserCache $userCache,
+		UserFactory $userFactory
 	) {
 		parent::__construct( 'Newimages' );
-		$this->groupPermissionsLookup = $groupPermissionsLookup;
+		$this->permissionManager = $permissionManager;
+		$this->actorMigration = $actorMigration;
 		$this->loadBalancer = $loadBalancer;
 		$this->mediaTypes = $mimeAnalyzer->getMediaTypes();
-		$this->linkBatchFactory = $linkBatchFactory;
+		$this->userCache = $userCache;
+		$this->userFactory = $userFactory;
 	}
 
 	public function execute( $par ) {
@@ -130,9 +142,11 @@ class SpecialNewFiles extends IncludableSpecialPage {
 			$context,
 			$opts,
 			$this->getLinkRenderer(),
-			$this->groupPermissionsLookup,
+			$this->permissionManager,
+			$this->actorMigration,
 			$this->loadBalancer,
-			$this->linkBatchFactory
+			$this->userCache,
+			$this->userFactory
 		);
 
 		$out->addHTML( $pager->getBody() );

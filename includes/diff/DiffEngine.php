@@ -235,7 +235,6 @@ class DiffEngine {
 				while ( $start > 0 && $lines[$start - 1] == $lines[$i - 1] ) {
 					$changed[--$start] = 1;
 					$changed[--$i] = false;
-					// @phan-suppress-next-line PhanPluginLoopVariableReuse
 					while ( $start > 0 && $changed[$start - 1] ) {
 						$start--;
 					}

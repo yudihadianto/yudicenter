@@ -22,14 +22,14 @@
 namespace MediaWiki\Block;
 
 use MediaWiki\Permissions\Authority;
-use MediaWiki\User\UserIdentity;
+use User;
 
 /**
  * @since 1.36
  */
 interface UnblockUserFactory {
 	/**
-	 * @param UserIdentity|string $target
+	 * @param User|string $target
 	 * @param Authority $performer
 	 * @param string $reason
 	 * @param string[] $tags
@@ -41,5 +41,5 @@ interface UnblockUserFactory {
 		Authority $performer,
 		string $reason,
 		array $tags = []
-	): UnblockUser;
+	) : UnblockUser;
 }

@@ -8,4 +8,4 @@
  *
  */
 
-$fallback = 'nrf, fr';
+$fallback = 'fr';

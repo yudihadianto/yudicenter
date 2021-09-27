@@ -1,6 +1,6 @@
 <?php
 /**
- * Report number of jobs currently waiting in primary database.
+ * Report number of jobs currently waiting in master database.
  *
  * Based on runJobs.php
  *
@@ -29,7 +29,7 @@ require_once __DIR__ . '/Maintenance.php';
 
 /**
  * Maintenance script that reports the number of jobs currently waiting
- * in the primary database.
+ * in master database.
  *
  * @ingroup Maintenance
  */
@@ -43,7 +43,7 @@ class ShowJobs extends Maintenance {
 
 	public function __construct() {
 		parent::__construct();
-		$this->addDescription( 'Show number of jobs waiting in primary database' );
+		$this->addDescription( 'Show number of jobs waiting in master database' );
 		$this->addOption( 'group', 'Show number of jobs per job type' );
 		$this->addOption( 'list', 'Show a list of all jobs instead of counts' );
 		$this->addOption( 'type', 'Only show/count jobs of a given type', false, true );

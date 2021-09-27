@@ -17,7 +17,7 @@ use MediaWiki\Revision\RevisionRecord;
  */
 class ApiEditPageTest extends ApiTestCase {
 
-	protected function setUp(): void {
+	protected function setUp() : void {
 		parent::setUp();
 
 		$this->setMwGlobals( [
@@ -171,11 +171,7 @@ class ApiEditPageTest extends ApiTestCase {
 		$page = WikiPage::factory( Title::newFromText( $name ) );
 		$text = "==section 1==\ncontent 1\n==section 2==\ncontent2";
 		// Preload the page with some text
-		$page->doUserEditContent(
-			ContentHandler::makeContent( $text, $page->getTitle() ),
-			$this->getTestSysop()->getUser(),
-			'summary'
-		);
+		$page->doEditContent( ContentHandler::makeContent( $text, $page->getTitle() ), 'summary' );
 
 		list( $re ) = $this->doApiRequestWithToken( [
 			'action' => 'edit',
@@ -250,6 +246,7 @@ class ApiEditPageTest extends ApiTestCase {
 	 * Ensure we can edit through a redirect, if adding a section
 	 */
 	public function testEdit_redirect() {
+		$this->hideDeprecated( 'WikiPage::getRevision' );
 		static $count = 0;
 		$count++;
 
@@ -263,34 +260,19 @@ class ApiEditPageTest extends ApiTestCase {
 		$rpage = WikiPage::factory( $rtitle );
 
 		// base edit for content
-		$page->doUserEditContent(
-			new WikitextContent( "Foo" ),
-			self::$users['sysop']->getUser(),
-			"testing 1",
-			EDIT_NEW,
-			false
-		);
+		$page->doEditContent( new WikitextContent( "Foo" ),
+			"testing 1", EDIT_NEW, false, self::$users['sysop']->getUser() );
 		$this->forceRevisionDate( $page, '20120101000000' );
 		$baseTime = $page->getRevisionRecord()->getTimestamp();
 
 		// base edit for redirect
-		$rpage->doUserEditContent(
-			new WikitextContent( "#REDIRECT [[$name]]" ),
-			self::$users['sysop']->getUser(),
-			"testing 1",
-			EDIT_NEW,
-			false
-		);
+		$rpage->doEditContent( new WikitextContent( "#REDIRECT [[$name]]" ),
+			"testing 1", EDIT_NEW, false, self::$users['sysop']->getUser() );
 		$this->forceRevisionDate( $rpage, '20120101000000' );
 
 		// conflicting edit to redirect
-		$rpage->doUserEditContent(
-			new WikitextContent( "#REDIRECT [[$name]]\n\n[[Category:Test]]" ),
-			self::$users['uploader']->getUser(),
-			"testing 2",
-			EDIT_UPDATE,
-			$page->getLatest()
-		);
+		$rpage->doEditContent( new WikitextContent( "#REDIRECT [[$name]]\n\n[[Category:Test]]" ),
+			"testing 2", EDIT_UPDATE, $page->getLatest(), self::$users['uploader']->getUser() );
 		$this->forceRevisionDate( $rpage, '20120101020202' );
 
 		// try to save edit, following the redirect
@@ -324,34 +306,19 @@ class ApiEditPageTest extends ApiTestCase {
 		$rpage = WikiPage::factory( $rtitle );
 
 		// base edit for content
-		$page->doUserEditContent(
-			new WikitextContent( "Foo" ),
-			self::$users['sysop']->getUser(),
-			"testing 1",
-			EDIT_NEW,
-			false
-		);
+		$page->doEditContent( new WikitextContent( "Foo" ),
+			"testing 1", EDIT_NEW, false, self::$users['sysop']->getUser() );
 		$this->forceRevisionDate( $page, '20120101000000' );
 		$baseTime = $page->getRevisionRecord()->getTimestamp();
 
 		// base edit for redirect
-		$rpage->doUserEditContent(
-			new WikitextContent( "#REDIRECT [[$name]]" ),
-			self::$users['sysop']->getUser(),
-			"testing 1",
-			EDIT_NEW,
-			false
-		);
+		$rpage->doEditContent( new WikitextContent( "#REDIRECT [[$name]]" ),
+			"testing 1", EDIT_NEW, false, self::$users['sysop']->getUser() );
 		$this->forceRevisionDate( $rpage, '20120101000000' );
 
 		// conflicting edit to redirect
-		$rpage->doUserEditContent(
-			new WikitextContent( "#REDIRECT [[$name]]\n\n[[Category:Test]]" ),
-			self::$users['uploader']->getUser(),
-			"testing 2",
-			EDIT_UPDATE,
-			$page->getLatest()
-		);
+		$rpage->doEditContent( new WikitextContent( "#REDIRECT [[$name]]\n\n[[Category:Test]]" ),
+			"testing 2", EDIT_UPDATE, $page->getLatest(), self::$users['uploader']->getUser() );
 		$this->forceRevisionDate( $rpage, '20120101020202' );
 
 		// try to save edit, following the redirect but without creating a section
@@ -381,24 +348,14 @@ class ApiEditPageTest extends ApiTestCase {
 		$page = WikiPage::factory( $title );
 
 		// base edit
-		$page->doUserEditContent(
-			new WikitextContent( "Foo" ),
-			self::$users['sysop']->getUser(),
-			"testing 1",
-			EDIT_NEW,
-			false
-		);
+		$page->doEditContent( new WikitextContent( "Foo" ),
+			"testing 1", EDIT_NEW, false, self::$users['sysop']->getUser() );
 		$this->forceRevisionDate( $page, '20120101000000' );
 		$baseId = $page->getRevisionRecord()->getId();
 
 		// conflicting edit
-		$page->doUserEditContent(
-			new WikitextContent( "Foo bar" ),
-			self::$users['uploader']->getUser(),
-			"testing 2",
-			EDIT_UPDATE,
-			$page->getLatest()
-		);
+		$page->doEditContent( new WikitextContent( "Foo bar" ),
+			"testing 2", EDIT_UPDATE, $page->getLatest(), self::$users['uploader']->getUser() );
 		$this->forceRevisionDate( $page, '20120101020202' );
 
 		// try to save edit, expect conflict
@@ -427,24 +384,14 @@ class ApiEditPageTest extends ApiTestCase {
 		$page = WikiPage::factory( $title );
 
 		// base edit
-		$page->doUserEditContent(
-			new WikitextContent( "Foo" ),
-			self::$users['sysop']->getUser(),
-			"testing 1",
-			EDIT_NEW,
-			false
-		);
+		$page->doEditContent( new WikitextContent( "Foo" ),
+			"testing 1", EDIT_NEW, false, self::$users['sysop']->getUser() );
 		$this->forceRevisionDate( $page, '20120101000000' );
 		$baseTime = $page->getRevisionRecord()->getTimestamp();
 
 		// conflicting edit
-		$page->doUserEditContent(
-			new WikitextContent( "Foo bar" ),
-			self::$users['uploader']->getUser(),
-			"testing 2",
-			EDIT_UPDATE,
-			$page->getLatest()
-		);
+		$page->doEditContent( new WikitextContent( "Foo bar" ),
+			"testing 2", EDIT_UPDATE, $page->getLatest(), self::$users['uploader']->getUser() );
 		$this->forceRevisionDate( $page, '20120101020202' );
 
 		// try to save edit, expect conflict
@@ -476,24 +423,14 @@ class ApiEditPageTest extends ApiTestCase {
 		$page = WikiPage::factory( $title );
 
 		// base edit
-		$page->doUserEditContent(
-			new WikitextContent( "Foo" ),
-			self::$users['sysop']->getUser(),
-			"testing 1",
-			EDIT_NEW,
-			false
-		);
+		$page->doEditContent( new WikitextContent( "Foo" ),
+			"testing 1", EDIT_NEW, false, self::$users['sysop']->getUser() );
 		$this->forceRevisionDate( $page, '20120101000000' );
 		$baseTime = $page->getRevisionRecord()->getTimestamp();
 
 		// conflicting edit
-		$page->doUserEditContent(
-			new WikitextContent( "Foo bar" ),
-			self::$users['uploader']->getUser(),
-			"testing 2",
-			EDIT_UPDATE,
-			$page->getLatest()
-		);
+		$page->doEditContent( new WikitextContent( "Foo bar" ),
+			"testing 2", EDIT_UPDATE, $page->getLatest(), self::$users['uploader']->getUser() );
 		$this->forceRevisionDate( $page, '20120101020202' );
 
 		// try to save edit, expect no conflict
@@ -529,33 +466,18 @@ class ApiEditPageTest extends ApiTestCase {
 		$rpage = WikiPage::factory( $rtitle );
 
 		// base edit for content
-		$page->doUserEditContent(
-			new WikitextContent( "Foo" ),
-			self::$users['sysop']->getUser(),
-			"testing 1",
-			EDIT_NEW,
-			false
-		);
+		$page->doEditContent( new WikitextContent( "Foo" ),
+			"testing 1", EDIT_NEW, false, self::$users['sysop']->getUser() );
 		$this->forceRevisionDate( $page, '20120101000000' );
 
 		// base edit for redirect
-		$rpage->doUserEditContent(
-			new WikitextContent( "#REDIRECT [[$name]]" ),
-			self::$users['sysop']->getUser(),
-			"testing 1",
-			EDIT_NEW,
-			false
-		);
+		$rpage->doEditContent( new WikitextContent( "#REDIRECT [[$name]]" ),
+			"testing 1", EDIT_NEW, false, self::$users['sysop']->getUser() );
 		$this->forceRevisionDate( $rpage, '20120101000000' );
 
 		// new edit to content
-		$page->doUserEditContent(
-			new WikitextContent( "Foo bar" ),
-			self::$users['uploader']->getUser(),
-			"testing 2",
-			EDIT_UPDATE,
-			$page->getLatest()
-		);
+		$page->doEditContent( new WikitextContent( "Foo bar" ),
+			"testing 2", EDIT_UPDATE, $page->getLatest(), self::$users['uploader']->getUser() );
 		$this->forceRevisionDate( $rpage, '20120101020202' );
 
 		// try to save edit; should work, following the redirect.
@@ -576,7 +498,7 @@ class ApiEditPageTest extends ApiTestCase {
 	 * @param string|int $timestamp
 	 */
 	protected function forceRevisionDate( WikiPage $page, $timestamp ) {
-		$dbw = wfGetDB( DB_PRIMARY );
+		$dbw = wfGetDB( DB_MASTER );
 
 		$dbw->update( 'revision',
 			[ 'rev_timestamp' => $dbw->timestamp( $timestamp ) ],
@@ -779,7 +701,7 @@ class ApiEditPageTest extends ApiTestCase {
 		$revId3 = $this->editPage( $name, '3' )->value['revision-record']->getId();
 
 		// Make the middle revision disappear
-		$dbw = wfGetDB( DB_PRIMARY );
+		$dbw = wfGetDB( DB_MASTER );
 		$dbw->delete( 'revision', [ 'rev_id' => $revId2 ], __METHOD__ );
 		$dbw->update( 'revision', [ 'rev_parent_id' => $revId1 ],
 			[ 'rev_id' => $revId3 ], __METHOD__ );
@@ -845,7 +767,7 @@ class ApiEditPageTest extends ApiTestCase {
 		$revId1 = $this->editPage( $name, '1' )->value['revision-record']->getId();
 
 		// Now monkey with the timestamp
-		$dbw = wfGetDB( DB_PRIMARY );
+		$dbw = wfGetDB( DB_MASTER );
 		$dbw->update(
 			'revision',
 			[ 'rev_timestamp' => $dbw->timestamp( time() - 86400 ) ],
@@ -1425,7 +1347,6 @@ class ApiEditPageTest extends ApiTestCase {
 	public function testEditWatch() {
 		$name = 'Help:' . ucfirst( __FUNCTION__ );
 		$user = self::$users['sysop']->getUser();
-		$watchlistManager = $this->getServiceContainer()->getWatchlistManager();
 
 		$this->doApiRequestWithToken( [
 			'action' => 'edit',
@@ -1437,8 +1358,8 @@ class ApiEditPageTest extends ApiTestCase {
 
 		$title = Title::newFromText( $name );
 		$this->assertTrue( $title->exists() );
-		$this->assertTrue( $watchlistManager->isWatched( $user, $title ) );
-		$this->assertTrue( $watchlistManager->isTempWatched( $user, $title ) );
+		$this->assertTrue( $user->isWatched( $title ) );
+		$this->assertTrue( $user->isTempWatched( $title ) );
 	}
 
 	public function testEditUnwatch() {
@@ -1446,11 +1367,10 @@ class ApiEditPageTest extends ApiTestCase {
 		$user = self::$users['sysop']->getUser();
 		$titleObj = Title::newFromText( $name );
 
-		$watchlistManager = $this->getServiceContainer()->getWatchlistManager();
-		$watchlistManager->addWatch( $user,  $titleObj );
+		$user->addWatch( $titleObj );
 
 		$this->assertFalse( $titleObj->exists() );
-		$this->assertTrue( $watchlistManager->isWatched( $user, $titleObj ) );
+		$this->assertTrue( $user->isWatched( $titleObj ) );
 
 		$this->doApiRequestWithToken( [
 			'action' => 'edit',
@@ -1460,7 +1380,7 @@ class ApiEditPageTest extends ApiTestCase {
 		] );
 
 		$this->assertTrue( $titleObj->exists() );
-		$this->assertFalse( $watchlistManager->isWatched( $user, $titleObj ) );
+		$this->assertFalse( $user->isWatched( $titleObj ) );
 	}
 
 	public function testEditWithTag() {
@@ -1475,7 +1395,7 @@ class ApiEditPageTest extends ApiTestCase {
 			'tags' => 'custom tag',
 		] )[0]['edit']['newrevid'];
 
-		$dbw = wfGetDB( DB_PRIMARY );
+		$dbw = wfGetDB( DB_MASTER );
 		$this->assertSame( 'custom tag', $dbw->selectField(
 			[ 'change_tag', 'change_tag_def' ],
 			'ctd_name',
@@ -1564,7 +1484,7 @@ class ApiEditPageTest extends ApiTestCase {
 
 		$block = new DatabaseBlock( [
 			'address' => self::$users['sysop']->getUser()->getName(),
-			'by' => self::$users['sysop']->getUser(),
+			'by' => self::$users['sysop']->getUser()->getId(),
 			'reason' => 'Capriciousness',
 			'timestamp' => '19370101000000',
 			'expiry' => 'infinity',
@@ -1643,7 +1563,7 @@ class ApiEditPageTest extends ApiTestCase {
 
 		$this->expectException( ApiUsageException::class );
 		$this->expectExceptionMessage(
-			'The content you supplied exceeds the article size limit of 1 kibibyte.'
+			'The content you supplied exceeds the article size limit of 1 kilobyte.'
 		);
 
 		$this->setMwGlobals( 'wgMaxArticleSize', 1 );
@@ -1703,26 +1623,16 @@ class ApiEditPageTest extends ApiTestCase {
 		$page = WikiPage::factory( $title );
 
 		// base edit, currently in Wikitext
-		$page->doUserEditContent(
-			new WikitextContent( "Foo" ),
-			self::$users['sysop']->getUser(),
-			"testing 1",
-			EDIT_NEW,
-			false
-		);
+		$page->doEditContent( new WikitextContent( "Foo" ),
+			"testing 1", EDIT_NEW, false, self::$users['sysop']->getUser() );
 		$this->forceRevisionDate( $page, '20120101000000' );
 		$baseId = $page->getRevisionRecord()->getId();
 
 		// Attempt edit in Javascript. This may happen, for instance, if we
 		// started editing the base content while it was in Javascript and
 		// before we save it was changed to Wikitext (base edit model).
-		$page->doUserEditContent(
-			new JavaScriptContent( "Bar" ),
-			self::$users['uploader']->getUser(),
-			"testing 2",
-			EDIT_UPDATE,
-			$page->getLatest()
-		);
+		$page->doEditContent( new JavaScriptContent( "Bar" ),
+			"testing 2", EDIT_UPDATE, $page->getLatest(), self::$users['uploader']->getUser() );
 		$this->forceRevisionDate( $page, '20120101020202' );
 
 		// ContentHanlder may throw exception if we attempt saving the above, so we will

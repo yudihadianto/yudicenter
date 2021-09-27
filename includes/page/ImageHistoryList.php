@@ -122,7 +122,8 @@ class ImageHistoryList extends ContextSource {
 		$timestamp = wfTimestamp( TS_MW, $file->getTimestamp() );
 		// @phan-suppress-next-line PhanUndeclaredMethod
 		$img = $iscur ? $file->getName() : $file->getArchiveName();
-		$uploader = $file->getUploader( File::FOR_THIS_USER, $user );
+		$userId = $file->getUser( 'id' );
+		$userText = $file->getUser( 'text' );
 		$description = $file->getDescription( File::FOR_THIS_USER, $user );
 
 		$local = $this->current->isLocal();
@@ -252,16 +253,18 @@ class ImageHistoryList extends ContextSource {
 		// Uploading user
 		$row .= '<td>';
 		// Hide deleted usernames
-		if ( $uploader && $local ) {
-			$row .= Linker::userLink( $uploader->getId(), $uploader->getName() );
-			$row .= '<span style="white-space: nowrap;">';
-			$row .= Linker::userToolLinks( $uploader->getId(), $uploader->getName() );
-			$row .= '</span>';
-		} elseif ( $uploader ) {
-			$row .= htmlspecialchars( $uploader->getName() );
-		} else {
+		if ( $file->isDeleted( File::DELETED_USER ) ) {
 			$row .= '<span class="history-deleted">'
 				. $this->msg( 'rev-deleted-user' )->escaped() . '</span>';
+		} else {
+			if ( $local ) {
+				$row .= Linker::userLink( $userId, $userText );
+				$row .= '<span style="white-space: nowrap;">';
+				$row .= Linker::userToolLinks( $userId, $userText );
+				$row .= '</span>';
+			} else {
+				$row .= htmlspecialchars( $userText );
+			}
 		}
 		$row .= '</td>';
 

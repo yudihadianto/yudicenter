@@ -3,7 +3,6 @@
 namespace MediaWiki\Search\SearchWidgets;
 
 use Category;
-use Html;
 use HtmlArmor;
 use MediaWiki\HookContainer\HookContainer;
 use MediaWiki\HookContainer\HookRunner;
@@ -18,7 +17,7 @@ use Title;
  *
  *  The Title
  *  some *highlighted* *text* about the search result
- *  5 KiB (651 words) - 12:40, 6 Aug 2016
+ *  5KB (651 words) - 12:40, 6 Aug 2016
  */
 class FullSearchResultWidget implements SearchResultWidget {
 	/** @var SpecialSearch */
@@ -55,7 +54,7 @@ class FullSearchResultWidget implements SearchResultWidget {
 		// non-readable pages. Note that hiding the entry entirely would
 		// screw up paging (really?).
 		if ( !$this->specialPage->getAuthority()->definitelyCan( 'read', $result->getTitle() ) ) {
-			return Html::rawElement( 'li', [], $link );
+			return "<li>{$link}</li>";
 		}
 
 		$redirect = $this->generateRedirectHtml( $result );
@@ -68,7 +67,7 @@ class FullSearchResultWidget implements SearchResultWidget {
 		list( $file, $desc, $thumb ) = $this->generateFileHtml( $result );
 		$snippet = $result->getTextSnippet();
 		if ( $snippet ) {
-			$extract = Html::rawElement( 'div', [ 'class' => 'searchresult' ], $snippet );
+			$extract = "<div class='searchresult'>$snippet</div>";
 		} else {
 			$extract = '';
 		}
@@ -99,34 +98,24 @@ class FullSearchResultWidget implements SearchResultWidget {
 		$meta = $this->buildMeta( $desc, $date );
 
 		if ( $thumb === null ) {
-			$html = Html::rawElement(
-				'div',
-				[ 'class' => 'mw-search-result-heading' ],
-				$joined
-			);
-			$html .= $extract . ' ' . $meta;
+			$html =
+				"<div class='mw-search-result-heading'>{$joined}</div>" .
+				"{$extract} {$meta}";
 		} else {
-			$tableCells = Html::rawElement(
-				'td',
-				[ 'style' => 'width: 120px; text-align: center; vertical-align: top' ],
-				$thumb
-			) . Html::rawElement(
-				'td',
-				[ 'style' => 'vertical-align: top' ],
-				"$joined $extract $meta"
-			);
-			$html = Html::rawElement(
-				'table',
-				[ 'class' => 'searchResultImage' ],
-				Html::rawElement(
-					'tr',
-					[],
-					$tableCells
-				)
-			);
+			$html =
+				"<table class='searchResultImage'>" .
+					"<tr>" .
+						"<td style='width: 120px; text-align: center; vertical-align: top'>" .
+							$thumb .
+						"</td>" .
+						"<td style='vertical-align: top'>" .
+							"{$joined} {$extract} {$meta}" .
+						"</td>" .
+					"</tr>" .
+				"</table>";
 		}
 
-		return Html::rawElement( 'li', [ 'class' => 'mw-search-result' ], $html );
+		return "<li class='mw-search-result'>{$html}</li>";
 	}
 
 	/**
@@ -257,11 +246,9 @@ class FullSearchResultWidget implements SearchResultWidget {
 		}
 
 		if ( $result->isFileMatch() ) {
-			$html = Html::rawElement(
-				'span',
-				[ 'class' => 'searchalttitle' ],
-				$this->specialPage->msg( 'search-file-match' )->escaped()
-			);
+			$html = "<span class='searchalttitle'>" .
+					$this->specialPage->msg( 'search-file-match' )->escaped() .
+				"</span>";
 		} else {
 			$html = '';
 		}

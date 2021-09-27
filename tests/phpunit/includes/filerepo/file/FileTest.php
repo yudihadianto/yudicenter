@@ -1,7 +1,5 @@
 <?php
 
-use MediaWiki\Page\PageIdentityValue;
-
 class FileTest extends MediaWikiMediaTestCase {
 
 	/**
@@ -42,11 +40,12 @@ class FileTest extends MediaWikiMediaTestCase {
 
 		$fileMock = $this->getMockBuilder( File::class )
 			->setConstructorArgs( [ 'fileMock', false ] )
-			->onlyMethods( [ 'getWidth' ] )
+			->setMethods( [ 'getWidth' ] )
 			->getMockForAbstractClass();
 
-		$fileMock->method( 'getWidth' )
-			->willReturn( $data['width'] );
+		$fileMock->expects( $this->any() )
+			->method( 'getWidth' )
+			->will( $this->returnValue( $data['width'] ) );
 
 		$this->assertEquals(
 			$data['expectedBucket'],
@@ -144,36 +143,42 @@ class FileTest extends MediaWikiMediaTestCase {
 
 		$repoMock = $this->getMockBuilder( FileRepo::class )
 			->setConstructorArgs( [ [ 'name' => 'repoMock', 'backend' => $backendMock ] ] )
-			->onlyMethods( [ 'fileExists', 'getLocalReference' ] )
+			->setMethods( [ 'fileExists', 'getLocalReference' ] )
 			->getMock();
 
 		$tempDir = wfTempDir();
 		$fsFile = new FSFile( 'fsFilePath' );
 
-		$repoMock->method( 'fileExists' )
-			->willReturn( true );
+		$repoMock->expects( $this->any() )
+			->method( 'fileExists' )
+			->will( $this->returnValue( true ) );
 
-		$repoMock->method( 'getLocalReference' )
-			->willReturn( $fsFile );
+		$repoMock->expects( $this->any() )
+			->method( 'getLocalReference' )
+			->will( $this->returnValue( $fsFile ) );
 
 		$handlerMock = $this->getMockBuilder( BitmapHandler::class )
-			->onlyMethods( [ 'supportsBucketing' ] )->getMock();
-		$handlerMock->method( 'supportsBucketing' )
-			->willReturn( $data['supportsBucketing'] );
+			->setMethods( [ 'supportsBucketing' ] )->getMock();
+		$handlerMock->expects( $this->any() )
+			->method( 'supportsBucketing' )
+			->will( $this->returnValue( $data['supportsBucketing'] ) );
 
 		$fileMock = $this->getMockBuilder( File::class )
 			->setConstructorArgs( [ 'fileMock', $repoMock ] )
-			->onlyMethods( [ 'getThumbnailBucket', 'getLocalRefPath', 'getHandler' ] )
+			->setMethods( [ 'getThumbnailBucket', 'getLocalRefPath', 'getHandler' ] )
 			->getMockForAbstractClass();
 
-		$fileMock->method( 'getThumbnailBucket' )
-			->willReturn( $data['thumbnailBucket'] );
+		$fileMock->expects( $this->any() )
+			->method( 'getThumbnailBucket' )
+			->will( $this->returnValue( $data['thumbnailBucket'] ) );
 
-		$fileMock->method( 'getLocalRefPath' )
-			->willReturn( 'localRefPath' );
+		$fileMock->expects( $this->any() )
+			->method( 'getLocalRefPath' )
+			->will( $this->returnValue( 'localRefPath' ) );
 
-		$fileMock->method( 'getHandler' )
-			->willReturn( $handlerMock );
+		$fileMock->expects( $this->any() )
+			->method( 'getHandler' )
+			->will( $this->returnValue( $handlerMock ) );
 
 		$reflection = new ReflectionClass( $fileMock );
 		$reflection_property = $reflection->getProperty( 'handler' );
@@ -257,43 +262,46 @@ class FileTest extends MediaWikiMediaTestCase {
 
 		$repoMock = $this->getMockBuilder( FileRepo::class )
 			->setConstructorArgs( [ [ 'name' => 'repoMock', 'backend' => $backendMock ] ] )
-			->onlyMethods( [ 'fileExists', 'getLocalReference' ] )
+			->setMethods( [ 'fileExists', 'getLocalReference' ] )
 			->getMock();
 
 		$fileMock = $this->getMockBuilder( File::class )
 			->setConstructorArgs( [ 'fileMock', $repoMock ] )
-			->onlyMethods( [ 'getWidth', 'getBucketThumbPath', 'makeTransformTmpFile',
+			->setMethods( [ 'getWidth', 'getBucketThumbPath', 'makeTransformTmpFile',
 				'generateAndSaveThumb', 'getHandler' ] )
 			->getMockForAbstractClass();
 
 		$handlerMock = $this->getMockBuilder( JpegHandler::class )
-			->onlyMethods( [ 'supportsBucketing' ] )->getMock();
-		$handlerMock->method( 'supportsBucketing' )
-			->willReturn( true );
+			->setMethods( [ 'supportsBucketing' ] )->getMock();
+		$handlerMock->expects( $this->any() )
+			->method( 'supportsBucketing' )
+			->will( $this->returnValue( true ) );
 
-		$fileMock->method( 'getHandler' )
-			->willReturn( $handlerMock );
+		$fileMock->expects( $this->any() )
+			->method( 'getHandler' )
+			->will( $this->returnValue( $handlerMock ) );
 
 		$reflectionMethod = new ReflectionMethod( File::class, 'generateBucketsIfNeeded' );
 		$reflectionMethod->setAccessible( true );
 
-		$fileMock->method( 'getWidth' )
-			->willReturn( $data['width'] );
+		$fileMock->expects( $this->any() )
+			->method( 'getWidth' )
+			->will( $this->returnValue( $data['width'] ) );
 
 		$fileMock->expects( $data['expectedGetBucketThumbPathCalls'] )
 			->method( 'getBucketThumbPath' );
 
 		$repoMock->expects( $data['expectedFileExistsCalls'] )
 			->method( 'fileExists' )
-			->willReturn( $data['fileExistsReturn'] );
+			->will( $this->returnValue( $data['fileExistsReturn'] ) );
 
 		$fileMock->expects( $data['expectedMakeTransformTmpFile'] )
 			->method( 'makeTransformTmpFile' )
-			->willReturn( $data['makeTransformTmpFileReturn'] );
+			->will( $this->returnValue( $data['makeTransformTmpFileReturn'] ) );
 
 		$fileMock->expects( $data['expectedGenerateAndSaveThumb'] )
 			->method( 'generateAndSaveThumb' )
-			->willReturn( $data['generateAndSaveThumbReturn'] );
+			->will( $this->returnValue( $data['generateAndSaveThumbReturn'] ) );
 
 		$this->assertEquals( $data['expectedResult'],
 			$reflectionMethod->invoke(
@@ -396,7 +404,7 @@ class FileTest extends MediaWikiMediaTestCase {
 	public function testGetDisplayWidthHeight( $dim, $expected ) {
 		$fileMock = $this->getMockBuilder( File::class )
 			->setConstructorArgs( [ 'fileMock', false ] )
-			->onlyMethods( [ 'getWidth', 'getHeight' ] )
+			->setMethods( [ 'getWidth', 'getHeight' ] )
 			->getMockForAbstractClass();
 
 		$fileMock->method( 'getWidth' )->willReturn( $dim[2] );
@@ -433,57 +441,5 @@ class FileTest extends MediaWikiMediaTestCase {
 				[ 0, 0 ]
 			],
 		];
-	}
-
-	public function provideNormalizeTitle() {
-		yield [ 'some name.jpg', 'Some_name.jpg' ];
-		yield [ new TitleValue( NS_FILE, 'Some_name.jpg' ), 'Some_name.jpg' ];
-		yield [ new TitleValue( NS_MEDIA, 'Some_name.jpg' ), 'Some_name.jpg' ];
-		yield [ new PageIdentityValue( 0, NS_FILE, 'Some_name.jpg', false ), 'Some_name.jpg' ];
-	}
-
-	/**
-	 * @covers File::normalizeTitle
-	 * @dataProvider provideNormalizeTitle
-	 */
-	public function testNormalizeTitle( $title, $expected ) {
-		$actual = File::normalizeTitle( $title );
-
-		$this->assertSame( NS_FILE, $actual->getNamespace() );
-		$this->assertSame( $expected, $actual->getDBkey() );
-	}
-
-	public function provideNormalizeTitleFails() {
-		yield [ '' ];
-		yield [ '#' ];
-		yield [ new TitleValue( NS_USER, 'Some_name.jpg' ) ];
-		yield [ new PageIdentityValue( 0, NS_USER, 'Some_name.jpg', false ) ];
-	}
-
-	/**
-	 * @covers File::normalizeTitle
-	 * @dataProvider provideNormalizeTitleFails
-	 */
-	public function testNormalizeTitleFails( $title ) {
-		$actual = File::normalizeTitle( $title );
-		$this->assertNull( $actual );
-
-		$this->expectException( MWException::class );
-		File::normalizeTitle( $title, 'exception' );
-	}
-
-	/**
-	 * @covers File::setHandlerState
-	 * @covers File::getHandlerState
-	 */
-	public function testSetHandlerState() {
-		$obj = new stdClass;
-		$file = new class extends File {
-			public function __construct() {
-			}
-		};
-		$this->assertNull( $file->getHandlerState( 'test' ) );
-		$file->setHandlerState( 'test', $obj );
-		$this->assertSame( $obj, $file->getHandlerState( 'test' ) );
 	}
 }

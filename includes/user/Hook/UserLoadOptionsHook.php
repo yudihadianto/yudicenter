@@ -8,7 +8,7 @@ use User;
  * This is a hook handler interface, see docs/Hooks.md.
  * Use the hook name "UserLoadOptions" to register handlers implementing this interface.
  *
- * @deprecated since 1.37 use LoadUserOptionsHook instead.
+ * @stable to implement
  * @ingroup Hooks
  */
 interface UserLoadOptionsHook {

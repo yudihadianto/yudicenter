@@ -24,7 +24,6 @@
 use MediaWiki\Block\DatabaseBlock;
 use MediaWiki\Permissions\PermissionManager;
 use MediaWiki\Revision\RevisionFactory;
-use MediaWiki\User\UserFactory;
 use MediaWiki\User\UserNamePrefixSearch;
 use MediaWiki\User\UserNameUtils;
 use Wikimedia\IPUtils;
@@ -47,14 +46,14 @@ class SpecialDeletedContributions extends SpecialPage {
 	/** @var CommentStore */
 	private $commentStore;
 
+	/** @var ActorMigration */
+	private $actorMigration;
+
 	/** @var RevisionFactory */
 	private $revisionFactory;
 
 	/** @var NamespaceInfo */
 	private $namespaceInfo;
-
-	/** @var UserFactory */
-	private $userFactory;
 
 	/** @var UserNameUtils */
 	private $userNameUtils;
@@ -66,9 +65,9 @@ class SpecialDeletedContributions extends SpecialPage {
 	 * @param PermissionManager $permissionManager
 	 * @param ILoadBalancer $loadBalancer
 	 * @param CommentStore $commentStore
+	 * @param ActorMigration $actorMigration
 	 * @param RevisionFactory $revisionFactory
 	 * @param NamespaceInfo $namespaceInfo
-	 * @param UserFactory $userFactory
 	 * @param UserNameUtils $userNameUtils
 	 * @param UserNamePrefixSearch $userNamePrefixSearch
 	 */
@@ -76,9 +75,9 @@ class SpecialDeletedContributions extends SpecialPage {
 		PermissionManager $permissionManager,
 		ILoadBalancer $loadBalancer,
 		CommentStore $commentStore,
+		ActorMigration $actorMigration,
 		RevisionFactory $revisionFactory,
 		NamespaceInfo $namespaceInfo,
-		UserFactory $userFactory,
 		UserNameUtils $userNameUtils,
 		UserNamePrefixSearch $userNamePrefixSearch
 	) {
@@ -86,9 +85,9 @@ class SpecialDeletedContributions extends SpecialPage {
 		$this->permissionManager = $permissionManager;
 		$this->loadBalancer = $loadBalancer;
 		$this->commentStore = $commentStore;
+		$this->actorMigration = $actorMigration;
 		$this->revisionFactory = $revisionFactory;
 		$this->namespaceInfo = $namespaceInfo;
-		$this->userFactory = $userFactory;
 		$this->userNameUtils = $userNameUtils;
 		$this->userNamePrefixSearch = $userNamePrefixSearch;
 	}
@@ -134,7 +133,7 @@ class SpecialDeletedContributions extends SpecialPage {
 			return;
 		}
 
-		$userObj = $this->userFactory->newFromName( $target, UserFactory::RIGOR_NONE );
+		$userObj = User::newFromName( $target, false );
 		if ( !$userObj ) {
 			$this->getForm();
 
@@ -146,7 +145,10 @@ class SpecialDeletedContributions extends SpecialPage {
 
 		$out = $this->getOutput();
 		$out->addSubtitle( $this->getSubTitle( $userObj ) );
-		$out->setPageTitle( $this->msg( 'deletedcontributions-title', $target ) );
+		$out->setHTMLTitle( $this->msg(
+			'pagetitle',
+			$this->msg( 'deletedcontributions-title', $target )->plain()
+		)->inContentLanguage() );
 
 		$this->getForm();
 
@@ -158,6 +160,7 @@ class SpecialDeletedContributions extends SpecialPage {
 			$this->getHookContainer(),
 			$this->loadBalancer,
 			$this->commentStore,
+			$this->actorMigration,
 			$this->revisionFactory
 		);
 		if ( !$pager->getNumRows() ) {
@@ -233,8 +236,7 @@ class SpecialDeletedContributions extends SpecialPage {
 			$block = DatabaseBlock::newFromTarget( $userObj, $userObj );
 			if ( $block !== null && $block->getType() != DatabaseBlock::TYPE_AUTO ) {
 				if ( $block->getType() == DatabaseBlock::TYPE_RANGE ) {
-					$nt = $this->namespaceInfo->getCanonicalName( NS_USER )
-						. ':' . $block->getTargetName();
+					$nt = $this->namespaceInfo->getCanonicalName( NS_USER ) . ':' . $block->getTarget();
 				}
 
 				// LogEventsList::showLogExtract() wants the first parameter by ref

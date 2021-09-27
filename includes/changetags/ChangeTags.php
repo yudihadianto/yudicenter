@@ -84,26 +84,11 @@ class ChangeTags {
 	 * with an extra 'revertId' field containing the revision ID of the reverting edit.
 	 */
 	public const TAG_REVERTED = 'mw-reverted';
-	/**
-	 * This tagged edit was performed while importing media files using the importImages.php maintenance script.
-	 */
-	public const TAG_SERVER_SIDE_UPLOAD = 'mw-server-side-upload';
-	/**
-	 * The tagged edit included additions of media.
-	 */
-	public const TAG_ADD_MEDIA = 'mw-add-media';
-	/**
-	 * The tagged edit included removals of media.
-	 */
-	public const TAG_REMOVE_MEDIA = 'mw-remove-media';
+
 	/**
 	 * List of tags which denote a revert of some sort. (See also TAG_REVERTED.)
 	 */
 	public const REVERT_TAGS = [ self::TAG_ROLLBACK, self::TAG_UNDO, self::TAG_MANUAL_REVERT ];
-	/**
-	 * List of tags which denote a change in media.
-	 */
-	public const MEDIA_TAGS = [ self::TAG_ADD_MEDIA, self::TAG_REMOVE_MEDIA ];
 
 	/**
 	 * Flag for canDeleteTag().
@@ -131,9 +116,6 @@ class ChangeTags {
 		'mw-undo',
 		'mw-manual-revert',
 		'mw-reverted',
-		'mw-server-side-upload',
-		'mw-add-media',
-		'mw-remove-media',
 	];
 
 	/**
@@ -207,7 +189,6 @@ class ChangeTags {
 			if ( !$tag ) {
 				continue;
 			}
-			$classes[] = Sanitizer::escapeClass( "mw-tag-$tag" );
 			$description = self::tagDescription( $tag, $context );
 			if ( $description === false ) {
 				continue;
@@ -218,6 +199,7 @@ class ChangeTags {
 								Sanitizer::escapeClass( "mw-tag-marker-$tag" ) ],
 				$description
 			);
+			$classes[] = Sanitizer::escapeClass( "mw-tag-$tag" );
 		}
 
 		if ( !$displayTags ) {
@@ -255,8 +237,8 @@ class ChangeTags {
 				// so extract the language from $msg and use that.
 				// The language doesn't really matter, but we need to set it to avoid requesting
 				// the user's language from session-less entry points (T227233)
-				->inLanguage( $msg->getLanguage() )
-				->setInterfaceMessageFlag( true );
+				->inLanguage( $msg->getLanguage() );
+
 		}
 		if ( $msg->isDisabled() ) {
 			// The message exists but is disabled, hide the tag.
@@ -374,7 +356,7 @@ class ChangeTags {
 				'specified when adding or removing a tag from a change!' );
 		}
 
-		$dbw = wfGetDB( DB_PRIMARY );
+		$dbw = wfGetDB( DB_MASTER );
 
 		// Might as well look for rcids and so on.
 		if ( !$rc_id ) {
@@ -538,18 +520,12 @@ class ChangeTags {
 	 * @param int|null $rc_id
 	 * @param int|null $rev_id
 	 * @param int|null $log_id
-	 * @throws MWException When $rc_id, $rev_id and $log_id are all null
 	 * @return string[] Tag name => data. Data format is tag-specific.
 	 * @since 1.36
 	 */
 	public static function getTagsWithData(
 		IDatabase $db, $rc_id = null, $rev_id = null, $log_id = null
 	) {
-		if ( !$rc_id && !$rev_id && !$log_id ) {
-			throw new MWException( 'At least one of: RCID, revision ID, and log ID MUST be ' .
-				'specified when loading tags from a change!' );
-		}
-
 		$conds = array_filter(
 			[
 				'ct_rc_id' => $rc_id,
@@ -629,15 +605,10 @@ class ChangeTags {
 				return Status::newFatal( 'tags-apply-no-permission' );
 			}
 
-			if ( $performer->getBlock() && $performer->getBlock()->isSitewide() ) {
-				return Status::newFatal(
-					'tags-apply-blocked',
-					$performer->getUser()->getName()
-				);
-			}
-
-			// ChangeTagsAllowedAdd hook still needs a full User object
 			$user = MediaWikiServices::getInstance()->getUserFactory()->newFromAuthority( $performer );
+			if ( $user->getBlock() && $user->getBlock()->isSitewide() ) {
+				return Status::newFatal( 'tags-apply-blocked', $user->getName() );
+			}
 		}
 
 		// to be applied, a tag has to be explicitly defined
@@ -712,11 +683,9 @@ class ChangeTags {
 				return Status::newFatal( 'tags-update-no-permission' );
 			}
 
-			if ( $performer->getBlock() && $performer->getBlock()->isSitewide() ) {
-				return Status::newFatal(
-					'tags-update-blocked',
-					$performer->getUser()->getName()
-				);
+			$user = MediaWikiServices::getInstance()->getUserFactory()->newFromAuthority( $performer );
+			if ( $user->getBlock() && $user->getBlock()->isSitewide() ) {
+				return Status::newFatal( 'tags-update-blocked', $performer->getUser()->getName() );
 			}
 		}
 
@@ -856,7 +825,7 @@ class ChangeTags {
 		$logEntry->setParameters( $logParams );
 		$logEntry->setRelations( [ 'Tag' => array_merge( $tagsAdded, $tagsRemoved ) ] );
 
-		$dbw = wfGetDB( DB_PRIMARY );
+		$dbw = wfGetDB( DB_MASTER );
 		$logId = $logEntry->insert( $dbw );
 		// Only send this to UDP, not RC, similar to patrol events
 		$logEntry->publish( $logId, 'udp' );
@@ -928,19 +897,17 @@ class ChangeTags {
 					// tags for each revision. This does not work with temporary tables
 					// on some versions of MySQL, which causes phpunit tests to fail.
 					// As a hacky workaround, we copy the temporary table, and join
-					// against the copy. It is acknowledged that this is quite horrific.
+					// against the copy. It is acknowledge that this is quite horrific.
 					// Discuss at T256006.
 
 					$tagTable = 'change_tag_for_display_query';
 					$db->query(
 						'CREATE TEMPORARY TABLE IF NOT EXISTS ' . $db->tableName( $tagTable )
-						. ' LIKE ' . $db->tableName( 'change_tag' ),
-						__METHOD__
+						. ' LIKE ' . $db->tableName( 'change_tag' )
 					);
 					$db->query(
 						'INSERT IGNORE INTO ' . $db->tableName( $tagTable )
-						. ' SELECT * FROM ' . $db->tableName( 'change_tag' ),
-						__METHOD__
+						. ' SELECT * FROM ' . $db->tableName( 'change_tag' )
 					);
 				}
 			}
@@ -1065,7 +1032,7 @@ class ChangeTags {
 	 * @since 1.25
 	 */
 	public static function defineTag( $tag ) {
-		$dbw = wfGetDB( DB_PRIMARY );
+		$dbw = wfGetDB( DB_MASTER );
 		$tagDef = [
 			'ctd_name' => $tag,
 			'ctd_user_defined' => 1,
@@ -1092,7 +1059,7 @@ class ChangeTags {
 	 * @since 1.25
 	 */
 	public static function undefineTag( $tag ) {
-		$dbw = wfGetDB( DB_PRIMARY );
+		$dbw = wfGetDB( DB_MASTER );
 
 		$dbw->update(
 			'change_tag_def',
@@ -1128,7 +1095,7 @@ class ChangeTags {
 	protected static function logTagManagementAction( $action, $tag, $reason,
 		UserIdentity $user, $tagCount = null, array $logEntryTags = []
 	) {
-		$dbw = wfGetDB( DB_PRIMARY );
+		$dbw = wfGetDB( DB_MASTER );
 
 		$logEntry = new ManualLogEntry( 'managetags', $action );
 		$logEntry->setPerformer( $user );
@@ -1164,11 +1131,9 @@ class ChangeTags {
 			if ( !$performer->isAllowed( 'managechangetags' ) ) {
 				return Status::newFatal( 'tags-manage-no-permission' );
 			}
-			if ( $performer->getBlock() && $performer->getBlock()->isSitewide() ) {
-				return Status::newFatal(
-					'tags-manage-blocked',
-					$performer->getUser()->getName()
-				);
+			$user = MediaWikiServices::getInstance()->getUserFactory()->newFromAuthority( $performer );
+			if ( $user->getBlock() && $user->getBlock()->isSitewide() ) {
+				return Status::newFatal( 'tags-manage-blocked', $user->getName() );
 			}
 		}
 
@@ -1240,11 +1205,9 @@ class ChangeTags {
 			if ( !$performer->isAllowed( 'managechangetags' ) ) {
 				return Status::newFatal( 'tags-manage-no-permission' );
 			}
-			if ( $performer->getBlock() && $performer->getBlock()->isSitewide() ) {
-				return Status::newFatal(
-					'tags-manage-blocked',
-					$performer->getUser()->getName()
-				);
+			$user = MediaWikiServices::getInstance()->getUserFactory()->newFromAuthority( $performer );
+			if ( $user->getBlock() && $user->getBlock()->isSitewide() ) {
+				return Status::newFatal( 'tags-manage-blocked', $performer->getUser()->getName() );
 			}
 		}
 
@@ -1342,14 +1305,10 @@ class ChangeTags {
 			if ( !$performer->isAllowed( 'managechangetags' ) ) {
 				return Status::newFatal( 'tags-manage-no-permission' );
 			}
-			if ( $performer->getBlock() && $performer->getBlock()->isSitewide() ) {
-				return Status::newFatal(
-					'tags-manage-blocked',
-					$performer->getUser()->getName()
-				);
-			}
-			// ChangeTagCanCreate hook still needs a full User object
 			$user = MediaWikiServices::getInstance()->getUserFactory()->newFromAuthority( $performer );
+			if ( $user->getBlock() && $user->getBlock()->isSitewide() ) {
+				return Status::newFatal( 'tags-manage-blocked', $performer->getUser()->getName() );
+			}
 		}
 
 		$status = self::isTagNameValid( $tag );
@@ -1421,7 +1380,7 @@ class ChangeTags {
 	 * @since 1.25
 	 */
 	public static function deleteTagEverywhere( $tag ) {
-		$dbw = wfGetDB( DB_PRIMARY );
+		$dbw = wfGetDB( DB_MASTER );
 		$dbw->startAtomic( __METHOD__ );
 
 		// fetch tag id, this must be done before calling undefineTag(), see T225564
@@ -1469,14 +1428,10 @@ class ChangeTags {
 			if ( !$performer->isAllowed( 'deletechangetags' ) ) {
 				return Status::newFatal( 'tags-delete-no-permission' );
 			}
-			if ( $performer->getBlock() && $performer->getBlock()->isSitewide() ) {
-				return Status::newFatal(
-					'tags-manage-blocked',
-					$performer->getUser()->getName()
-				);
-			}
-			// ChangeTagCanDelete hook still needs a full User object
 			$user = MediaWikiServices::getInstance()->getUserFactory()->newFromAuthority( $performer );
+			if ( $user->getBlock() && $user->getBlock()->isSitewide() ) {
+				return Status::newFatal( 'tags-manage-blocked', $user->getName() );
+			}
 		}
 
 		if ( !isset( $tagUsage[$tag] ) && !in_array( $tag, self::listDefinedTags() ) ) {

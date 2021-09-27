@@ -32,7 +32,6 @@ use MediaWiki\HookContainer\HookRunner;
 use WANObjectCache;
 use WikiMap;
 use Wikimedia\Rdbms\Database;
-use Wikimedia\Rdbms\ILoadBalancer;
 
 /**
  * InterwikiLookup implementing the "classic" interwiki storage (hardcoded up to MW 1.26).
@@ -96,14 +95,10 @@ class ClassicInterwikiLookup implements InterwikiLookup {
 	/** @var HookRunner */
 	private $hookRunner;
 
-	/** @var ILoadBalancer */
-	private $loadBalancer;
-
 	/**
 	 * @param Language $contLang Language object used to convert prefixes to lower case
 	 * @param WANObjectCache $objectCache Cache for interwiki info retrieved from the database
 	 * @param HookContainer $hookContainer
-	 * @param ILoadBalancer $loadBalancer
 	 * @param int $objectCacheExpiry Expiry time for $objectCache, in seconds
 	 * @param bool|array|string $cdbData The path of a CDB file, or
 	 *        an array resembling the contents of a CDB file,
@@ -118,7 +113,6 @@ class ClassicInterwikiLookup implements InterwikiLookup {
 		Language $contLang,
 		WANObjectCache $objectCache,
 		HookContainer $hookContainer,
-		ILoadBalancer $loadBalancer,
 		$objectCacheExpiry,
 		$cdbData,
 		$interwikiScopes,
@@ -129,7 +123,6 @@ class ClassicInterwikiLookup implements InterwikiLookup {
 		$this->contLang = $contLang;
 		$this->objectCache = $objectCache;
 		$this->hookRunner = new HookRunner( $hookContainer );
-		$this->loadBalancer = $loadBalancer;
 		$this->objectCacheExpiry = $objectCacheExpiry;
 		$this->cdbData = $cdbData;
 		$this->interwikiScopes = $interwikiScopes;
@@ -302,7 +295,7 @@ class ClassicInterwikiLookup implements InterwikiLookup {
 			$this->objectCache->makeKey( 'interwiki', $prefix ),
 			$this->objectCacheExpiry,
 			function ( $oldValue, &$ttl, array &$setOpts ) use ( $prefix, $fname ) {
-				$dbr = $this->loadBalancer->getConnectionRef( DB_REPLICA );
+				$dbr = wfGetDB( DB_REPLICA ); // TODO: inject LoadBalancer
 
 				$setOpts += Database::getCacheSetOptions( $dbr );
 
@@ -452,7 +445,7 @@ class ClassicInterwikiLookup implements InterwikiLookup {
 	 * @return array[] Interwiki rows
 	 */
 	private function getAllPrefixesDB( $local ) {
-		$db = $this->loadBalancer->getConnectionRef( DB_REPLICA );
+		$db = wfGetDB( DB_REPLICA ); // TODO: inject DB LoadBalancer
 
 		$where = [];
 

@@ -62,9 +62,8 @@ class CreateAndPromote extends Maintenance {
 		$password = $this->getArg( 1 );
 		$force = $this->hasOption( 'force' );
 		$inGroups = [];
-		$services = MediaWikiServices::getInstance();
 
-		$user = $services->getUserFactory()->newFromName( $username );
+		$user = User::newFromName( $username );
 		if ( !is_object( $user ) ) {
 			$this->fatalError( "invalid username." );
 		}
@@ -77,12 +76,12 @@ class CreateAndPromote extends Maintenance {
 			$this->error( "Argument <password> required!" );
 			$this->maybeHelp( true );
 		} elseif ( $exists ) {
-			$inGroups = $services->getUserGroupManager()->getUserGroups( $user );
+			$inGroups = $user->getGroups();
 		}
 
 		$groups = array_filter( self::$permitRoles, [ $this, 'hasOption' ] );
 		if ( $this->hasOption( 'custom-groups' ) ) {
-			$allGroups = array_fill_keys( $services->getUserGroupManager()->listAllGroups(), true );
+			$allGroups = array_flip( User::getAllGroups() );
 			$customGroupsText = $this->getOption( 'custom-groups' );
 			if ( $customGroupsText !== '' ) {
 				$customGroups = explode( ',', $customGroupsText );
@@ -148,9 +147,8 @@ class CreateAndPromote extends Maintenance {
 			}
 		}
 
-		$userGroupManager = $services->getUserGroupManager();
 		# Promote user
-		$userGroupManager->addUserToMultipleGroups( $user, $promotions );
+		array_map( [ $user, 'addGroup' ], $promotions );
 
 		if ( !$exists ) {
 			# Increment site_stats.ss_users

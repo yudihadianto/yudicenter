@@ -22,10 +22,8 @@
  */
 
 use MediaWiki\MediaWikiServices;
-use MediaWiki\User\UserFactory;
 use MediaWiki\User\UserGroupManager;
 use MediaWiki\User\UserGroupManagerFactory;
-use MediaWiki\User\UserIdentity;
 use MediaWiki\User\UserNamePrefixSearch;
 use MediaWiki\User\UserNameUtils;
 
@@ -57,27 +55,21 @@ class UserrightsPage extends SpecialPage {
 	/** @var UserNamePrefixSearch */
 	private $userNamePrefixSearch;
 
-	/** @var UserFactory */
-	private $userFactory;
-
 	/**
 	 * @param UserGroupManagerFactory|null $userGroupManagerFactory
 	 * @param UserNameUtils|null $userNameUtils
 	 * @param UserNamePrefixSearch|null $userNamePrefixSearch
-	 * @param UserFactory|null $userFactory
 	 */
 	public function __construct(
 		UserGroupManagerFactory $userGroupManagerFactory = null,
 		UserNameUtils $userNameUtils = null,
-		UserNamePrefixSearch $userNamePrefixSearch = null,
-		UserFactory $userFactory = null
+		UserNamePrefixSearch $userNamePrefixSearch = null
 	) {
 		parent::__construct( 'Userrights' );
 		$services = MediaWikiServices::getInstance();
 		// This class is extended and therefore falls back to global state - T263207
 		$this->userNameUtils = $userNameUtils ?? $services->getUserNameUtils();
 		$this->userNamePrefixSearch = $userNamePrefixSearch ?? $services->getUserNamePrefixSearch();
-		$this->userFactory = $userFactory ?? $services->getUserFactory();
 
 		// TODO don't hard code false, use interwiki domains. See T14518
 		$this->userGroupManager = ( $userGroupManagerFactory ?? $services->getUserGroupManagerFactory() )
@@ -91,13 +83,13 @@ class UserrightsPage extends SpecialPage {
 	/**
 	 * Check whether the current user (from context) can change the target user's rights.
 	 *
-	 * @param UserIdentity $targetUser User whose rights are being changed
+	 * @param User $targetUser User whose rights are being changed
 	 * @param bool $checkIfSelf If false, assume that the current user can add/remove groups defined
 	 *   in $wgGroupsAddToSelf / $wgGroupsRemoveFromSelf, without checking if it's the same as target
 	 *   user
 	 * @return bool
 	 */
-	public function userCanChangeRights( UserIdentity $targetUser, $checkIfSelf = true ) {
+	public function userCanChangeRights( $targetUser, $checkIfSelf = true ) {
 		$isself = $this->getUser()->equals( $targetUser );
 
 		$available = $this->changeableGroups();
@@ -234,9 +226,7 @@ class UserrightsPage extends SpecialPage {
 			$userGroups = $targetUser->getGroups();
 
 			if ( $userGroups !== $conflictCheck ) {
-				$out->addHTML( Html::errorBox(
-					$this->msg( 'userrights-conflict' )->parse()
-				) );
+				$out->wrapWikiMsg( '<span class="error">$1</span>', 'userrights-conflict' );
 			} else {
 				$status = $this->saveUserGroups(
 					$this->mTarget,
@@ -605,7 +595,7 @@ class UserrightsPage extends SpecialPage {
 		}
 
 		if ( $dbDomain == '' ) {
-			$user = $this->userFactory->newFromName( $name );
+			$user = User::newFromName( $name );
 		} else {
 			$user = UserRightsProxy::newFromName( $dbDomain, $name );
 		}
@@ -683,9 +673,9 @@ class UserrightsPage extends SpecialPage {
 	 * Show the form to edit group memberships.
 	 *
 	 * @param User|UserRightsProxy $user User or UserRightsProxy you're editing
-	 * @param string[] $groups Array of groups the user is in. Not used by this implementation
+	 * @param array $groups Array of groups the user is in. Not used by this implementation
 	 *   anymore, but kept for backward compatibility with subclasses
-	 * @param UserGroupMembership[] $groupMemberships Associative array of (group name => UserGroupMembership
+	 * @param array $groupMemberships Associative array of (group name => UserGroupMembership
 	 *   object) containing the groups the user is in
 	 */
 	protected function showEditUserGroupsForm( $user, $groups, $groupMemberships ) {
@@ -877,7 +867,7 @@ class UserrightsPage extends SpecialPage {
 			// expiries, not shorten them. So they should only see the expiry
 			// dropdown if the group currently has a finite expiry
 			$canOnlyLengthenExpiry = ( $set && $this->canAdd( $group ) &&
-				!$this->canRemove( $group ) && $usergroups[$group]->getExpiry() );
+				 !$this->canRemove( $group ) && $usergroups[$group]->getExpiry() );
 			// Should the checkbox be disabled?
 			$disabledCheckbox = !(
 				( $set && $this->canRemove( $group ) ) ||
@@ -1082,7 +1072,7 @@ class UserrightsPage extends SpecialPage {
 	 *  ]
 	 */
 	protected function changeableGroups() {
-		return $this->userGroupManager->getGroupsChangeableBy( $this->getContext()->getAuthority() );
+		return $this->getUser()->changeableGroups();
 	}
 
 	/**

@@ -44,7 +44,7 @@ class EditFilterMergedContentHookConstraintTest extends MediaWikiUnitTestCase {
 		$hookContainer->expects( $this->once() )
 			->method( 'run' )
 			->with(
-				'EditFilterMergedContent',
+				$this->equalTo( 'EditFilterMergedContent' ),
 				$this->anything() // Not worrying about the hook call here
 			)
 			->willReturn( $hookResult );
@@ -66,9 +66,9 @@ class EditFilterMergedContentHookConstraintTest extends MediaWikiUnitTestCase {
 
 	public function testFailure_goodStatus() {
 		// Code path 1: Hook returns false, but status is still good
-		// Status has no value set, falls back to AS_HOOK_ERROR_EXPECTED
+		// Status has no value set, falls back to AS_HOOK_ERROR
 		$constraint = $this->getConstraint( false );
-		$this->assertConstraintFailed( $constraint, IEditConstraint::AS_HOOK_ERROR_EXPECTED );
+		$this->assertConstraintFailed( $constraint, IEditConstraint::AS_HOOK_ERROR );
 	}
 
 	public function testFailure_badStatus() {
@@ -77,7 +77,7 @@ class EditFilterMergedContentHookConstraintTest extends MediaWikiUnitTestCase {
 		// replace the status object with a mock
 		$constraint = $this->getConstraint( false );
 		$mockStatus = $this->getMockBuilder( Status::class )
-			->onlyMethods( [ 'isGood', 'getWikiText' ] )
+			->setMethods( [ 'isGood', 'getWikiText' ] )
 			->getMock();
 		$mockStatus->method( 'isGood' )->willReturn( false );
 		$mockStatus->method( 'getWikiText' )->willReturn( 'WIKITEXT' );
@@ -96,7 +96,7 @@ class EditFilterMergedContentHookConstraintTest extends MediaWikiUnitTestCase {
 		// replace the status object with a mock
 		$constraint = $this->getConstraint( true );
 		$mockStatus = $this->getMockBuilder( Status::class )
-			->onlyMethods( [ 'isOK', 'getErrors', 'getWikiText' ] )
+			->setMethods( [ 'isOK', 'getErrors', 'getWikiText' ] )
 			->getMock();
 		$mockStatus->method( 'isOK' )->willReturn( false );
 		$mockStatus->method( 'getErrors' )->willReturn( [] );

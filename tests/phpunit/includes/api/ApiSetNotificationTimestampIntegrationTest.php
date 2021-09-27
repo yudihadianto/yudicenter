@@ -24,8 +24,7 @@ class ApiSetNotificationTimestampIntegrationTest extends ApiTestCase {
 		$user = $this->getTestUser()->getUser();
 		$page = WikiPage::factory( Title::newFromText( 'UTPage' ) );
 
-		$watchlistManager = $this->getServiceContainer()->getWatchlistManager();
-		$watchlistManager->addWatch( $user,  $page->getTitle() );
+		$user->addWatch( $page->getTitle() );
 
 		$result = $this->doApiRequestWithToken(
 			[

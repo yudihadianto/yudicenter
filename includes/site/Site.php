@@ -1,7 +1,6 @@
 <?php
 
 use MediaWiki\MediaWikiServices;
-use MediaWiki\Site\MediaWikiPageNameNormalizer;
 
 /**
  * Represents a single site.
@@ -92,7 +91,7 @@ class Site implements Serializable {
 	 *
 	 * @since 1.21
 	 *
-	 * @var string[][]|false
+	 * @var array[]|false
 	 */
 	protected $localIds = [];
 
@@ -393,15 +392,12 @@ class Site implements Serializable {
 	 * @see Site::normalizePageName
 	 *
 	 * @since 1.21
-	 * @since 1.37 Added $followRedirect
 	 *
 	 * @param string $pageName
-	 * @param int $followRedirect either MediaWikiPageNameNormalizer::FOLLOW_REDIRECT or
-	 * MediaWikiPageNameNormalizer::NOFOLLOW_REDIRECT
 	 *
 	 * @return string|false
 	 */
-	public function normalizePageName( $pageName, $followRedirect = MediaWikiPageNameNormalizer::FOLLOW_REDIRECT ) {
+	public function normalizePageName( $pageName ) {
 		return $pageName;
 	}
 
@@ -484,7 +480,7 @@ class Site implements Serializable {
 	 *
 	 * @since 1.21
 	 *
-	 * @return int|null
+	 * @return string|null
 	 */
 	public function getInternalId() {
 		return $this->internalId;
@@ -618,7 +614,7 @@ class Site implements Serializable {
 	 */
 	public function getPath( $pathType ) {
 		$paths = $this->getAllPaths();
-		return $paths[$pathType] ?? null;
+		return array_key_exists( $pathType, $paths ) ? $paths[$pathType] : null;
 	}
 
 	/**

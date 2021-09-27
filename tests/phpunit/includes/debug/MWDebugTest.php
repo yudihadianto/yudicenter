@@ -2,19 +2,19 @@
 
 class MWDebugTest extends MediaWikiIntegrationTestCase {
 
-	protected function setUp(): void {
+	protected function setUp() : void {
 		parent::setUp();
 		/** Clear log before each test */
 		MWDebug::clearLog();
 	}
 
-	public static function setUpBeforeClass(): void {
+	public static function setUpBeforeClass() : void {
 		parent::setUpBeforeClass();
 		MWDebug::init();
 		Wikimedia\suppressWarnings();
 	}
 
-	public static function tearDownAfterClass(): void {
+	public static function tearDownAfterClass() : void {
 		MWDebug::deinit();
 		Wikimedia\restoreWarnings();
 		parent::tearDownAfterClass();
@@ -93,6 +93,7 @@ class MWDebugTest extends MediaWikiIntegrationTestCase {
 		MWDebug::deprecated( 'wfOldFunction', '1.0', 'component' );
 		MWDebug::deprecated( 'wfOldFunction', '1.0', 'component' );
 
+		// assertCount() not available on WMF integration server
 		$this->assertCount( 1, MWDebug::getLog(),
 			"Only one deprecated warning per function should be kept"
 		);
@@ -108,6 +109,7 @@ class MWDebugTest extends MediaWikiIntegrationTestCase {
 		// Another deprecation
 		MWDebug::deprecated( 'wfOldFunction', '1.0', 'component' );
 
+		// assertCount() not available on WMF integration server
 		$this->assertCount( 3, MWDebug::getLog(),
 			"Only one deprecated warning per function should be kept"
 		);
@@ -154,14 +156,15 @@ class MWDebugTest extends MediaWikiIntegrationTestCase {
 	 */
 	private function newApiRequest( array $params, $requestUrl ) {
 		$request = $this->getMockBuilder( FauxRequest::class )
-			->onlyMethods( [ 'getRequestURL' ] )
+			->setMethods( [ 'getRequestURL' ] )
 			->setConstructorArgs( [
 				$params
 			] )
 			->getMock();
 
-		$request->method( 'getRequestURL' )
-			->willReturn( $requestUrl );
+		$request->expects( $this->any() )
+			->method( 'getRequestURL' )
+			->will( $this->returnValue( $requestUrl ) );
 
 		return $request;
 	}

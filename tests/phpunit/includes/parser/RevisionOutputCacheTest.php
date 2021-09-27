@@ -40,7 +40,7 @@ class RevisionOutputCacheTest extends MediaWikiIntegrationTestCase {
 	/** @var RevisionRecord */
 	private $revision;
 
-	protected function setUp(): void {
+	protected function setUp() : void {
 		parent::setUp();
 
 		$this->time = time();
@@ -58,6 +58,11 @@ class RevisionOutputCacheTest extends MediaWikiIntegrationTestCase {
 		);
 		$this->revision->setId( 24 );
 		$this->revision->setTimestamp( MWTimestamp::convert( TS_MW, $this->time ) );
+	}
+
+	protected function tearDown() : void {
+		MWTimestamp::setFakeTime( null );
+		parent::tearDown();
 	}
 
 	/**

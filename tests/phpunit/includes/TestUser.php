@@ -69,11 +69,12 @@ class TestUser {
 			$this->setRealName( $realname );
 
 		// Adjust groups by adding any missing ones and removing any extras
-		$userGroupManager = MediaWikiServices::getInstance()->getUserGroupManager();
-		$currentGroups = $userGroupManager->getUserGroups( $this->user );
-		$userGroupManager->addUserToMultipleGroups( $this->user, array_diff( $groups, $currentGroups ) );
+		$currentGroups = $this->user->getGroups();
+		foreach ( array_diff( $groups, $currentGroups ) as $group ) {
+			$this->user->addGroup( $group );
+		}
 		foreach ( array_diff( $currentGroups, $groups ) as $group ) {
-			$userGroupManager->removeUserFromGroup( $this->user, $group );
+			$this->user->removeGroup( $group );
 		}
 		if ( $change ) {
 			// Disable CAS check before saving. The User object may have been initialized from cached
@@ -133,7 +134,7 @@ class TestUser {
 			throw new MWException( "Passed User has not been added to the database yet!" );
 		}
 
-		$dbw = wfGetDB( DB_PRIMARY );
+		$dbw = wfGetDB( DB_MASTER );
 		$row = $dbw->selectRow(
 			'user',
 			[ 'user_password' ],

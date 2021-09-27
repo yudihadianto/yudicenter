@@ -23,9 +23,7 @@
 use MediaWiki\HookContainer\ProtectedHookAccessorTrait;
 use MediaWiki\Logger\LoggerFactory;
 use MediaWiki\MediaWikiServices;
-use MediaWiki\Page\PageIdentity;
 use MediaWiki\Revision\RevisionRecord;
-use MediaWiki\User\UserIdentity;
 use Wikimedia\Rdbms\IDatabase;
 use Wikimedia\ScopedCallback;
 
@@ -115,7 +113,7 @@ class LinksUpdate extends DataUpdate {
 	private $propertyDeletions = null;
 
 	/**
-	 * @var UserIdentity|null
+	 * @var User|null
 	 */
 	private $user;
 
@@ -123,17 +121,28 @@ class LinksUpdate extends DataUpdate {
 	private $db;
 
 	/**
-	 * @param PageIdentity $page The page we're updating
+	 * @param Title $title Title of the page we're updating
 	 * @param ParserOutput $parserOutput Output from a full parse of this page
 	 * @param bool $recursive Queue jobs for recursive updates?
-	 *
 	 * @throws MWException
 	 */
-	public function __construct( PageIdentity $page, ParserOutput $parserOutput, $recursive = true ) {
+	public function __construct( Title $title, ParserOutput $parserOutput, $recursive = true ) {
 		parent::__construct();
 
-		// NOTE: mTitle is public and used in hooks. Will need careful deprecation.
-		$this->mTitle = Title::castFromPageIdentity( $page );
+		$this->mTitle = $title;
+
+		if ( !$this->mId ) {
+			// NOTE: subclasses may initialize mId before calling this constructor!
+			$this->mId = $title->getArticleID( Title::READ_LATEST );
+		}
+
+		if ( !$this->mId ) {
+			throw new InvalidArgumentException(
+				"The Title object yields no ID. "
+					. "Perhaps the page [[{$title->getPrefixedDBkey()}]] doesn't exist?"
+			);
+		}
+
 		$this->mParserOutput = $parserOutput;
 
 		$this->mLinks = $parserOutput->getLinks();
@@ -172,27 +181,6 @@ class LinksUpdate extends DataUpdate {
 	 * @note this is managed by DeferredUpdates::execute(). Do not run this in a transaction.
 	 */
 	public function doUpdate() {
-		if ( !$this->mId ) {
-			// NOTE: subclasses may initialize mId directly!
-			$this->mId = $this->mTitle->getArticleID( Title::READ_LATEST );
-		}
-
-		if ( !$this->mId ) {
-			// Probably due to concurrent deletion or renaming of the page
-			$logger = LoggerFactory::getInstance( 'SecondaryDataUpdate' );
-			$logger->notice(
-				'LinksUpdate: The Title object yields no ID. Perhaps the page was deleted?',
-				[
-					'page_title' => $this->mTitle->getPrefixedDBkey(),
-					'cause_action' => $this->getCauseAction(),
-					'cause_agent' => $this->getCauseAgent()
-				]
-			);
-
-			// nothing to do
-			return;
-		}
-
 		if ( $this->ticket ) {
 			// Make sure all links update threads see the changes of each other.
 			// This handles the case when updates have to batched into several COMMITs.
@@ -251,26 +239,14 @@ class LinksUpdate extends DataUpdate {
 		# Image links
 		$existingIL = $this->getExistingImages();
 		$imageDeletes = $this->getImageDeletions( $existingIL );
-		$imageAdditions = $this->getImageAdditions( $existingIL );
 		$this->incrTableUpdate(
 			'imagelinks',
 			'il',
 			$imageDeletes,
 			$this->getImageInsertions( $existingIL ) );
 
-		# Image change tags
-		$enabledTags = ChangeTags::getSoftwareTags();
-		$mediaChangeTags = array_filter( [
-			count( $imageAdditions ) && in_array( 'mw-add-media', $enabledTags ) ? 'mw-add-media' : '',
-			count( $imageDeletes ) && in_array( 'mw-remove-media', $enabledTags ) ? 'mw-remove-media' : '',
-		] );
-		$revisionRecord = $this->getRevisionRecord();
-		if ( $revisionRecord && count( $mediaChangeTags ) ) {
-			ChangeTags::addTags( $mediaChangeTags, null, $revisionRecord->getId() );
-		}
-
 		# Invalidate all image description pages which had links added or removed
-		$imageUpdates = $imageDeletes + $imageAdditions;
+		$imageUpdates = $imageDeletes + array_diff_key( $this->mImages, $existingIL );
 		$this->invalidateImageDescriptions( $imageUpdates );
 
 		# External links
@@ -354,28 +330,23 @@ class LinksUpdate extends DataUpdate {
 	 * using the job queue.
 	 */
 	protected function queueRecursiveJobs() {
-		$backlinkCache = MediaWikiServices::getInstance()->getBacklinkCacheFactory()
-			->getBacklinkCache( $this->mTitle );
 		$action = $this->getCauseAction();
 		$agent = $this->getCauseAgent();
 
-		self::queueRecursiveJobsForTable(
-			$this->mTitle, 'templatelinks', $action, $agent, $backlinkCache
-		);
+		self::queueRecursiveJobsForTable( $this->mTitle, 'templatelinks', $action, $agent );
 		if ( $this->mTitle->getNamespace() === NS_FILE ) {
 			// Process imagelinks in case the title is or was a redirect
-			self::queueRecursiveJobsForTable(
-				$this->mTitle, 'imagelinks', $action, $agent, $backlinkCache
-			);
+			self::queueRecursiveJobsForTable( $this->mTitle, 'imagelinks', $action, $agent );
 		}
 
+		$bc = $this->mTitle->getBacklinkCache();
 		// Get jobs for cascade-protected backlinks for a high priority queue.
 		// If meta-templates change to using a new template, the new template
 		// should be implicitly protected as soon as possible, if applicable.
 		// These jobs duplicate a subset of the above ones, but can run sooner.
 		// Which ever runs first generally no-ops the other one.
 		$jobs = [];
-		foreach ( $backlinkCache->getCascadeProtectedLinks() as $title ) {
+		foreach ( $bc->getCascadeProtectedLinks() as $title ) {
 			$jobs[] = RefreshLinksJob::newPrioritized(
 				$title,
 				[
@@ -390,22 +361,15 @@ class LinksUpdate extends DataUpdate {
 	/**
 	 * Queue a RefreshLinks job for any table.
 	 *
-	 * @param PageIdentity $page Page to do job for
+	 * @param Title $title Title to do job for
 	 * @param string $table Table to use (e.g. 'templatelinks')
 	 * @param string $action Triggering action
 	 * @param string $userName Triggering user name
-	 * @param BacklinkCache|null $backlinkCache Backlink cache
 	 */
 	public static function queueRecursiveJobsForTable(
-		PageIdentity $page, $table, $action = 'unknown', $userName = 'unknown', ?BacklinkCache $backlinkCache = null
+		Title $title, $table, $action = 'unknown', $userName = 'unknown'
 	) {
-		$title = Title::castFromPageIdentity( $page );
-		if ( !$backlinkCache ) {
-			wfDeprecatedMsg( __METHOD__ . " needs a BacklinkCache object, null passed", '1.37' );
-			$backlinkCache = MediaWikiServices::getInstance()->getBacklinkCacheFactory()
-				->getBacklinkCache( $title );
-		}
-		if ( $backlinkCache->hasLinks( $table ) ) {
+		if ( $title->getBacklinkCache()->hasLinks( $table ) ) {
 			$job = new RefreshLinksJob(
 				$title,
 				[
@@ -611,7 +575,7 @@ class LinksUpdate extends DataUpdate {
 	 */
 	private function getImageInsertions( $existing = [] ) {
 		$arr = [];
-		$diffs = $this->getImageAdditions( $existing );
+		$diffs = array_diff_key( $this->mImages, $existing );
 		foreach ( $diffs as $iname => $dummy ) {
 			$arr[] = [
 				'il_from' => $this->mId,
@@ -661,7 +625,7 @@ class LinksUpdate extends DataUpdate {
 		$languageConverter = MediaWikiServices::getInstance()->getLanguageConverterFactory()
 			->getLanguageConverter();
 
-		$collation = MediaWikiServices::getInstance()->getCollationFactory()->getCategoryCollation();
+		$collation = Collation::singleton();
 		foreach ( $diffs as $name => $prefix ) {
 			$nt = Title::makeTitleSafe( NS_CATEGORY, $name );
 			$languageConverter->findVariantLink( $name, $nt, true );
@@ -795,16 +759,6 @@ class LinksUpdate extends DataUpdate {
 		}
 
 		return $arr;
-	}
-
-	/**
-	 * Given an array of existing images, returns $this images that are not in there
-	 * and thus should be added.
-	 * @param array $existing
-	 * @return array
-	 */
-	private function getImageAdditions( $existing ) {
-		return array_diff_key( $this->mImages, $existing );
 	}
 
 	/**
@@ -1076,6 +1030,18 @@ class LinksUpdate extends DataUpdate {
 	}
 
 	/**
+	 * Set the revision corresponding to this LinksUpdate
+	 *
+	 * @since 1.27
+	 * @deprecated since 1.35, use setRevisionRecord
+	 * @param Revision $revision
+	 */
+	public function setRevision( Revision $revision ) {
+		wfDeprecated( __METHOD__, '1.35' );
+		$this->mRevisionRecord = $revision->getRevisionRecord();
+	}
+
+	/**
 	 * Set the RevisionRecord corresponding to this LinksUpdate
 	 *
 	 * @since 1.35
@@ -1083,6 +1049,17 @@ class LinksUpdate extends DataUpdate {
 	 */
 	public function setRevisionRecord( RevisionRecord $revisionRecord ) {
 		$this->mRevisionRecord = $revisionRecord;
+	}
+
+	/**
+	 * @since 1.28
+	 * @deprecated since 1.35, use getRevisionRecord
+	 * @return null|Revision
+	 */
+	public function getRevision() {
+		wfDeprecated( __METHOD__, '1.35' );
+		$revRecord = $this->mRevisionRecord;
+		return $revRecord ? new Revision( $revRecord ) : null;
 	}
 
 	/**
@@ -1094,22 +1071,20 @@ class LinksUpdate extends DataUpdate {
 	}
 
 	/**
-	 * Set the user who triggered this LinksUpdate
+	 * Set the User who triggered this LinksUpdate
 	 *
 	 * @since 1.27
-	 * @param UserIdentity $user
+	 * @param User $user
 	 */
-	public function setTriggeringUser( UserIdentity $user ) {
+	public function setTriggeringUser( User $user ) {
 		$this->user = $user;
 	}
 
 	/**
-	 * Get the user who triggered this LinksUpdate
-	 *
 	 * @since 1.27
-	 * @return UserIdentity|null
+	 * @return null|User
 	 */
-	public function getTriggeringUser(): ?UserIdentity {
+	public function getTriggeringUser() {
 		return $this->user;
 	}
 
@@ -1242,7 +1217,7 @@ class LinksUpdate extends DataUpdate {
 	 */
 	protected function getDB() {
 		if ( !$this->db ) {
-			$this->db = wfGetDB( DB_PRIMARY );
+			$this->db = wfGetDB( DB_MASTER );
 		}
 
 		return $this->db;

@@ -31,8 +31,6 @@ use MediaWiki\MediaWikiServices;
  * @ingroup HTTP
  */
 class WebRequestUpload {
-	/** All keys a fileinfo has to specific to work with this class */
-	public const REQUIRED_FILEINFO_KEYS = [ 'name', 'size', 'tmp_name', 'type', 'error', ];
 	/** @var WebRequest */
 	protected $request;
 	/** @var bool */

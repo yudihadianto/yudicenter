@@ -13,14 +13,22 @@ use MediaWiki\MediaWikiServices;
  */
 class ClearUserWatchlistJobTest extends MediaWikiIntegrationTestCase {
 
-	protected function setUp(): void {
+	protected function setUp() : void {
 		parent::setUp();
 		self::$users['ClearUserWatchlistJobTestUser']
 			= new TestUser( 'ClearUserWatchlistJobTestUser' );
+		$this->runJobs();
+		JobQueueGroup::destroySingletons();
 	}
 
 	private function getUser() {
 		return self::$users['ClearUserWatchlistJobTestUser']->getUser();
+	}
+
+	private function runJobs( $jobLimit = 9999 ) {
+		$runJobs = new RunJobs;
+		$runJobs->loadParamsAndArgs( null, [ 'quiet' => true, 'maxjobs' => $jobLimit ] );
+		$runJobs->execute();
 	}
 
 	private function getWatchedItemStore() {
@@ -51,13 +59,13 @@ class ClearUserWatchlistJobTest extends MediaWikiIntegrationTestCase {
 
 		$this->assertSame( 1, JobQueueGroup::singleton()->getQueueSizes()['clearUserWatchlist'] );
 		$this->assertEquals( 6, $watchedItemStore->countWatchedItems( $user ) );
-		$this->runJobs( [ 'complete' => false ], [ 'maxJobs' => 1 ] );
+		$this->runJobs( 1 );
 		$this->assertSame( 1, JobQueueGroup::singleton()->getQueueSizes()['clearUserWatchlist'] );
 		$this->assertEquals( 4, $watchedItemStore->countWatchedItems( $user ) );
-		$this->runJobs( [ 'complete' => false ], [ 'maxJobs' => 1 ] );
+		$this->runJobs( 1 );
 		$this->assertSame( 1, JobQueueGroup::singleton()->getQueueSizes()['clearUserWatchlist'] );
 		$this->assertEquals( 2, $watchedItemStore->countWatchedItems( $user ) );
-		$this->runJobs( [ 'complete' => false ], [ 'maxJobs' => 1 ] );
+		$this->runJobs( 1 );
 		$this->assertSame( 0, JobQueueGroup::singleton()->getQueueSizes()['clearUserWatchlist'] );
 		$this->assertEquals( 2, $watchedItemStore->countWatchedItems( $user ) );
 
@@ -89,7 +97,7 @@ class ClearUserWatchlistJobTest extends MediaWikiIntegrationTestCase {
 			'maxWatchlistId' => max( $itemIds ),
 		] );
 		JobQueueGroup::singleton()->push( $job );
-		$this->runJobs( [ 'complete' => false ], [ 'maxJobs' => 1 ] );
+		$this->runJobs( 1 );
 
 		// Confirm that there are now no expiry records.
 		$watchedCount = $this->db->selectRowCount(

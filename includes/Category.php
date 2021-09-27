@@ -22,7 +22,6 @@
  */
 
 use MediaWiki\MediaWikiServices;
-use MediaWiki\Page\PageIdentity;
 use Wikimedia\Rdbms\ILoadBalancer;
 
 /**
@@ -36,9 +35,9 @@ class Category {
 	private $mID = null;
 	/**
 	 * Category page title
-	 * @var PageIdentity
+	 * @var Title
 	 */
-	private $mPage = null;
+	private $mTitle = null;
 	/** Counts of membership (cat_pages, cat_subcats, cat_files) */
 	private $mPages = null, $mSubcats = null, $mFiles = null;
 
@@ -50,13 +49,8 @@ class Category {
 	/** @var ILoadBalancer */
 	private $loadBalancer;
 
-	/** @var ReadOnlyMode */
-	private $readOnlyMode;
-
 	private function __construct() {
-		$services = MediaWikiServices::getInstance();
-		$this->loadBalancer = $services->getDBLoadBalancer();
-		$this->readOnlyMode = $services->getReadOnlyMode();
+		$this->loadBalancer = MediaWikiServices::getInstance()->getDBLoadBalancer();
 	}
 
 	/**
@@ -87,17 +81,17 @@ class Category {
 
 		if ( !$row ) {
 			# Okay, there were no contents.  Nothing to initialize.
-			if ( $this->mPage ) {
-				# If there is a page object but no record in the category table,
+			if ( $this->mTitle ) {
+				# If there is a title object but no record in the category table,
 				# treat this as an empty category.
 				$this->mID = false;
-				$this->mName = $this->mPage->getDBkey();
+				$this->mName = $this->mTitle->getDBkey();
 				$this->mPages = 0;
 				$this->mSubcats = 0;
 				$this->mFiles = 0;
 
-				# If the page exists, call refreshCounts to add a row for it.
-				if ( $mode === self::LAZY_INIT_ROW && $this->mPage->exists() ) {
+				# If the title exists, call refreshCounts to add a row for it.
+				if ( $mode === self::LAZY_INIT_ROW && $this->mTitle->exists() ) {
 					DeferredUpdates::addCallableUpdate( [ $this, 'refreshCounts' ] );
 				}
 
@@ -144,7 +138,7 @@ class Category {
 			return false;
 		}
 
-		$cat->mPage = $title;
+		$cat->mTitle = $title;
 		$cat->mName = $title->getDBkey();
 
 		return $cat;
@@ -153,14 +147,14 @@ class Category {
 	/**
 	 * Factory function.
 	 *
-	 * @param PageIdentity $page Category page. Warning, no validation is performed!
-	 * @return Category
+	 * @param Title $title Title for the category page
+	 * @return Category|bool On a totally invalid name
 	 */
-	public static function newFromTitle( PageIdentity $page ): self {
+	public static function newFromTitle( $title ) {
 		$cat = new self();
 
-		$cat->mPage = $page;
-		$cat->mName = $page->getDBkey();
+		$cat->mTitle = $title;
+		$cat->mName = $title->getDBkey();
 
 		return $cat;
 	}
@@ -168,7 +162,7 @@ class Category {
 	/**
 	 * Factory function.
 	 *
-	 * @param int $id A category id. Warning, no validation is performed!
+	 * @param int $id A category id
 	 * @return Category
 	 */
 	public static function newFromID( $id ) {
@@ -180,16 +174,18 @@ class Category {
 	/**
 	 * Factory function, for constructing a Category object from a result set
 	 *
-	 * @param stdClass $row Result set row, must contain the cat_xxx fields. If the fields are
-	 *   null, the resulting Category object will represent an empty category if a page object was
-	 *   given. If the fields are null and no PageIdentity was given, this method fails and returns
-	 *   false.
-	 * @param PageIdentity|null $page This must be provided if there is no cat_title field in $row.
+	 * @param stdClass $row Result set row, must contain the cat_xxx fields. If the
+	 *   fields are null, the resulting Category object will represent an empty
+	 *   category if a title object was given. If the fields are null and no
+	 *   title was given, this method fails and returns false.
+	 * @param Title|null $title Optional title object for the category represented by
+	 *   the given row. May be provided if it is already known, to avoid having
+	 *   to re-create a title object later.
 	 * @return Category|false
 	 */
-	public static function newFromRow( stdClass $row, ?PageIdentity $page = null ) {
+	public static function newFromRow( $row, $title = null ) {
 		$cat = new self();
-		$cat->mPage = $page;
+		$cat->mTitle = $title;
 
 		# NOTE: the row often results from a LEFT JOIN on categorylinks. This may result in
 		#       all the cat_xxx fields being null, if the category page exists, but nothing
@@ -197,13 +193,13 @@ class Category {
 		#       category, if possible.
 
 		if ( $row->cat_title === null ) {
-			if ( $page === null ) {
+			if ( $title === null ) {
 				# the name is probably somewhere in the row, for example as page_title,
 				# but we can't know that here...
 				return false;
 			} else {
-				# if we have a PageIdentity object, fetch the category name from there
-				$cat->mName = $page->getDBkey();
+				# if we have a title object, fetch the category name from there
+				$cat->mName = $title->getDBkey();
 			}
 
 			$cat->mID = false;
@@ -257,29 +253,19 @@ class Category {
 	}
 
 	/**
-	 * @since 1.37
-	 * @return ?PageIdentity the page associated with this category, or null on failure. NOTE: This
-	 *   returns null on failure, unlike getTitle() which returns false.
-	 */
-	public function getPage(): ?PageIdentity {
-		if ( $this->mPage ) {
-			return $this->mPage;
-		}
-
-		if ( !$this->initialize( self::LAZY_INIT_ROW ) ) {
-			return null;
-		}
-
-		$this->mPage = Title::makeTitleSafe( NS_CATEGORY, $this->mName );
-		return $this->mPage;
-	}
-
-	/**
-	 * @deprecated since 1.37, use getPage() instead.
 	 * @return Title|bool Title for this category, or false on failure.
 	 */
 	public function getTitle() {
-		return Title::castFromPageIdentity( $this->getPage() ) ?? false;
+		if ( $this->mTitle ) {
+			return $this->mTitle;
+		}
+
+		if ( !$this->initialize( self::LAZY_INIT_ROW ) ) {
+			return false;
+		}
+
+		$this->mTitle = Title::makeTitleSafe( NS_CATEGORY, $this->mName );
+		return $this->mTitle;
 	}
 
 	/**
@@ -335,7 +321,7 @@ class Category {
 	 * @return bool True on success, false on failure
 	 */
 	public function refreshCounts() {
-		if ( $this->readOnlyMode->isReadOnly() ) {
+		if ( wfReadOnly() ) {
 			return false;
 		}
 
@@ -346,7 +332,7 @@ class Category {
 			return false;
 		}
 
-		$dbw = $this->loadBalancer->getConnectionRef( DB_PRIMARY );
+		$dbw = $this->loadBalancer->getConnectionRef( DB_MASTER );
 		# Avoid excess contention on the same category (T162121)
 		$name = __METHOD__ . ':' . md5( $this->mName );
 		$scopedLock = $dbw->getScopedLockAndFlush( $name, __METHOD__, 0 );
@@ -383,7 +369,7 @@ class Category {
 			__METHOD__
 		);
 
-		$shouldExist = $result->pages > 0 || $this->getPage()->exists();
+		$shouldExist = $result->pages > 0 || $this->getTitle()->exists();
 
 		if ( $this->mID ) {
 			if ( $shouldExist ) {
@@ -471,7 +457,7 @@ class Category {
 	 * @since 1.34
 	 */
 	public function refreshCountsIfSmall( $maxSize = self::ROW_COUNT_SMALL ) {
-		$dbw = $this->loadBalancer->getConnectionRef( DB_PRIMARY );
+		$dbw = $this->loadBalancer->getConnectionRef( DB_MASTER );
 		$dbw->startAtomic( __METHOD__ );
 
 		$typeOccurances = $dbw->selectFieldValues(

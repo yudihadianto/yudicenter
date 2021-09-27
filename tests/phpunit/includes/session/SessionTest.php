@@ -9,7 +9,7 @@ use Wikimedia\TestingAccessWrapper;
 
 /**
  * @group Session
- * @covers \MediaWiki\Session\Session
+ * @covers MediaWiki\Session\Session
  */
 class SessionTest extends MediaWikiIntegrationTestCase {
 
@@ -18,10 +18,10 @@ class SessionTest extends MediaWikiIntegrationTestCase {
 		$priv = TestingAccessWrapper::newFromObject( $session );
 
 		$backend = $this->getMockBuilder( DummySessionBackend::class )
-			->addMethods( [ 'canSetUser', 'setUser', 'save' ] )
+			->setMethods( [ 'canSetUser', 'setUser', 'save' ] )
 			->getMock();
 		$backend->expects( $this->once() )->method( 'canSetUser' )
-			->willReturn( true );
+			->will( $this->returnValue( true ) );
 		$backend->expects( $this->once() )->method( 'setUser' )
 			->with( $this->callback( static function ( $user ) {
 				return $user instanceof User && $user->isAnon();
@@ -33,11 +33,11 @@ class SessionTest extends MediaWikiIntegrationTestCase {
 		$this->assertTrue( $backend->dirty );
 
 		$backend = $this->getMockBuilder( DummySessionBackend::class )
-			->addMethods( [ 'canSetUser', 'setUser', 'save' ] )
+			->setMethods( [ 'canSetUser', 'setUser', 'save' ] )
 			->getMock();
 		$backend->data = [];
 		$backend->expects( $this->once() )->method( 'canSetUser' )
-			->willReturn( true );
+			->will( $this->returnValue( true ) );
 		$backend->expects( $this->once() )->method( 'setUser' )
 			->with( $this->callback( static function ( $user ) {
 				return $user instanceof User && $user->isAnon();
@@ -48,10 +48,10 @@ class SessionTest extends MediaWikiIntegrationTestCase {
 		$this->assertFalse( $backend->dirty );
 
 		$backend = $this->getMockBuilder( DummySessionBackend::class )
-			->addMethods( [ 'canSetUser', 'setUser', 'save' ] )
+			->setMethods( [ 'canSetUser', 'setUser', 'save' ] )
 			->getMock();
 		$backend->expects( $this->once() )->method( 'canSetUser' )
-			->willReturn( false );
+			->will( $this->returnValue( false ) );
 		$backend->expects( $this->never() )->method( 'setUser' );
 		$backend->expects( $this->once() )->method( 'save' );
 		$priv->backend = $backend;

@@ -3,7 +3,6 @@
 namespace MediaWiki\Page;
 
 use Iterator;
-use LinkCache;
 use Wikimedia\Assert\Assert;
 use Wikimedia\Rdbms\IDatabase;
 use Wikimedia\Rdbms\SelectQueryBuilder;
@@ -16,21 +15,15 @@ class PageSelectQueryBuilder extends SelectQueryBuilder {
 	/** @var PageStore */
 	private $pageStore;
 
-	/** @var LinkCache|null */
-	private $linkCache;
-
 	/**
+	 * @internal
 	 * @param IDatabase $db
 	 * @param PageStore $pageStore
-	 * @param LinkCache|null $linkCache A link cache to store any retrieved rows into
-	 *
-	 * @internal
 	 */
-	public function __construct( IDatabase $db, PageStore $pageStore, ?LinkCache $linkCache = null ) {
+	public function __construct( IDatabase $db, PageStore $pageStore ) {
 		parent::__construct( $db );
 		$this->pageStore = $pageStore;
 		$this->table( 'page' );
-		$this->linkCache = $linkCache;
 	}
 
 	/**
@@ -129,12 +122,7 @@ class PageSelectQueryBuilder extends SelectQueryBuilder {
 		if ( !$row ) {
 			return null;
 		}
-
-		$rec = $this->pageStore->newPageRecordFromRow( $row );
-		if ( $this->linkCache ) {
-			$this->linkCache->addGoodLinkObjFromRow( $rec, $row );
-		}
-		return $rec;
+		return $this->pageStore->newPageRecordFromRow( $row );
 	}
 
 	/**
@@ -148,11 +136,7 @@ class PageSelectQueryBuilder extends SelectQueryBuilder {
 		return call_user_func( function () {
 			$result = $this->fetchResultSet();
 			foreach ( $result as $row ) {
-				$rec = $this->pageStore->newPageRecordFromRow( $row );
-				if ( $this->linkCache ) {
-					$this->linkCache->addGoodLinkObjFromRow( $rec, $row );
-				}
-				yield $rec;
+				yield $this->pageStore->newPageRecordFromRow( $row );
 			}
 			$result->free();
 		} );

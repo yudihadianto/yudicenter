@@ -31,7 +31,7 @@ abstract class LoggedUpdateMaintenance extends Maintenance {
 	}
 
 	public function execute() {
-		$db = $this->getDB( DB_PRIMARY );
+		$db = $this->getDB( DB_MASTER );
 		$key = $this->getUpdateKey();
 
 		if ( !$this->hasOption( 'force' )
@@ -49,14 +49,6 @@ abstract class LoggedUpdateMaintenance extends Maintenance {
 		$db->insert( 'updatelog', [ 'ul_key' => $key ], __METHOD__, [ 'IGNORE' ] );
 
 		return true;
-	}
-
-	/**
-	 * Sets whether a run of this maintenance script has the force parameter set
-	 * @param bool $forced
-	 */
-	public function setForce( $forced = true ) {
-		$this->mOptions['force'] = $forced;
 	}
 
 	/**

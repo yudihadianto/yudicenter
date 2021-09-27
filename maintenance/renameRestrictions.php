@@ -24,9 +24,8 @@
 require_once __DIR__ . '/Maintenance.php';
 
 /**
- * Maintenance script that updates page_restrictions and
- * protected_titles tables to use a new name for a given
- * restriction level.
+ * Maintenance script that updates page_restrictions table
+ * with a renamed restriction level.
  *
  * @ingroup Maintenance
  */
@@ -42,17 +41,11 @@ class RenameRestrictions extends Maintenance {
 		$oldLevel = $this->getArg( 0 );
 		$newLevel = $this->getArg( 1 );
 
-		$dbw = wfGetDB( DB_PRIMARY );
-		$dbw->update(
+		$dbm = wfGetDB( DB_MASTER );
+		$dbm->update(
 			'page_restrictions',
 			[ 'pr_level' => $newLevel ],
 			[ 'pr_level' => $oldLevel ],
-			__METHOD__
-		);
-		$dbw->update(
-			'protected_titles',
-			[ 'pt_create_perm' => $newLevel ],
-			[ 'pt_create_perm' => $oldLevel ],
 			__METHOD__
 		);
 	}

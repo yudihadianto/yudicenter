@@ -1,4 +1,8 @@
 <?php
+
+use MediaWiki\MediaWikiServices;
+use Wikimedia\TestingAccessWrapper;
+
 /**
  * This program is free software; you can redistribute it and/or modify
  * it under the terms of the GNU General Public License as published by
@@ -14,34 +18,27 @@
  * with this program; if not, write to the Free Software Foundation, Inc.,
  * 51 Franklin Street, Fifth Floor, Boston, MA 02110-1301, USA.
  * http://www.gnu.org/copyleft/gpl.html
- *
- * @file
  */
 
-use MediaWiki\Content\Transform\PreloadTransformParamsValue;
-use MediaWiki\Content\Transform\PreSaveTransformParamsValue;
-use MediaWiki\MediaWikiServices;
-use Wikimedia\TestingAccessWrapper;
-
-/**
- * @group Database
- */
 class ContentHandlerSanityTest extends MediaWikiIntegrationTestCase {
 
-	public static function provideModels() {
+	public static function provideHandlers() {
+		$models = ContentHandler::getContentModels();
 		$contentHandlerFactory = MediaWikiServices::getInstance()->getContentHandlerFactory();
-		foreach ( $contentHandlerFactory->getContentModels() as $model ) {
-			yield [ $model ];
+		$handlers = [];
+		foreach ( $models as $model ) {
+			$handlers[] = [
+				$contentHandlerFactory->getContentHandler( $model )
+			];
 		}
+
+		return $handlers;
 	}
 
 	/**
-	 * @dataProvider provideModels
+	 * @dataProvider provideHandlers
 	 */
-	public function testMakeEmptyContent( string $model ) {
-		$handler = $this->getServiceContainer()->getContentHandlerFactory()
-			->getContentHandler( $model );
-
+	public function testMakeEmptyContent( ContentHandler $handler ) {
 		$content = $handler->makeEmptyContent();
 		$this->assertInstanceOf( Content::class, $content );
 		if ( $handler instanceof TextContentHandler ) {
@@ -60,97 +57,6 @@ class ContentHandlerSanityTest extends MediaWikiIntegrationTestCase {
 				"$handlerClass::makeEmptyContent() did not return a valid content ($contentClass::isValid())"
 			);
 		}
-	}
-
-	/**
-	 * Test that getParserOutput works on all content models
-	 *
-	 * @dataProvider provideModels
-	 */
-	public function testGetParserOutput( string $model ) {
-		$handler = $this->getServiceContainer()->getContentHandlerFactory()
-			->getContentHandler( $model );
-
-		$title = $this->getExistingTestPage()->getTitle();
-		$content = $handler->makeEmptyContent();
-
-		$this->assertInstanceOf( ParserOutput::class, $content->getParserOutput( $title ) );
-	}
-
-	/**
-	 * Test that preSaveTransform works on all content models
-	 *
-	 * @dataProvider provideModels
-	 */
-	public function testPreSaveTransform( string $model ) {
-		$this->filterDeprecated( '/Use of AbstractContent::preSaveTransform was deprecated/' );
-
-		$handler = $this->getServiceContainer()->getContentHandlerFactory()
-			->getContentHandler( $model );
-
-		$title = $this->getExistingTestPage()->getTitle();
-		$user = $this->getTestUser()->getUser();
-		$popts = ParserOptions::newCanonical( 'canonical' );
-		$content = $handler->makeEmptyContent();
-
-		$this->assertInstanceOf(
-			Content::class,
-			$content->preSaveTransform( $title, $user, $popts )
-		);
-
-		$pstParams = new PreSaveTransformParamsValue( $title, $user, $popts );
-		$this->assertInstanceOf(
-			Content::class,
-			$handler->preSaveTransform( $content, $pstParams )
-		);
-	}
-
-	/**
-	 * Test that preloadTransform works on all content models
-	 *
-	 * @dataProvider provideModels
-	 */
-	public function testPreloadTransform( string $model ) {
-		$this->filterDeprecated( '/Use of AbstractContent::preloadTransform was deprecated/' );
-
-		$handler = $this->getServiceContainer()->getContentHandlerFactory()
-			->getContentHandler( $model );
-
-		$title = $this->getExistingTestPage()->getTitle();
-		$popts = ParserOptions::newCanonical( 'canonical' );
-		$content = $handler->makeEmptyContent();
-
-		$this->assertInstanceOf(
-			Content::class,
-			$content->preloadTransform( $title, $popts, [] )
-		);
-
-		$pltParams = new PreloadTransformParamsValue( $title, $popts, [] );
-		$this->assertInstanceOf(
-			Content::class,
-			$handler->preloadTransform( $content, $pltParams )
-		);
-	}
-
-	/**
-	 * Test that serialization and unserialization works on all content models
-	 *
-	 * @dataProvider provideModels
-	 */
-	public function testSerializationRoundTrips( string $model ) {
-		if ( preg_match( '/^wikibase-/', $model ) ) {
-			// TODO: Make Wikibase support serialization of empty content, just so
-			//       we can test it here.
-			$this->markTestSkipped( 'Wikibase doesn\'t support serializing empty content' );
-		}
-
-		$handler = $this->getServiceContainer()->getContentHandlerFactory()
-			->getContentHandler( $model );
-
-		$content = $handler->makeEmptyContent();
-		$data = $content->serialize();
-		$content2 = $handler->unserializeContent( $data );
-		$this->assertTrue( $content->equals( $content2 ) );
 	}
 
 }

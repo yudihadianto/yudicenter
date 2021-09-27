@@ -21,8 +21,6 @@
  * @ingroup Media
  */
 
-use Wikimedia\RequestTimeout\TimeoutException;
-
 /**
  * Handler for PNG images.
  *
@@ -32,31 +30,21 @@ class PNGHandler extends BitmapHandler {
 	private const BROKEN_FILE = '0';
 
 	/**
-	 * @param MediaHandlerState $state
+	 * @param File|FSFile $image
 	 * @param string $filename
-	 * @return array
+	 * @return string
 	 */
-	public function getSizeAndMetadata( $state, $filename ) {
+	public function getMetadata( $image, $filename ) {
 		try {
 			$metadata = BitmapMetadataHandler::PNG( $filename );
-		} catch ( TimeoutException $e ) {
-			throw $e;
 		} catch ( Exception $e ) {
 			// Broken file?
 			wfDebug( __METHOD__ . ': ' . $e->getMessage() );
 
-			return [ 'metadata' => [ '_error' => self::BROKEN_FILE ] ];
+			return self::BROKEN_FILE;
 		}
 
-		return [
-			'width' => $metadata['width'],
-			'height' => $metadata['height'],
-			'bits' => $metadata['bitDepth'],
-			'metadata' => array_diff_key(
-				$metadata,
-				[ 'width' => true, 'height' => true, 'bits' => true ]
-			)
-		];
+		return serialize( $metadata );
 	}
 
 	/**
@@ -80,8 +68,12 @@ class PNGHandler extends BitmapHandler {
 	 * @return array The metadata array
 	 */
 	public function getCommonMetaArray( File $image ) {
-		$meta = $image->getMetadataArray();
+		$meta = $image->getMetadata();
 
+		if ( !$meta ) {
+			return [];
+		}
+		$meta = unserialize( $meta );
 		if ( !isset( $meta['metadata'] ) ) {
 			return [];
 		}
@@ -95,9 +87,12 @@ class PNGHandler extends BitmapHandler {
 	 * @return bool
 	 */
 	public function isAnimatedImage( $image ) {
-		$metadata = $image->getMetadataArray();
-		if ( isset( $metadata['frameCount'] ) && $metadata['frameCount'] > 1 ) {
-			return true;
+		$ser = $image->getMetadata();
+		if ( $ser ) {
+			$metadata = unserialize( $ser );
+			if ( $metadata['frameCount'] > 1 ) {
+				return true;
+			}
 		}
 
 		return false;
@@ -116,14 +111,17 @@ class PNGHandler extends BitmapHandler {
 		return 'parsed-png';
 	}
 
-	public function isFileMetadataValid( $image ) {
-		$data = $image->getMetadataArray();
-		if ( $data === [ '_error' => self::BROKEN_FILE ] ) {
-			// Do not repetitively regenerate metadata on broken file.
+	public function isMetadataValid( $image, $metadata ) {
+		if ( $metadata === self::BROKEN_FILE ) {
+			// Do not repetitivly regenerate metadata on broken file.
 			return self::METADATA_GOOD;
 		}
 
-		if ( !$data || isset( $data['_error'] ) ) {
+		Wikimedia\suppressWarnings();
+		$data = unserialize( $metadata );
+		Wikimedia\restoreWarnings();
+
+		if ( !$data || !is_array( $data ) ) {
 			wfDebug( __METHOD__ . " invalid png metadata" );
 
 			return self::METADATA_BAD;
@@ -148,9 +146,11 @@ class PNGHandler extends BitmapHandler {
 		global $wgLang;
 		$original = parent::getLongDesc( $image );
 
-		$metadata = $image->getMetadataArray();
+		Wikimedia\suppressWarnings();
+		$metadata = unserialize( $image->getMetadata() );
+		Wikimedia\restoreWarnings();
 
-		if ( !$metadata || isset( $metadata['_error'] ) || $metadata['frameCount'] <= 0 ) {
+		if ( !$metadata || $metadata['frameCount'] <= 0 ) {
 			return $original;
 		}
 
@@ -183,7 +183,10 @@ class PNGHandler extends BitmapHandler {
 	 * @return float The duration of the file.
 	 */
 	public function getLength( $file ) {
-		$metadata = $file->getMetadataArray();
+		$serMeta = $file->getMetadata();
+		Wikimedia\suppressWarnings();
+		$metadata = unserialize( $serMeta );
+		Wikimedia\restoreWarnings();
 
 		if ( !$metadata || !isset( $metadata['duration'] ) || !$metadata['duration'] ) {
 			return 0.0;

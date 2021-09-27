@@ -1,13 +1,10 @@
 {
 	"@metadata": {
 		"authors": [
-			"Amire80",
 			"BarkingFish",
 			"Caffelice (on tpi.wikipedia.org)",
 			"Iketsi",
-			"MinecraftAustralia",
 			"Tacsipacsi",
-			"Tok Pisin",
 			"Wantok",
 			"Wytukaze",
 			"לערי ריינהארט",
@@ -112,7 +109,7 @@
 	"cancel": "Toromwe senis",
 	"moredotdotdot": "Moa...",
 	"mypage": "Pes bilong mi",
-	"mytalk": "Toktok",
+	"mytalk": "Toktok bilong mi",
 	"anontalk": "Toktok bilong dispela IP",
 	"navigation": "Ol bikpela pes",
 	"and": "&#32;na",
@@ -139,7 +136,7 @@
 	"personaltools": "Ol pes bilong mi",
 	"talk": "Toktok",
 	"views": "Ol lukluk",
-	"toolbox": "Ol tul:",
+	"toolbox": "Sipesol bokis",
 	"imagepage": "Lukim pes bilong fail",
 	"mediawikipage": "Lukim pes bilong toksave",
 	"templatepage": "Lukim templet pes",
@@ -592,6 +589,6 @@
 	"compare-page2": "Pes 2",
 	"htmlform-selectorother-other": "Narapela",
 	"rightsnone": "i nogat wanpela",
-	"searchsuggest-search": "Painim long {{SITENAME}}",
+	"searchsuggest-search": "Painim",
 	"expand_templates_ok": "OK"
 }

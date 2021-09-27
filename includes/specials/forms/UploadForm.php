@@ -126,7 +126,7 @@ class UploadForm extends HTMLForm {
 		}
 
 		# Set some form properties
-		$this->setSubmitTextMsg( 'uploadbtn' );
+		$this->setSubmitText( $this->msg( 'uploadbtn' )->text() );
 		$this->setSubmitName( 'wpUpload' );
 		# Used message keys: 'accesskey-upload', 'tooltip-upload'
 		$this->setSubmitTooltip( 'upload' );
@@ -261,7 +261,7 @@ class UploadForm extends HTMLForm {
 					"</div>\n";
 			} else {
 				# We have to list both preferred and prohibited
-				$prohibitedExtensions = array_unique( $config->get( 'ProhibitedFileExtensions' ) );
+				$prohibitedExtensions = array_unique( $config->get( 'FileBlacklist' ) );
 				$extensionsList =
 					'<div id="mw-upload-preferred">' .
 						$this->msg( 'upload-preferred' )

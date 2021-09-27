@@ -51,7 +51,7 @@ class PageSourceHandlerTest extends MediaWikiIntegrationTestCase {
 			] ),
 			$this->getServiceContainer()->getRevisionLookup(),
 			$this->getServiceContainer()->getTitleFormatter(),
-			$this->getServiceContainer()->getPageStore()
+			$this->getServiceContainer()->getTitleFactory()
 		);
 
 		return $handler;

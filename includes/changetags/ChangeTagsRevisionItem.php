@@ -42,8 +42,7 @@ class ChangeTagsRevisionItem extends RevisionItem {
 		$userlink = Linker::revUserLink( $this->getRevisionRecord() );
 		$comment = Linker::revComment( $this->getRevisionRecord() );
 		if ( $this->isDeleted() ) {
-			$class = Linker::getRevisionDeletedClass( $this->getRevisionRecord() );
-			$revlink = "<span class=\"$class\">$revlink</span>";
+			$revlink = "<span class=\"history-deleted\">$revlink</span>";
 		}
 
 		$content = "$difflink $revlink $userlink $comment";

@@ -27,7 +27,8 @@ class StorageTypeStats extends Maintenance {
 
 		$endId = $dbr->selectField( 'text', 'MAX(old_id)', '', __METHOD__ );
 		if ( !$endId ) {
-			$this->fatalError( 'No text rows!' );
+			echo "No text rows!\n";
+			exit( 1 );
 		}
 
 		$binSize = intval( 10 ** ( floor( log10( $endId ) ) - 3 ) );

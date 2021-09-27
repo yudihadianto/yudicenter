@@ -111,7 +111,7 @@ class RevDelFileItem extends RevDelItem {
 		}
 
 		# Do the database operations
-		$dbw = wfGetDB( DB_PRIMARY );
+		$dbw = wfGetDB( DB_MASTER );
 		$dbw->update( 'oldimage',
 			[ 'oi_deleted' => $bits ],
 			[
@@ -152,7 +152,7 @@ class RevDelFileItem extends RevDelItem {
 				$date,
 				[],
 				[
-					'target' => $this->list->getPageName(),
+					'target' => $this->list->title->getPrefixedText(),
 					'file' => $this->file->getArchiveName(),
 					'token' => $this->list->getUser()->getEditToken(
 						$this->file->getArchiveName() )
@@ -168,17 +168,17 @@ class RevDelFileItem extends RevDelItem {
 	 * @return string HTML
 	 */
 	protected function getUserTools() {
-		$uploader = $this->file->getUploader( File::FOR_THIS_USER, $this->list->getAuthority() );
-		if ( $uploader ) {
-			$link = Linker::userLink( $uploader->getId(), $uploader->getName() ) .
-				Linker::userToolLinks( $uploader->getId(), $uploader->getName() );
-			return $link;
+		if ( $this->file->userCan( RevisionRecord::DELETED_USER, $this->list->getUser() ) ) {
+			$uid = $this->file->getUser( 'id' );
+			$name = $this->file->getUser( 'text' );
+			$link = Linker::userLink( $uid, $name ) . Linker::userToolLinks( $uid, $name );
 		} else {
 			$link = $this->list->msg( 'rev-deleted-user' )->escaped();
 		}
-		if ( $this->file->isDeleted( File::DELETED_USER ) ) {
+		if ( $this->file->isDeleted( RevisionRecord::DELETED_USER ) ) {
 			return '<span class="history-deleted">' . $link . '</span>';
 		}
+
 		return $link;
 	}
 
@@ -215,7 +215,7 @@ class RevDelFileItem extends RevDelItem {
 		$file = $this->file;
 		$user = $this->list->getUser();
 		$ret = [
-			'title' => $this->list->getPageName(),
+			'title' => $this->list->title->getPrefixedText(),
 			'archivename' => $file->getArchiveName(),
 			'timestamp' => wfTimestamp( TS_ISO_8601, $file->getTimestamp() ),
 			'width' => $file->getWidth(),
@@ -233,24 +233,22 @@ class RevDelFileItem extends RevDelItem {
 			$ret += [
 				'url' => SpecialPage::getTitleFor( 'Revisiondelete' )->getLinkURL(
 					[
-						'target' => $this->list->getPageName(),
+						'target' => $this->list->title->getPrefixedText(),
 						'file' => $file->getArchiveName(),
 						'token' => $user->getEditToken( $file->getArchiveName() )
 					]
 				),
 			];
 		}
-		$uploader = $file->getUploader( File::FOR_THIS_USER, $user );
-		if ( $uploader ) {
+		if ( $file->userCan( RevisionRecord::DELETED_USER, $user ) ) {
 			$ret += [
-				'userid' => $uploader->getId(),
-				'user' => $uploader->getName(),
+				'userid' => $file->getUser( 'id' ),
+				'user' => $file->getUser( 'text' ),
 			];
 		}
-		$comment = $file->getDescription( File::FOR_THIS_USER, $user );
-		if ( $comment ) {
+		if ( $file->userCan( RevisionRecord::DELETED_COMMENT, $user ) ) {
 			$ret += [
-				'comment' => $comment,
+				'comment' => $file->getDescription( LocalFile::RAW ),
 			];
 		}
 

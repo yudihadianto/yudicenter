@@ -1,6 +1,6 @@
 <?php
 
-use MediaWiki\Tests\Unit\DummyServicesTrait;
+use MediaWiki\Interwiki\ClassicInterwikiLookup;
 
 /**
  * @group API
@@ -9,23 +9,25 @@ use MediaWiki\Tests\Unit\DummyServicesTrait;
  * @covers ApiQuery
  */
 class ApiQueryTest extends ApiTestCase {
-	use DummyServicesTrait;
-
-	protected function setUp(): void {
+	protected function setUp() : void {
 		parent::setUp();
 
 		// Setup apiquerytestiw: as interwiki prefix
-		// DummyServicesTrait::getDummyInterwikiLookup
-		$interwikiLookup = $this->getDummyInterwikiLookup( [
-			[ 'iw_prefix' => 'apiquerytestiw', 'iw_url' => 'wikipedia' ],
+		$this->setMwGlobals( [
+			'wgInterwikiCache' => ClassicInterwikiLookup::buildCdbHash( [
+				[
+					'iw_prefix' => 'apiquerytestiw',
+					'iw_url' => 'wikipedia',
+				],
+			] ),
 		] );
-		$this->setService( 'InterwikiLookup', $interwikiLookup );
 	}
 
 	public function testTitlesGetNormalized() {
+		global $wgMetaNamespace;
+
 		$this->setMwGlobals( [
 			'wgCapitalLinks' => true,
-			'wgMetaNamespace' => 'TestWiki',
 		] );
 
 		$data = $this->doApiRequest( [
@@ -35,11 +37,14 @@ class ApiQueryTest extends ApiTestCase {
 		$this->assertArrayHasKey( 'query', $data[0] );
 		$this->assertArrayHasKey( 'normalized', $data[0]['query'] );
 
+		// Forge a normalized title
+		$to = Title::newFromText( $wgMetaNamespace . ':ArticleA' );
+
 		$this->assertEquals(
 			[
 				'fromencoded' => false,
 				'from' => 'Project:articleA',
-				'to' => 'TestWiki:ArticleA',
+				'to' => $to->getPrefixedText(),
 			],
 			$data[0]['query']['normalized'][0]
 		);

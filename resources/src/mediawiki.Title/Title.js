@@ -623,7 +623,7 @@ Title.isTalkNamespace = function ( namespaceId ) {
 /**
  * Check if signature buttons should be shown in a given namespace
  *
- * See NamespaceInfo::wantSignatures in PHP
+ * See MWNamespace::wantSignatures in PHP
  *
  * @param {number} namespaceId Namespace ID
  * @return {boolean} Namespace is a signature namespace
@@ -828,8 +828,7 @@ Title.prototype = {
 		) {
 			return this.title;
 		}
-		var firstChar = mwString.charAt( this.title, 0 );
-		return mw.Title.phpCharToUpper( firstChar ) + this.title.slice( firstChar.length );
+		return mw.Title.phpCharToUpper( this.title[ 0 ] ) + this.title.slice( 1 );
 	},
 
 	/**

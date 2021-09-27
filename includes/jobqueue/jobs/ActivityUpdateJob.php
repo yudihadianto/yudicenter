@@ -20,7 +20,6 @@
  */
 
 use MediaWiki\Linker\LinkTarget;
-use MediaWiki\Page\PageReference;
 
 /**
  * Job for updating user activity like "last viewed" timestamps
@@ -35,18 +34,10 @@ use MediaWiki\Page\PageReference;
  * @since 1.26
  */
 class ActivityUpdateJob extends Job {
-	/**
-	 * @param LinkTarget|PageReference $title
-	 * @param array $params
-	 */
-	public function __construct( $title, array $params ) {
-		// If we know its a PageReference, we could just pass that to the parent
-		// constructor, but its simpler to just extract namespace and dbkey, and
-		// that works for both LinkTarget and PageReference
-		$params['namespace'] = $title->getNamespace();
-		$params['title'] = $title->getDBkey();
+	public function __construct( LinkTarget $title, array $params ) {
+		$title = Title::newFromLinkTarget( $title );
 
-		parent::__construct( 'activityUpdateJob', $params );
+		parent::__construct( 'activityUpdateJob', $title, $params );
 
 		static $required = [ 'type', 'userid', 'notifTime', 'curTime' ];
 		$missing = implode( ', ', array_diff( $required, array_keys( $this->params ) ) );
@@ -70,7 +61,7 @@ class ActivityUpdateJob extends Job {
 	protected function updateWatchlistNotification() {
 		$casTimestamp = $this->params['notifTime'] ?? $this->params['curTime'];
 
-		$dbw = wfGetDB( DB_PRIMARY );
+		$dbw = wfGetDB( DB_MASTER );
 		$dbw->update( 'watchlist',
 			[
 				'wl_notificationtimestamp' => $dbw->timestampOrNull( $this->params['notifTime'] )

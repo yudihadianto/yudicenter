@@ -44,7 +44,7 @@ class UpdateSpecialPages extends Maintenance {
 	public function execute() {
 		global $wgQueryCacheLimit;
 
-		$dbw = $this->getDB( DB_PRIMARY );
+		$dbw = $this->getDB( DB_MASTER );
 
 		$this->doSpecialPageCacheUpdates( $dbw );
 
@@ -70,13 +70,14 @@ class UpdateSpecialPages extends Maintenance {
 				getPage( $special );
 			if ( !$specialObj ) {
 				$this->output( "No such special page: $special\n" );
-				return;
+				exit;
 			}
 			if ( $specialObj instanceof QueryPage ) {
 				$queryPage = $specialObj;
 			} else {
 				$class = get_class( $specialObj );
 				$this->fatalError( "$class is not an instance of QueryPage.\n" );
+				die;
 			}
 
 			if ( !$this->hasOption( 'only' ) || $this->getOption( 'only' ) == $queryPage->getName() ) {

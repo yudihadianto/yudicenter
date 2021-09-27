@@ -62,7 +62,7 @@ class LegacyHandler extends AbstractProcessingHandler {
 
 	/**
 	 * Log sink
-	 * @var resource|null
+	 * @var resource
 	 */
 	protected $sink;
 
@@ -200,7 +200,7 @@ class LegacyHandler extends AbstractProcessingHandler {
 					$record['channel'] : $this->prefix;
 				$text = preg_replace( '/^/m', "{$leader} ", $text );
 
-				// Limit to 64 KiB
+				// Limit to 64KB
 				if ( strlen( $text ) > 65506 ) {
 					$text = substr( $text, 0, 65506 );
 				}

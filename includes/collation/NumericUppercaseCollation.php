@@ -18,8 +18,6 @@
  * @file
  */
 
-use MediaWiki\Languages\LanguageFactory;
-
 /**
  * Collation that orders text with numbers "naturally", so that 'Foo 1' < 'Foo 2' < 'Foo 12'.
  *
@@ -42,19 +40,14 @@ class NumericUppercaseCollation extends UppercaseCollation {
 	private $digitTransformLang;
 
 	/**
-	 * @param LanguageFactory $languageFactory
-	 * @param string|Language $digitTransformLang How to convert digits.
+	 * @param Language $lang How to convert digits.
 	 *  For example, if given language "my" than ၇ is treated like 7.
-	 *  It is expected that usually this is given the content language.
+	 *
+	 * It is expected that usually this is given the content language.
 	 */
-	public function __construct(
-		LanguageFactory $languageFactory,
-		$digitTransformLang
-	) {
-		$this->digitTransformLang = $digitTransformLang instanceof Language
-			? $digitTransformLang
-			: $languageFactory->getLanguage( $digitTransformLang );
-		parent::__construct( $languageFactory );
+	public function __construct( Language $lang ) {
+		$this->digitTransformLang = $lang;
+		parent::__construct();
 	}
 
 	public function getSortKey( $string ) {

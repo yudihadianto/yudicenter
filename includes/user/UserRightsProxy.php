@@ -20,19 +20,16 @@
  * @file
  */
 
-use MediaWiki\DAO\WikiAwareEntityTrait;
 use MediaWiki\MediaWikiServices;
 use MediaWiki\User\UserGroupManager;
-use MediaWiki\User\UserIdentity;
+use MediaWiki\User\UserIdentityValue;
 use Wikimedia\Rdbms\IDatabase;
 
 /**
  * Cut-down copy of User interface for local-interwiki-database
  * user rights manipulation.
  */
-class UserRightsProxy implements UserIdentity {
-	use WikiAwareEntityTrait;
-
+class UserRightsProxy {
 	/** @var IDatabase */
 	private $db;
 	/** @var string */
@@ -163,27 +160,26 @@ class UserRightsProxy implements UserIdentity {
 		if ( $ignoreInvalidDB || self::validDatabase( $dbDomain ) ) {
 			if ( WikiMap::isCurrentWikiId( $dbDomain ) ) {
 				// Hmm... this shouldn't happen though. :)
-				return wfGetDB( DB_PRIMARY );
+				return wfGetDB( DB_MASTER );
 			} else {
-				return wfGetDB( DB_PRIMARY, [], $dbDomain );
+				return wfGetDB( DB_MASTER, [], $dbDomain );
 			}
 		}
 		return null;
 	}
 
 	/**
-	 * @param string|false $wikiId
 	 * @return int
 	 */
-	public function getId( $wikiId = self::LOCAL ): int {
+	public function getId() {
 		return $this->id;
 	}
 
 	/**
 	 * @return bool
 	 */
-	public function isAnon(): bool {
-		return !$this->isRegistered();
+	public function isAnon() {
+		return $this->getId() == 0;
 	}
 
 	/**
@@ -191,7 +187,7 @@ class UserRightsProxy implements UserIdentity {
 	 *
 	 * @return string
 	 */
-	public function getName(): string {
+	public function getName() {
 		return $this->name . '@' . $this->dbDomain;
 	}
 
@@ -219,7 +215,12 @@ class UserRightsProxy implements UserIdentity {
 	 * @since 1.29
 	 */
 	public function getGroupMemberships() {
-		return $this->userGroupManager->getUserGroupMemberships( $this, IDBAccessObject::READ_LATEST );
+		// TODO: We are creating an artificial UserIdentity to pass on to the user group manager.
+		// After all the relevant UserGroupMemberships methods are ported into UserGroupManager,
+		// the usages of this class will be changed into usages of the UserGroupManager,
+		// thus the need of this class and the need of this artificial UserIdentityValue will parish.
+		$user = new UserIdentityValue( $this->getId(), $this->getName() );
+		return $this->userGroupManager->getUserGroupMemberships( $user, IDBAccessObject::READ_LATEST );
 	}
 
 	/**
@@ -231,7 +232,9 @@ class UserRightsProxy implements UserIdentity {
 	 */
 	public function addGroup( $group, $expiry = null ) {
 		return $this->userGroupManager->addUserToGroup(
-			$this,
+			// TODO: Artificial UserIdentity just for passing the id and name.
+			// see comment in getGroupMemberships.
+			new UserIdentityValue( $this->getId(), $this->getName() ),
 			$group,
 			$expiry,
 			true
@@ -246,7 +249,9 @@ class UserRightsProxy implements UserIdentity {
 	 */
 	public function removeGroup( $group ) {
 		return $this->userGroupManager->removeUserFromGroup(
-			$this,
+			// TODO: Artificial UserIdentity just for passing the id and name.
+			// see comment in getGroupMemberships.
+			new UserIdentityValue( $this->getId(), $this->getName() ),
 			$group
 		);
 	}
@@ -297,32 +302,5 @@ class UserRightsProxy implements UserIdentity {
 			},
 			__METHOD__
 		);
-	}
-
-	/**
-	 * @inheritDoc
-	 */
-	public function equals( ?UserIdentity $user ): bool {
-		if ( !$user ) {
-			return false;
-		}
-		return $this->getName() === $user->getName();
-	}
-
-	/**
-	 * @inheritDoc
-	 */
-	public function isRegistered(): bool {
-		return $this->getId( $this->getWikiId() ) != 0;
-	}
-
-	/**
-	 * Returns the db Domain of the wiki the UserRightsProxy is associated with.
-	 *
-	 * @since 1.37
-	 * @return string
-	 */
-	public function getWikiId() {
-		return $this->dbDomain;
 	}
 }

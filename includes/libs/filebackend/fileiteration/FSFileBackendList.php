@@ -27,7 +27,7 @@
  * @ingroup FileBackend
  */
 abstract class FSFileBackendList implements Iterator {
-	/** @var Iterator|null */
+	/** @var Iterator */
 	protected $iter;
 	/** @var string */
 	protected $lastError;
@@ -95,7 +95,7 @@ abstract class FSFileBackendList implements Iterator {
 
 	/**
 	 * @see Iterator::current()
-	 * @return string|false
+	 * @return string|bool String or false
 	 */
 	public function current() {
 		return $this->getRelPath( $this->iter->current()->getPathname() );

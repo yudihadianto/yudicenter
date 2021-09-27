@@ -21,8 +21,6 @@
  * @ingroup Media
  */
 
-use Wikimedia\RequestTimeout\TimeoutException;
-
 /**
  * Handler for GIF images.
  *
@@ -34,27 +32,17 @@ class GIFHandler extends BitmapHandler {
 	 */
 	private const BROKEN_FILE = '0';
 
-	public function getSizeAndMetadata( $state, $filename ) {
+	public function getMetadata( $image, $filename ) {
 		try {
 			$parsedGIFMetadata = BitmapMetadataHandler::GIF( $filename );
-		} catch ( TimeoutException $e ) {
-			throw $e;
 		} catch ( Exception $e ) {
 			// Broken file?
 			wfDebug( __METHOD__ . ': ' . $e->getMessage() );
 
-			return [ 'metadata' => [ '_error' => self::BROKEN_FILE ] ];
+			return self::BROKEN_FILE;
 		}
 
-		return [
-			'width' => $parsedGIFMetadata['width'],
-			'height' => $parsedGIFMetadata['height'],
-			'bits' => $parsedGIFMetadata['bits'],
-			'metadata' => array_diff_key(
-				$parsedGIFMetadata,
-				[ 'width' => true, 'height' => true, 'bits' => true ]
-			)
-		];
+		return serialize( $parsedGIFMetadata );
 	}
 
 	/**
@@ -77,7 +65,12 @@ class GIFHandler extends BitmapHandler {
 	 * @return array|bool
 	 */
 	public function getCommonMetaArray( File $image ) {
-		$meta = $image->getMetadataArray();
+		$meta = $image->getMetadata();
+
+		if ( !$meta ) {
+			return [];
+		}
+		$meta = unserialize( $meta );
 		if ( !isset( $meta['metadata'] ) ) {
 			return [];
 		}
@@ -93,9 +86,14 @@ class GIFHandler extends BitmapHandler {
 	 * @return bool
 	 */
 	public function getImageArea( $image ) {
-		$metadata = $image->getMetadataArray();
-		if ( isset( $metadata['frameCount'] ) && $metadata['frameCount'] > 0 ) {
-			return $image->getWidth() * $image->getHeight() * $metadata['frameCount'];
+		$ser = $image->getMetadata();
+		if ( $ser ) {
+			$metadata = unserialize( $ser );
+			if ( isset( $metadata['frameCount'] ) && $metadata['frameCount'] > 0 ) {
+				return $image->getWidth() * $image->getHeight() * $metadata['frameCount'];
+			} else {
+				return $image->getWidth() * $image->getHeight();
+			}
 		} else {
 			return $image->getWidth() * $image->getHeight();
 		}
@@ -106,9 +104,12 @@ class GIFHandler extends BitmapHandler {
 	 * @return bool
 	 */
 	public function isAnimatedImage( $image ) {
-		$metadata = $image->getMetadataArray();
-		if ( isset( $metadata['frameCount'] ) && $metadata['frameCount'] > 1 ) {
-			return true;
+		$ser = $image->getMetadata();
+		if ( $ser ) {
+			$metadata = unserialize( $ser );
+			if ( isset( $metadata['frameCount'] ) && $metadata['frameCount'] > 1 ) {
+				return true;
+			}
 		}
 
 		return false;
@@ -129,14 +130,17 @@ class GIFHandler extends BitmapHandler {
 		return 'parsed-gif';
 	}
 
-	public function isFileMetadataValid( $image ) {
-		$data = $image->getMetadataArray();
-		if ( $data === [ '_error' => self::BROKEN_FILE ] ) {
-			// Do not repetitively regenerate metadata on broken file.
+	public function isMetadataValid( $image, $metadata ) {
+		if ( $metadata === self::BROKEN_FILE ) {
+			// Do not repetitivly regenerate metadata on broken file.
 			return self::METADATA_GOOD;
 		}
 
-		if ( !$data || isset( $data['_error'] ) ) {
+		Wikimedia\suppressWarnings();
+		$data = unserialize( $metadata );
+		Wikimedia\restoreWarnings();
+
+		if ( !$data || !is_array( $data ) ) {
 			wfDebug( __METHOD__ . " invalid GIF metadata" );
 
 			return self::METADATA_BAD;
@@ -162,9 +166,11 @@ class GIFHandler extends BitmapHandler {
 
 		$original = parent::getLongDesc( $image );
 
-		$metadata = $image->getMetadataArray();
+		Wikimedia\suppressWarnings();
+		$metadata = unserialize( $image->getMetadata() );
+		Wikimedia\restoreWarnings();
 
-		if ( !$metadata || isset( $metadata['_error'] ) || $metadata['frameCount'] <= 0 ) {
+		if ( !$metadata || $metadata['frameCount'] <= 1 ) {
 			return $original;
 		}
 
@@ -196,7 +202,10 @@ class GIFHandler extends BitmapHandler {
 	 * @return float The duration of the file.
 	 */
 	public function getLength( $file ) {
-		$metadata = $file->getMetadataArray();
+		$serMeta = $file->getMetadata();
+		Wikimedia\suppressWarnings();
+		$metadata = unserialize( $serMeta );
+		Wikimedia\restoreWarnings();
 
 		if ( !$metadata || !isset( $metadata['duration'] ) || !$metadata['duration'] ) {
 			return 0.0;

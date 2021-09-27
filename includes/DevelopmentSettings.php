@@ -58,14 +58,9 @@ unset( $logDir );
 
 global $wgRateLimits, $wgEnableJavaScriptTest, $wgRestAPIAdditionalRouteFiles;
 
-// Set almost infinite rate limits. This allows integration tests to run unthrottled
-// in CI and for devs locally (T225796), but doesn't turn a large chunk of production
-// code completely off during testing (T284804)
-foreach ( $wgRateLimits as $right => &$limit ) {
-	foreach ( $limit as $group => &$groupLimit ) {
-		$groupLimit[0] = PHP_INT_MAX;
-	}
-}
+// Disable rate-limiting to allow integration tests to run unthrottled
+// in CI and for devs locally (T225796)
+$wgRateLimits = [];
 
 // Enable Special:JavaScriptTest and allow `npm run qunit` to work
 // https://www.mediawiki.org/wiki/Manual:JavaScript_unit_testing
@@ -79,11 +74,14 @@ $wgRestAPIAdditionalRouteFiles = [ 'includes/Rest/coreDevelopmentRoutes.json' ];
  * (Must reference a Phabricator ticket)
  */
 
-global $wgSQLMode, $wgLocalisationCacheConf,
+global $wgSQLMode, $wgLegacyJavaScriptGlobals, $wgLocalisationCacheConf,
 	$wgCacheDirectory, $wgEnableUploads, $wgCiteBookReferencing;
 
 // Enable MariaDB/MySQL strict mode (T108255)
 $wgSQLMode = 'TRADITIONAL';
+
+// Disable legacy javascript globals in CI and for devs (T72470)
+$wgLegacyJavaScriptGlobals = false;
 
 // Localisation Cache to StaticArray (T218207)
 $wgLocalisationCacheConf['store'] = 'array';

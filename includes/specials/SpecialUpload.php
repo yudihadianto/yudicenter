@@ -24,7 +24,6 @@
 
 use MediaWiki\MediaWikiServices;
 use MediaWiki\User\UserOptionsLookup;
-use MediaWiki\Watchlist\WatchlistManager;
 
 /**
  * Form for handling uploads and special page.
@@ -43,20 +42,15 @@ class SpecialUpload extends SpecialPage {
 	/** @var NamespaceInfo */
 	private $nsInfo;
 
-	/** @var WatchlistManager */
-	private $watchlistManager;
-
 	/**
 	 * @param RepoGroup|null $repoGroup
 	 * @param UserOptionsLookup|null $userOptionsLookup
 	 * @param NamespaceInfo|null $nsInfo
-	 * @param WatchlistManager|null $watchlistManager
 	 */
 	public function __construct(
 		RepoGroup $repoGroup = null,
 		UserOptionsLookup $userOptionsLookup = null,
-		NamespaceInfo $nsInfo = null,
-		WatchlistManager $watchlistManager = null
+		NamespaceInfo $nsInfo = null
 	) {
 		parent::__construct( 'Upload', 'upload' );
 		// This class is extended and therefor fallback to global state - T265300
@@ -65,7 +59,6 @@ class SpecialUpload extends SpecialPage {
 		$this->localRepo = $repoGroup->getLocalRepo();
 		$this->userOptionsLookup = $userOptionsLookup ?? $services->getUserOptionsLookup();
 		$this->nsInfo = $nsInfo ?? $services->getNamespaceInfo();
-		$this->watchlistManager = $watchlistManager ?? $services->getWatchlistManager();
 	}
 
 	public function doesWrites() {
@@ -396,8 +389,8 @@ class SpecialUpload extends SpecialPage {
 			$sessionKey = null;
 			$uploadWarning = 'upload-tryagain-nostash';
 		}
-		$message = '<h2>' . $this->msg( 'uploaderror' )->escaped() . '</h2>' .
-			Html::errorBox( $message );
+		$message = '<h2>' . $this->msg( 'uploaderror' )->escaped() . "</h2>\n" .
+			'<div class="error">' . $message . "</div>\n";
 
 		$form = $this->getUploadForm( $message, $sessionKey );
 		$form->setSubmitText( $this->msg( $uploadWarning )->escaped() );
@@ -495,7 +488,7 @@ class SpecialUpload extends SpecialPage {
 		$warningHtml .= $this->msg( $uploadWarning )->parseAsBlock();
 
 		$form = $this->getUploadForm( $warningHtml, $sessionKey, /* $hideIgnoreWarning */ true );
-		$form->setSubmitTextMsg( 'upload-tryagain' );
+		$form->setSubmitText( $this->msg( 'upload-tryagain' )->text() );
 		$form->addButton( [
 			'name' => 'wpUploadIgnoreWarning',
 			'value' => $this->msg( 'ignorewarning' )->text()
@@ -517,8 +510,8 @@ class SpecialUpload extends SpecialPage {
 	 * @param string $message HTML string
 	 */
 	protected function showUploadError( $message ) {
-		$message = '<h2>' . $this->msg( 'uploadwarning' )->escaped() . '</h2>' .
-			Html::errorBox( $message );
+		$message = '<h2>' . $this->msg( 'uploadwarning' )->escaped() . "</h2>\n" .
+			'<div class="error">' . $message . "</div>\n";
 		$this->showUploadForm( $this->getUploadForm( $message ) );
 	}
 
@@ -710,8 +703,7 @@ class SpecialUpload extends SpecialPage {
 		}
 
 		$desiredTitleObj = Title::makeTitleSafe( NS_FILE, $this->mDesiredDestName );
-		if ( $desiredTitleObj instanceof Title &&
-			$this->watchlistManager->isWatched( $user, $desiredTitleObj ) ) {
+		if ( $desiredTitleObj instanceof Title && $user->isWatched( $desiredTitleObj ) ) {
 			// Already watched, don't change that
 			return true;
 		}
@@ -867,7 +859,7 @@ class SpecialUpload extends SpecialPage {
 			$warnMsg = wfMessage( 'filename-bad-prefix', $exists['prefix'] );
 		}
 
-		return $warnMsg ? $warnMsg->page( $file->getTitle() )->parse() : '';
+		return $warnMsg ? $warnMsg->title( $file->getTitle() )->parse() : '';
 	}
 
 	/**

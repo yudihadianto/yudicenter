@@ -20,12 +20,8 @@
  * @file
  */
 
-use MediaWiki\Cache\LinkBatchFactory;
 use MediaWiki\Content\IContentHandlerFactory;
-use MediaWiki\Content\Transform\ContentTransformer;
-use MediaWiki\Languages\LanguageNameUtils;
-use MediaWiki\Page\WikiPageFactory;
-use MediaWiki\Revision\RevisionLookup;
+use MediaWiki\MediaWikiServices;
 use MediaWiki\Revision\RevisionRecord;
 use MediaWiki\Revision\SlotRecord;
 
@@ -37,83 +33,18 @@ class ApiParse extends ApiBase {
 	/** @var string|false|null */
 	private $section = null;
 
-	/** @var Content|null */
+	/** @var Content */
 	private $content = null;
 
-	/** @var Content|null */
+	/** @var Content */
 	private $pstContent = null;
 
 	/** @var bool */
 	private $contentIsDeleted = false, $contentIsSuppressed = false;
 
-	/** @var RevisionLookup */
-	private $revisionLookup;
-
-	/** @var SkinFactory */
-	private $skinFactory;
-
-	/** @var LanguageNameUtils */
-	private $languageNameUtils;
-
-	/** @var LinkBatchFactory */
-	private $linkBatchFactory;
-
-	/** @var LinkCache */
-	private $linkCache;
-
-	/** @var IContentHandlerFactory */
-	private $contentHandlerFactory;
-
-	/** @var Parser */
-	private $parser;
-
-	/** @var WikiPageFactory */
-	private $wikiPageFactory;
-
-	/** @var ContentTransformer */
-	private $contentTransformer;
-
-	/**
-	 * @param ApiMain $main
-	 * @param string $action
-	 * @param RevisionLookup $revisionLookup
-	 * @param SkinFactory $skinFactory
-	 * @param LanguageNameUtils $languageNameUtils
-	 * @param LinkBatchFactory $linkBatchFactory
-	 * @param LinkCache $linkCache
-	 * @param IContentHandlerFactory $contentHandlerFactory
-	 * @param Parser $parser
-	 * @param WikiPageFactory $wikiPageFactory
-	 * @param ContentTransformer $contentTransformer
-	 */
-	public function __construct(
-		ApiMain $main,
-		$action,
-		RevisionLookup $revisionLookup,
-		SkinFactory $skinFactory,
-		LanguageNameUtils $languageNameUtils,
-		LinkBatchFactory $linkBatchFactory,
-		LinkCache $linkCache,
-		IContentHandlerFactory $contentHandlerFactory,
-		Parser $parser,
-		WikiPageFactory $wikiPageFactory,
-		ContentTransformer $contentTransformer
-	) {
-		parent::__construct( $main, $action );
-		$this->revisionLookup = $revisionLookup;
-		$this->skinFactory = $skinFactory;
-		$this->languageNameUtils = $languageNameUtils;
-		$this->linkBatchFactory = $linkBatchFactory;
-		$this->linkCache = $linkCache;
-		$this->contentHandlerFactory = $contentHandlerFactory;
-		$this->parser = $parser;
-		$this->wikiPageFactory = $wikiPageFactory;
-		$this->contentTransformer = $contentTransformer;
-	}
-
 	private function getPoolKey(): string {
 		$poolKey = WikiMap::getCurrentWikiDbDomain() . ':ApiParse:';
-		if ( !$this->getUser()->isRegistered() ) {
+		if ( $this->getUser()->isAnon() ) {
 			$poolKey .= 'a:' . $this->getUser()->getName();
 		} else {
 			$poolKey .= 'u:' . $this->getUser()->getId();
@@ -189,7 +120,7 @@ class ApiParse extends ApiBase {
 		$model = $params['contentmodel'];
 		$format = $params['contentformat'];
 
-		$prop = array_fill_keys( $params['prop'], true );
+		$prop = array_flip( $params['prop'] );
 
 		if ( isset( $params['section'] ) ) {
 			$this->section = $params['section'];
@@ -213,13 +144,14 @@ class ApiParse extends ApiBase {
 		// Return result
 		$result = $this->getResult();
 
+		$revisionLookup = MediaWikiServices::getInstance()->getRevisionLookup();
 		if ( $oldid !== null || $pageid !== null || $page !== null ) {
 			if ( $this->section === 'new' ) {
 				$this->dieWithError( 'apierror-invalidparammix-parse-new-section', 'invalidparammix' );
 			}
 			if ( $oldid !== null ) {
 				// Don't use the parser cache
-				$rev = $this->revisionLookup->getRevisionById( $oldid );
+				$rev = $revisionLookup->getRevisionById( $oldid );
 				if ( !$rev ) {
 					$this->dieWithError( [ 'apierror-nosuchrevid', $oldid ] );
 				}
@@ -235,7 +167,7 @@ class ApiParse extends ApiBase {
 				$revLinkTarget = $rev->getPageAsLinkTarget();
 				$titleObj = Title::newFromLinkTarget( $revLinkTarget );
 				$wgTitle = $titleObj;
-				$pageObj = $this->wikiPageFactory->newFromTitle( $titleObj );
+				$pageObj = WikiPage::factory( $titleObj );
 				list( $popts, $reset, $suppressCache ) = $this->makeParserOptions( $pageObj, $params );
 				$p_result = $this->getParsedContent(
 					$pageObj, $popts, $suppressCache, $pageid, $rev, $needContent
@@ -270,7 +202,7 @@ class ApiParse extends ApiBase {
 
 				$pageObj = $this->getTitleOrPageId( $pageParams, 'fromdb' );
 				$titleObj = $pageObj->getTitle();
-				if ( !$titleObj->exists() ) {
+				if ( !$titleObj || !$titleObj->exists() ) {
 					$this->dieWithError( 'apierror-missingtitle' );
 				}
 
@@ -293,7 +225,7 @@ class ApiParse extends ApiBase {
 			}
 			$revid = $params['revid'];
 			if ( $revid !== null ) {
-				$rev = $this->revisionLookup->getRevisionById( $revid );
+				$rev = $revisionLookup->getRevisionById( $revid );
 				if ( !$rev ) {
 					$this->dieWithError( [ 'apierror-nosuchrevid', $revid ] );
 				}
@@ -312,7 +244,7 @@ class ApiParse extends ApiBase {
 			}
 			$wgTitle = $titleObj;
 			if ( $titleObj->canExist() ) {
-				$pageObj = $this->wikiPageFactory->newFromTitle( $titleObj );
+				$pageObj = WikiPage::factory( $titleObj );
 				list( $popts, $reset ) = $this->makeParserOptions( $pageObj, $params );
 			} else { // A special page, presumably
 				// XXX: Why is this needed at all? Can't we just fail?
@@ -362,12 +294,7 @@ class ApiParse extends ApiBase {
 			}
 
 			if ( $params['pst'] || $params['onlypst'] ) {
-				$this->pstContent = $this->contentTransformer->preSaveTransform(
-					$this->content,
-					$titleObj,
-					$this->getUser(),
-					$popts
-				);
+				$this->pstContent = $this->content->preSaveTransform( $titleObj, $this->getUser(), $popts );
 			}
 			if ( $params['onlypst'] ) {
 				// Build a result and bail out
@@ -410,7 +337,8 @@ class ApiParse extends ApiBase {
 		}
 
 		if ( isset( $params['useskin'] ) ) {
-			$skin = $this->skinFactory->makeSkin( Skin::normalizeKey( $params['useskin'] ) );
+			$factory = MediaWikiServices::getInstance()->getSkinFactory();
+			$skin = $factory->makeSkin( Skin::normalizeKey( $params['useskin'] ) );
 		} else {
 			$skin = null;
 		}
@@ -460,6 +388,9 @@ class ApiParse extends ApiBase {
 			$context->setOutput( $outputPage );
 
 			if ( $skin ) {
+				// Based on OutputPage::headElement()
+				$skin->doSetupSkinUserCss( $outputPage );
+
 				// Based on OutputPage::output()
 				$outputPage->loadSkinModules( $skin );
 			}
@@ -485,7 +416,7 @@ class ApiParse extends ApiBase {
 			] );
 			$result_array[ApiResult::META_BC_SUBELEMENTS][] = 'text';
 			if ( $context ) {
-				$this->getHookRunner()->onOutputPageBeforeHTML( $context->getOutput(), $result_array['text'] );
+				Hooks::run( 'OutputPageBeforeHTML', [ $context->getOutput(), &$result_array['text'] ] );
 			}
 		}
 
@@ -617,7 +548,6 @@ class ApiParse extends ApiBase {
 		if ( isset( $prop['wikitext'] ) ) {
 			$result_array['wikitext'] = $this->content->serialize( $format );
 			$result_array[ApiResult::META_BC_SUBELEMENTS][] = 'wikitext';
-			// @phan-suppress-next-line PhanImpossibleTypeComparison
 			if ( $this->pstContent !== null ) {
 				$result_array['psttext'] = $this->pstContent->serialize( $format );
 				$result_array[ApiResult::META_BC_SUBELEMENTS][] = 'psttext';
@@ -642,9 +572,10 @@ class ApiParse extends ApiBase {
 				$this->dieWithError( 'apierror-parsetree-notwikitext', 'notwikitext' );
 			}
 
-			$this->parser->startExternalParse( $titleObj, $popts, Parser::OT_PREPROCESS );
+			$parser = MediaWikiServices::getInstance()->getParser();
+			$parser->startExternalParse( $titleObj, $popts, Parser::OT_PREPROCESS );
 			// @phan-suppress-next-line PhanUndeclaredMethod
-			$xml = $this->parser->preprocessToDom( $this->content->getText() )->__toString();
+			$xml = $parser->preprocessToDom( $this->content->getText() )->__toString();
 			$result_array['parsetree'] = $xml;
 			$result_array[ApiResult::META_BC_SUBELEMENTS][] = 'parsetree';
 		}
@@ -786,6 +717,7 @@ class ApiParse extends ApiBase {
 		}
 		if ( $section === null ) {
 			$this->dieWithError( [ 'apierror-sectionsnotsupported-what', $what ], 'nosuchsection' );
+			$section = false;
 		}
 
 		return $section;
@@ -808,7 +740,8 @@ class ApiParse extends ApiBase {
 			}
 			if ( $summary !== '' ) {
 				$summary = wfMessage( 'newsectionsummary' )
-					->rawParams( $this->parser->stripSectionName( $summary ) )
+					->rawParams( MediaWikiServices::getInstance()->getParser()
+						->stripSectionName( $summary ) )
 					->inContentLanguage()->text();
 			}
 		}
@@ -816,6 +749,7 @@ class ApiParse extends ApiBase {
 	}
 
 	private function formatLangLinks( $links ) {
+		$languageNameUtils = MediaWikiServices::getInstance()->getLanguageNameUtils();
 		$result = [];
 		foreach ( $links as $link ) {
 			$entry = [];
@@ -826,13 +760,13 @@ class ApiParse extends ApiBase {
 			if ( $title ) {
 				$entry['url'] = wfExpandUrl( $title->getFullURL(), PROTO_CURRENT );
 				// localised language name in 'uselang' language
-				$entry['langname'] = $this->languageNameUtils->getLanguageName(
+				$entry['langname'] = $languageNameUtils->getLanguageName(
 					$title->getInterwiki(),
 					$this->getLanguage()->getCode()
 				);
 
 				// native language name
-				$entry['autonym'] = $this->languageNameUtils->getLanguageName( $title->getInterwiki() );
+				$entry['autonym'] = $languageNameUtils->getLanguageName( $title->getInterwiki() );
 			}
 			ApiResult::setContentValue( $entry, 'title', $bits[1] );
 			$result[] = $entry;
@@ -849,7 +783,8 @@ class ApiParse extends ApiBase {
 		}
 
 		// Fetch hiddencat property
-		$lb = $this->linkBatchFactory->newLinkBatch();
+		$linkBatchFactory = MediaWikiServices::getInstance()->getLinkBatchFactory();
+		$lb = $linkBatchFactory->newLinkBatch();
 		$lb->setArray( [ NS_CATEGORY => $links ] );
 		$db = $this->getDB();
 		$res = $db->select( [ 'page', 'page_props' ],
@@ -866,6 +801,8 @@ class ApiParse extends ApiBase {
 			$hiddencats[$row->page_title] = isset( $row->pp_propname );
 		}
 
+		$linkCache = MediaWikiServices::getInstance()->getLinkCache();
+
 		foreach ( $links as $link => $sortkey ) {
 			$entry = [];
 			$entry['sortkey'] = $sortkey;
@@ -877,7 +814,7 @@ class ApiParse extends ApiBase {
 				// We already know the link doesn't exist in the database, so
 				// tell LinkCache that before calling $title->isKnown().
 				$title = Title::makeTitle( NS_CATEGORY, $link );
-				$this->linkCache->addBadLinkObj( $title );
+				$linkCache->addBadLinkObj( $title );
 				if ( $title->isKnown() ) {
 					$entry['known'] = true;
 				}
@@ -963,6 +900,8 @@ class ApiParse extends ApiBase {
 	}
 
 	public function getAllowedParams() {
+		$skinFactory = MediaWikiServices::getInstance()->getSkinFactory();
+
 		return [
 			'title' => null,
 			'text' => [
@@ -1049,15 +988,13 @@ class ApiParse extends ApiBase {
 			'sectionpreview' => false,
 			'disabletoc' => false,
 			'useskin' => [
-				// T237856; We use all installed skins here to allow hidden (but usable) skins
-				// to continue working correctly with some features such as Live Preview
-				ApiBase::PARAM_TYPE => array_keys( $this->skinFactory->getInstalledSkins() ),
+				ApiBase::PARAM_TYPE => array_keys( $skinFactory->getAllowedSkins() ),
 			],
 			'contentformat' => [
-				ApiBase::PARAM_TYPE => $this->contentHandlerFactory->getAllContentFormats(),
+				ApiBase::PARAM_TYPE => $this->getContentHandlerFactory()->getAllContentFormats(),
 			],
 			'contentmodel' => [
-				ApiBase::PARAM_TYPE => $this->contentHandlerFactory->getContentModels(),
+				ApiBase::PARAM_TYPE => $this->getContentHandlerFactory()->getContentModels(),
 			],
 		];
 	}
@@ -1077,5 +1014,9 @@ class ApiParse extends ApiBase {
 
 	public function getHelpUrls() {
 		return 'https://www.mediawiki.org/wiki/Special:MyLanguage/API:Parsing_wikitext#parse';
+	}
+
+	private function getContentHandlerFactory(): IContentHandlerFactory {
+		return MediaWikiServices::getInstance()->getContentHandlerFactory();
 	}
 }

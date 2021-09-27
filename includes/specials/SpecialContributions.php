@@ -27,7 +27,6 @@ use MediaWiki\HookContainer\HookRunner;
 use MediaWiki\MediaWikiServices;
 use MediaWiki\Permissions\PermissionManager;
 use MediaWiki\Revision\RevisionStore;
-use MediaWiki\User\UserFactory;
 use MediaWiki\User\UserNamePrefixSearch;
 use MediaWiki\User\UserNameUtils;
 use MediaWiki\User\UserOptionsLookup;
@@ -69,9 +68,6 @@ class SpecialContributions extends IncludableSpecialPage {
 	/** @var UserOptionsLookup */
 	private $userOptionsLookup;
 
-	/** @var UserFactory */
-	private $userFactory;
-
 	/** @var ContribsPager|null */
 	private $pager = null;
 
@@ -85,7 +81,6 @@ class SpecialContributions extends IncludableSpecialPage {
 	 * @param UserNameUtils|null $userNameUtils
 	 * @param UserNamePrefixSearch|null $userNamePrefixSearch
 	 * @param UserOptionsLookup|null $userOptionsLookup
-	 * @param UserFactory|null $userFactory
 	 */
 	public function __construct(
 		LinkBatchFactory $linkBatchFactory = null,
@@ -96,8 +91,7 @@ class SpecialContributions extends IncludableSpecialPage {
 		NamespaceInfo $namespaceInfo = null,
 		UserNameUtils $userNameUtils = null,
 		UserNamePrefixSearch $userNamePrefixSearch = null,
-		UserOptionsLookup $userOptionsLookup = null,
-		UserFactory $userFactory = null
+		UserOptionsLookup $userOptionsLookup = null
 	) {
 		parent::__construct( 'Contributions' );
 		// This class is extended and therefore falls back to global state - T269521
@@ -111,7 +105,6 @@ class SpecialContributions extends IncludableSpecialPage {
 		$this->userNameUtils = $userNameUtils ?? $services->getUserNameUtils();
 		$this->userNamePrefixSearch = $userNamePrefixSearch ?? $services->getUserNamePrefixSearch();
 		$this->userOptionsLookup = $userOptionsLookup ?? $services->getUserOptionsLookup();
-		$this->userFactory = $userFactory ?? $services->getUserFactory();
 	}
 
 	public function execute( $par ) {
@@ -193,21 +186,24 @@ class SpecialContributions extends IncludableSpecialPage {
 
 		$id = 0;
 		if ( ExternalUserNames::isExternal( $target ) ) {
-			$userObj = $this->userFactory->newFromName( $target, UserFactory::RIGOR_NONE );
+			$userObj = User::newFromName( $target, false );
 			if ( !$userObj ) {
 				$out->addHTML( $this->getForm( $this->opts ) );
 				return;
 			}
 
 			$out->addSubtitle( $this->contributionsSub( $userObj, $target ) );
-			$out->setPageTitle( $this->msg( 'contributions-title', $target ) );
+			$out->setHTMLTitle( $this->msg(
+				'pagetitle',
+				$this->msg( 'contributions-title', $target )->plain()
+			)->inContentLanguage() );
 		} else {
 			$nt = Title::makeTitleSafe( NS_USER, $target );
 			if ( !$nt ) {
 				$out->addHTML( $this->getForm( $this->opts ) );
 				return;
 			}
-			$userObj = $this->userFactory->newFromName( $nt->getText(), UserFactory::RIGOR_NONE );
+			$userObj = User::newFromName( $nt->getText(), false );
 			if ( !$userObj ) {
 				$out->addHTML( $this->getForm( $this->opts ) );
 				return;
@@ -216,12 +212,15 @@ class SpecialContributions extends IncludableSpecialPage {
 
 			$target = $nt->getText();
 			$out->addSubtitle( $this->contributionsSub( $userObj, $target ) );
-			$out->setPageTitle( $this->msg( 'contributions-title', $target ) );
+			$out->setHTMLTitle( $this->msg(
+				'pagetitle',
+				$this->msg( 'contributions-title', $target )->plain()
+			)->inContentLanguage() );
 
 			# For IP ranges, we want the contributionsSub, but not the skin-dependent
 			# links under 'Tools', which may include irrelevant links like 'Logs'.
 			if ( !IPUtils::isValidRange( $target ) &&
-				( $this->userNameUtils->isIP( $target ) || $userObj->isRegistered() )
+				( User::isIP( $target ) || $userObj->isRegistered() )
 			) {
 				// Don't add non-existent users, because hidden users
 				// that we add here will be removed later to pretend
@@ -297,7 +296,7 @@ class SpecialContributions extends IncludableSpecialPage {
 			if ( !$this->including() ) {
 				$out->addHTML( $this->getForm( $this->opts ) );
 			}
-			$pager = $this->getPager( $userObj );
+			$pager = $this->getPager( $target );
 			if ( IPUtils::isValidRange( $target ) && !$pager->isQueryableRange( $target ) ) {
 				// Valid range, but outside CIDR limit.
 				$limits = $this->getConfig()->get( 'RangeContributionsCIDRLimit' );
@@ -390,12 +389,10 @@ class SpecialContributions extends IncludableSpecialPage {
 
 		if ( $isAnon ) {
 			// Show a warning message that the user being searched for doesn't exist.
-			// UserNameUtils::isIP returns true for IP address and usemod IPs like '123.123.123.xxx',
+			// User::isIP returns true for IP address and usemod IPs like '123.123.123.xxx',
 			// but returns false for IP ranges. We don't want to suggest either of these are
 			// valid usernames which we would with the 'contributions-userdoesnotexist' message.
-			if ( !$this->userNameUtils->isIP( $userObj->getName() )
-				&& !IPUtils::isValidRange( $userObj->getName() )
-			) {
+			if ( !User::isIP( $userObj->getName() ) && !IPUtils::isValidRange( $userObj->getName() ) ) {
 				$this->getOutput()->wrapWikiMsg(
 					"<div class=\"mw-userpage-userdoesnotexist error\">\n\$1\n</div>",
 					[
@@ -417,7 +414,7 @@ class SpecialContributions extends IncludableSpecialPage {
 
 		// T211910. Don't show action links if a range is outside block limit
 		$showForIp = IPUtils::isValid( $userObj ) ||
-			( IPUtils::isValidRange( $userObj ) && $this->getPager( $userObj )->isQueryableRange( $userObj ) );
+			( IPUtils::isValidRange( $userObj ) && $this->getPager( $targetName )->isQueryableRange( $userObj ) );
 
 		// T276306. if the user is hidden and the viewer cannot see hidden, pretend that it does not exist
 		$registeredAndVisible = $userObj->isRegistered() && ( !$userObj->isHidden()
@@ -450,8 +447,7 @@ class SpecialContributions extends IncludableSpecialPage {
 
 				if ( $block !== null && $block->getType() != DatabaseBlock::TYPE_AUTO ) {
 					if ( $block->getType() == DatabaseBlock::TYPE_RANGE ) {
-						$nt = $this->namespaceInfo->getCanonicalName( NS_USER )
-							. ':' . $block->getTargetName();
+						$nt = $this->namespaceInfo->getCanonicalName( NS_USER ) . ':' . $block->getTarget();
 					}
 
 					$out = $this->getOutput(); // showLogExtract() wants first parameter by reference
@@ -797,8 +793,8 @@ class SpecialContributions extends IncludableSpecialPage {
 				( $pagerOptions['end'] ?? null )
 			)
 			->setAction( wfScript() )
-			->setSubmitTextMsg( 'sp-contributions-submit' )
-			->setWrapperLegendMsg( 'sp-contributions-search' );
+			->setSubmitText( $this->msg( 'sp-contributions-submit' )->text() )
+			->setWrapperLegend( $this->msg( 'sp-contributions-search' )->text() );
 
 		$explain = $this->msg( 'sp-contributions-explain' );
 		if ( !$explain->isBlank() ) {
@@ -830,12 +826,13 @@ class SpecialContributions extends IncludableSpecialPage {
 	}
 
 	/**
-	 * @param User $targetUser The normalized target user
+	 * @param string $target The normalized target username.
 	 * @return ContribsPager
 	 */
-	private function getPager( $targetUser ) {
+	private function getPager( $target ) {
 		if ( $this->pager === null ) {
 			$options = [
+				'target' => $target,
 				'namespace' => $this->opts['namespace'],
 				'tagfilter' => $this->opts['tagfilter'],
 				'start' => $this->opts['start'] ?? '',
@@ -857,8 +854,7 @@ class SpecialContributions extends IncludableSpecialPage {
 				$this->loadBalancer,
 				$this->actorMigration,
 				$this->revisionStore,
-				$this->namespaceInfo,
-				$targetUser
+				$this->namespaceInfo
 			);
 		}
 

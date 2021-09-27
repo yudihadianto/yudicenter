@@ -54,7 +54,7 @@ class SkinFactory {
 	 *
 	 * @var string[]
 	 */
-	private $skipSkins;
+	private $skipSkins = [];
 
 	/**
 	 * @internal For ServiceWiring only
@@ -101,7 +101,7 @@ class SkinFactory {
 	/**
 	 * Returns an associative array of:
 	 *  skin name => human readable name
-	 * @deprecated since 1.37 use getInstalledSkins instead
+	 *
 	 * @return array
 	 */
 	public function getSkinNames() {
@@ -131,47 +131,22 @@ class SkinFactory {
 	/**
 	 * Fetch the list of user-selectable skins in regards to $wgSkipSkins.
 	 * Useful for Special:Preferences and other places where you
-	 * only want to show skins users _can_ select from preferences page.
+	 * only want to show skins users _can_ use.
 	 *
 	 * @return string[]
 	 * @since 1.36
 	 */
 	public function getAllowedSkins() {
-		$skins = $this->getInstalledSkins();
+		$allowedSkins = $this->getSkinNames();
 
 		// Internal skins not intended for general use
-		unset( $skins['fallback'] );
-		unset( $skins['apioutput'] );
+		unset( $allowedSkins['fallback'] );
+		unset( $allowedSkins['apioutput'] );
 
 		foreach ( $this->skipSkins as $skip ) {
-			unset( $skins[$skip] );
+			unset( $allowedSkins[$skip] );
 		}
 
-		return $skins;
-	}
-
-	/**
-	 * Fetch the list of all installed skins.
-	 *
-	 * Returns an associative array of skin name => human readable name
-	 *
-	 * @return string[]
-	 * @since 1.37
-	 */
-	public function getInstalledSkins() {
-		return $this->displayNames;
-	}
-
-	/**
-	 * Return options provided for a given skin name
-	 *
-	 * @since 1.38
-	 * @param string $name Name of the skin you want options from
-	 * @return array Skin options passed into constructor
-	 */
-	public function getSkinOptions( string $name ): array {
-		$skin = $this->makeSkin( $name );
-		$options = $skin->getOptions();
-		return $options;
+		return $allowedSkins;
 	}
 }

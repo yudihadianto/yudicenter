@@ -26,8 +26,6 @@
  * @author Daniel Kinzler
  */
 
-use MediaWiki\Content\Transform\PreloadTransformParams;
-use MediaWiki\Content\Transform\PreSaveTransformParams;
 use MediaWiki\HookContainer\ProtectedHookAccessorTrait;
 use MediaWiki\Logger\LoggerFactory;
 use MediaWiki\MediaWikiServices;
@@ -35,6 +33,7 @@ use MediaWiki\Revision\RevisionRecord;
 use MediaWiki\Revision\SlotRecord;
 use MediaWiki\Revision\SlotRenderingProvider;
 use MediaWiki\Search\ParserOutputSearchDataExtractor;
+use Wikimedia\Assert\Assert;
 
 /**
  * A content handler knows how do deal with a specific type of content on a wiki
@@ -82,9 +81,6 @@ abstract class ContentHandler {
 	 * - otherwise, the behavior is undefined.
 	 *
 	 * @since 1.21
-	 *
-	 * @deprecated since 1.37, use Content::getText() for TextContent instances
-	 * instead
 	 *
 	 * @param Content|null $content
 	 *
@@ -205,9 +201,8 @@ abstract class ContentHandler {
 	 * Returns the appropriate ContentHandler singleton for the given title.
 	 *
 	 * @since 1.21
-	 *
-	 * @deprecated since 1.35, hard deprecated since 1.37
-	 * Use ContentHandlerFactory::getContentHandler( $title->getContentModel() ) instead
+	 * @deprecated since 1.35, instead use
+	 *  ContentHandlerFactory::getContentHandler( $title->getContentModel() ).
 	 *
 	 * @param Title $title
 	 *
@@ -216,7 +211,6 @@ abstract class ContentHandler {
 	 * @throws MWUnknownContentModelException
 	 */
 	public static function getForTitle( Title $title ) {
-		wfDeprecated( __METHOD__, '1.35' );
 		return MediaWikiServices::getInstance()
 			->getContentHandlerFactory()
 			->getContentHandler( $title->getContentModel() );
@@ -279,14 +273,12 @@ abstract class ContentHandler {
 	}
 
 	/**
-	 * @deprecated since 1.35, hard deprecated since 1.37
-	 * Please, use ContentHandlerFactory. Cleanup is not needed
+	 * @deprecated since 1.35 Please, use ContentHandlerFactory. Cleanup is not needed
 	 * @see ContentHandlerFactory
 	 *
 	 * Clean up handlers cache.
 	 */
 	public static function cleanupHandlersCache() {
-		wfDeprecated( __METHOD__, '1.35' );
 		// No-op: no longer needed, since the instance cache is in the
 		// ContentHandlerFactory service, and services get reset between tests
 	}
@@ -298,7 +290,7 @@ abstract class ContentHandler {
 	 * have the form content-model-$name, where $name is getContentModelName( $id ).
 	 *
 	 * @param string $name The content model ID, as given by a CONTENT_MODEL_XXX
-	 *    constant or returned by Content::getModel() or SlotRecord::getModel().
+	 *    constant or returned by Revision::getContentModel().
 	 * @param Language|null $lang The language to parse the message in (since 1.26)
 	 *
 	 * @throws MWException If the model ID isn't known.
@@ -681,6 +673,7 @@ abstract class ContentHandler {
 		$slotDiffRenderer->setLanguage( $contentLanguage );
 
 		$inline = ( $options['diff-type'] ?? '' ) === 'inline';
+		$engine = 'wikidiff2';
 		$engine = DifferenceEngine::getEngine();
 
 		if ( $engine === 'php' ) {
@@ -716,7 +709,7 @@ abstract class ContentHandler {
 	 * @param Title $title The page to determine the language for.
 	 * @param Content|null $content The page's content, if you have it handy, to avoid reloading it.
 	 *
-	 * @return Language
+	 * @return Language The page's language
 	 */
 	public function getPageLanguage( Title $title, Content $content = null ) {
 		global $wgLang;
@@ -839,7 +832,7 @@ abstract class ContentHandler {
 	 * @param Language $language Language of converter
 	 * @return ILanguageConverter
 	 */
-	private function getLanguageConverter( $language ): ILanguageConverter {
+	private function getLanguageConverter( $language ) : ILanguageConverter {
 		return MediaWikiServices::getInstance()->getLanguageConverterFactory()
 			->getLanguageConverter( $language );
 	}
@@ -936,16 +929,12 @@ abstract class ContentHandler {
 			return '';
 		}
 
-		// Set the maximum auto-summary length to the general maximum summary length
-		// T221617
-		$summaryLimit = CommentStore::COMMENT_CHARACTER_LIMIT;
-
 		// Decide what kind of auto-summary is needed.
 		switch ( $changeType ) {
 			case 'new-redirect':
 				$newTarget = $newContent->getRedirectTarget();
 				$truncatedtext = $newContent->getTextForSummary(
-					$summaryLimit
+					250
 					- strlen( wfMessage( 'autoredircomment' )->inContentLanguage()->text() )
 					- strlen( $newTarget->getFullText() )
 				);
@@ -957,7 +946,7 @@ abstract class ContentHandler {
 				$newTarget = $newContent->getRedirectTarget();
 
 				$truncatedtext = $newContent->getTextForSummary(
-					$summaryLimit
+					250
 					- strlen( wfMessage( 'autosumm-changed-redirect-target' )
 						->inContentLanguage()->text() )
 					- strlen( $oldTarget->getFullText() )
@@ -971,7 +960,7 @@ abstract class ContentHandler {
 			case 'removed-redirect':
 				$oldTarget = $oldContent->getRedirectTarget();
 				$truncatedtext = $newContent->getTextForSummary(
-					$summaryLimit
+					250
 					- strlen( wfMessage( 'autosumm-removed-redirect' )
 						->inContentLanguage()->text() )
 					- strlen( $oldTarget->getFullText() ) );
@@ -981,7 +970,7 @@ abstract class ContentHandler {
 			case 'newpage':
 				// If they're making a new article, give its text, truncated, in the summary.
 				$truncatedtext = $newContent->getTextForSummary(
-					$summaryLimit - strlen( wfMessage( 'autosumm-new' )->inContentLanguage()->text() ) );
+					200 - strlen( wfMessage( 'autosumm-new' )->inContentLanguage()->text() ) );
 
 				return wfMessage( 'autosumm-new' )->rawParams( $truncatedtext )
 					->inContentLanguage()->text();
@@ -989,7 +978,7 @@ abstract class ContentHandler {
 				return wfMessage( 'autosumm-blank' )->inContentLanguage()->text();
 			case 'replace':
 				$truncatedtext = $newContent->getTextForSummary(
-					$summaryLimit - strlen( wfMessage( 'autosumm-replace' )->inContentLanguage()->text() ) );
+					200 - strlen( wfMessage( 'autosumm-replace' )->inContentLanguage()->text() ) );
 
 				return wfMessage( 'autosumm-replace' )->rawParams( $truncatedtext )
 					->inContentLanguage()->text();
@@ -1151,37 +1140,68 @@ abstract class ContentHandler {
 	}
 
 	/**
-	 * Get the Content object that needs to be saved in order to undo all changes
-	 * between $undo and $undoafter.
+	 * Get the Content object that needs to be saved in order to undo all revisions
+	 * between $undo and $undoafter. Revisions must belong to the same page,
+	 * must exist and must not be deleted.
 	 *
 	 * @stable to override
 	 * @since 1.21
 	 * @since 1.32 accepts Content objects for all parameters instead of Revision objects.
 	 *  Passing Revision objects is deprecated.
-	 * @since 1.37 only accepts Content objects
 	 *
-	 * @param Content $currentContent The current text
-	 * @param Content $undoContent The content of the revision to undo
-	 * @param Content $undoAfterContent Must be from an earlier revision than $undo
+	 * @param Revision|Content $current The current text (passing a Revision is hard
+	 *    deprecated since 1.35)
+	 * @param Revision|Content $undo The content of the revision to undo (passing a Revision is
+	 *    hard deprecated since 1.35)
+	 * @param Revision|Content $undoafter Must be from an earlier revision than $undo (passing a
+	 *     Revision is hard deprecated since 1.35)
 	 * @param bool $undoIsLatest Set true if $undo is from the current revision (since 1.32)
 	 *
 	 * @return Content|false Content on success, false on failure
 	 */
-	public function getUndoContent(
-		Content $currentContent,
-		Content $undoContent,
-		Content $undoAfterContent,
-		$undoIsLatest = false
-	) {
+	public function getUndoContent( $current, $undo, $undoafter, $undoIsLatest = false ) {
+		Assert::parameterType( Revision::class . '|' . Content::class, $current, '$current' );
+		if ( $current instanceof Content ) {
+			Assert::parameter( $undo instanceof Content, '$undo',
+				'Must be Content when $current is Content' );
+			Assert::parameter( $undoafter instanceof Content, '$undoafter',
+				'Must be Content when $current is Content' );
+			$cur_content = $current;
+			$undo_content = $undo;
+			$undoafter_content = $undoafter;
+		} else {
+			Assert::parameter( $undo instanceof Revision, '$undo',
+				'Must be Revision when $current is Revision' );
+			Assert::parameter( $undoafter instanceof Revision, '$undoafter',
+				'Must be Revision when $current is Revision' );
+
+			wfDeprecated( __METHOD__ . ' with Revision objects', '1.32' );
+
+			$cur_content = $current->getContent();
+
+			if ( empty( $cur_content ) ) {
+				return false; // no page
+			}
+
+			$undo_content = $undo->getContent();
+			$undoafter_content = $undoafter->getContent();
+
+			if ( !$undo_content || !$undoafter_content ) {
+				return false; // no content to undo
+			}
+
+			$undoIsLatest = $current->getId() === $undo->getId();
+		}
+
 		try {
-			$this->checkModelID( $currentContent->getModel() );
-			$this->checkModelID( $undoContent->getModel() );
+			$this->checkModelID( $cur_content->getModel() );
+			$this->checkModelID( $undo_content->getModel() );
 			if ( !$undoIsLatest ) {
 				// If we are undoing the most recent revision,
 				// its ok to revert content model changes. However
 				// if we are undoing a revision in the middle, then
 				// doing that will be confusing.
-				$this->checkModelID( $undoAfterContent->getModel() );
+				$this->checkModelID( $undoafter_content->getModel() );
 			}
 		} catch ( MWException $e ) {
 			// If the revisions have different content models
@@ -1189,12 +1209,12 @@ abstract class ContentHandler {
 			return false;
 		}
 
-		if ( $currentContent->equals( $undoContent ) ) {
+		if ( $cur_content->equals( $undo_content ) ) {
 			// No use doing a merge if it's just a straight revert.
-			return $undoAfterContent;
+			return $undoafter_content;
 		}
 
-		$undone_content = $this->merge3( $undoContent, $undoAfterContent, $currentContent );
+		$undone_content = $this->merge3( $undo_content, $undoafter_content, $cur_content );
 
 		return $undone_content;
 	}
@@ -1217,7 +1237,7 @@ abstract class ContentHandler {
 	 * This default implementation returns false.
 	 *
 	 * Content models that return true here should also implement
-	 * Content::getSection, Content::replaceSection, etc. to handle sections.
+	 * Content::getSection, Content::replaceSection, etc. to handle sections..
 	 *
 	 * @stable to override
 	 *
@@ -1263,18 +1283,6 @@ abstract class ContentHandler {
 	 */
 	public function supportsDirectEditing() {
 		return false;
-	}
-
-	/**
-	 * Whether an edit on the content should trigger an HTML render and ParserCache entry.
-	 *
-	 * @stable to override
-	 * @since 1.37
-	 *
-	 * @return bool true if edit should trigger an HTML render false otherwise
-	 */
-	public function generateHTMLOnEdit(): bool {
-		return true;
 	}
 
 	/**
@@ -1442,7 +1450,7 @@ abstract class ContentHandler {
 
 	/**
 	 * Get the latest revision of the given $page,
-	 * fetching it from the primary if necessary.
+	 * fetching it from the master if necessary.
 	 *
 	 * @param WikiPage $page
 	 * @return RevisionRecord
@@ -1452,7 +1460,7 @@ abstract class ContentHandler {
 		$revRecord = $page->getRevisionRecord();
 		if ( $revRecord == null ) {
 			// If the content represents a brand new page it's possible
-			// we need to fetch it from the primary.
+			// we need to fetch it from the master.
 			$page->loadPageData( WikiPage::READ_LATEST );
 			$revRecord = $page->getRevisionRecord();
 			if ( $revRecord == null ) {
@@ -1540,136 +1548,4 @@ abstract class ContentHandler {
 		return [];
 	}
 
-	/**
-	 * Returns a $content object with pre-save transformations applied (or the same
-	 * object if no transformations apply).
-	 *
-	 * @note Not stable to call other then from ContentHandler hierarchy.
-	 * Callers need to use ContentTransformer::preSaveTransform.
-	 * @stable to override
-	 * @since 1.37
-	 *
-	 * @param Content $content
-	 * @param PreSaveTransformParams $pstParams
-	 *
-	 * @return Content
-	 */
-	public function preSaveTransform(
-		Content $content,
-		PreSaveTransformParams $pstParams
-	): Content {
-		$shouldCallDeprecatedMethod = $this->shouldCallDeprecatedContentTransformMethod(
-			$content,
-			$pstParams
-		);
-
-		if ( !$shouldCallDeprecatedMethod ) {
-			return $content;
-		}
-
-		return $this->callDeprecatedContentPST(
-			$content,
-			$pstParams
-		);
-	}
-
-	/**
-	 * Returns a $content object with preload transformations applied (or the same
-	 * object if no transformations apply).
-	 *
-	 * @note Not stable to call other then from ContentHandler hierarchy.
-	 * Callers need to use ContentTransformer::preLoadTransform.
-	 * @stable to override
-	 * @since 1.37
-	 *
-	 * @param Content $content
-	 * @param PreloadTransformParams $pltParams
-	 *
-	 * @return Content
-	 */
-	public function preloadTransform(
-		Content $content,
-		PreloadTransformParams $pltParams
-	): Content {
-		$shouldCallDeprecatedMethod = $this->shouldCallDeprecatedContentTransformMethod(
-			$content,
-			$pltParams
-		);
-
-		if ( !$shouldCallDeprecatedMethod ) {
-			return $content;
-		}
-
-		return $this->callDeprecatedContentPLT(
-			$content,
-			$pltParams
-		);
-	}
-
-	/**
-	 * Check if we need to provide content overrides deprecated Content method.
-	 *
-	 * @internal only core ContentHandler implementations need to call this.
-	 * @param Content $content
-	 * @param PreSaveTransformParams|PreloadTransformParams $params
-	 * @return bool
-	 */
-	protected function shouldCallDeprecatedContentTransformMethod(
-		Content $content,
-		$params
-	): bool {
-		$method = $params instanceof PreSaveTransformParams
-			? "preSaveTransform"
-			: "preloadTransform";
-		return MWDebug::detectDeprecatedOverride(
-			$content,
-			AbstractContent::class,
-			$method,
-			'1.37'
-		);
-	}
-
-	/**
-	 * Provided content overrides deprecated Content::preSaveTransform,
-	 * call it and return.
-	 * @internal only core ContentHandler implementations need to call this.
-	 * @param Content $content
-	 * @param PreSaveTransformParams $params
-	 * @return Content
-	 */
-	protected function callDeprecatedContentPST(
-		Content $content,
-		PreSaveTransformParams $params
-	): Content {
-		$services = MediaWikiServices::getInstance();
-		$legacyUser = $services->getUserFactory()->newFromUserIdentity( $params->getUser() );
-		$legacyTitle = $services->getTitleFactory()->castFromPageReference( $params->getPage() );
-
-		return $content->preSaveTransform(
-			$legacyTitle,
-			$legacyUser,
-			$params->getParserOptions()
-		);
-	}
-
-	/**
-	 * If provided content overrides deprecated Content::preloadTransform,
-	 * call it and return.
-	 * @internal only core ContentHandler implementations need to call this.
-	 * @param Content $content
-	 * @param PreloadTransformParams $params
-	 * @return Content
-	 */
-	protected function callDeprecatedContentPLT(
-		Content $content,
-		PreloadTransformParams $params
-	): Content {
-		$services = MediaWikiServices::getInstance();
-		$legacyTitle = $services->getTitleFactory()->castFromPageReference( $params->getPage() );
-		return $content->preloadTransform(
-			$legacyTitle,
-			$params->getParserOptions(),
-			$params->getParams()
-		);
-	}
 }

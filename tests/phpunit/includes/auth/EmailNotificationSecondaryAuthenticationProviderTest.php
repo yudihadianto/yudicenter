@@ -3,7 +3,6 @@
 namespace MediaWiki\Auth;
 
 use MediaWiki\MediaWikiServices;
-use MediaWiki\Tests\Unit\Auth\AuthenticationProviderTestTrait;
 use MediaWiki\User\UserNameUtils;
 use Psr\Container\ContainerInterface;
 use Psr\Log\LoggerInterface;
@@ -11,48 +10,23 @@ use Wikimedia\TestingAccessWrapper;
 
 /**
  * @covers \MediaWiki\Auth\EmailNotificationSecondaryAuthenticationProvider
- * @group Database
  */
 class EmailNotificationSecondaryAuthenticationProviderTest extends \MediaWikiIntegrationTestCase {
-	use AuthenticationProviderTestTrait;
-
-	/**
-	 * @param array $options
-	 * @return EmailNotificationSecondaryAuthenticationProvider
-	 */
-	private function getProvider( array $options = [] ): EmailNotificationSecondaryAuthenticationProvider {
-		$services = $this->getServiceContainer();
-		$provider = new EmailNotificationSecondaryAuthenticationProvider(
-			$options['loadBalancer'] ?? $services->getDBLoadBalancer(),
-			$options // make things easier for tests by using the same options
-		);
-		$this->initProvider(
-			$provider,
-			$options['config'] ?? null,
-			$options['logger'] ?? null,
-			$options['authManager'] ?? null,
-			$options['hookContainer'] ?? null,
-			$options['userNameUtils'] ?? null
-		);
-		return $provider;
-	}
-
 	public function testConstructor() {
 		$config = new \HashConfig( [
 			'EnableEmail' => true,
 			'EmailAuthentication' => true,
 		] );
 
-		$provider = $this->getProvider( [
-			'config' => $config,
-		] );
+		$provider = new EmailNotificationSecondaryAuthenticationProvider();
+		$provider->setConfig( $config );
 		$providerPriv = TestingAccessWrapper::newFromObject( $provider );
 		$this->assertTrue( $providerPriv->sendConfirmationEmail );
 
-		$provider = $this->getProvider( [
-			'config' => $config,
+		$provider = new EmailNotificationSecondaryAuthenticationProvider( [
 			'sendConfirmationEmail' => false,
 		] );
+		$provider->setConfig( $config );
 		$providerPriv = TestingAccessWrapper::newFromObject( $provider );
 		$this->assertFalse( $providerPriv->sendConfirmationEmail );
 	}
@@ -63,7 +37,7 @@ class EmailNotificationSecondaryAuthenticationProviderTest extends \MediaWikiInt
 	 * @param AuthenticationRequest[] $expected
 	 */
 	public function testGetAuthenticationRequests( $action, $expected ) {
-		$provider = $this->getProvider( [
+		$provider = new EmailNotificationSecondaryAuthenticationProvider( [
 			'sendConfirmationEmail' => true,
 		] );
 		$this->assertSame( $expected, $provider->getAuthenticationRequests( $action, [] ) );
@@ -80,7 +54,7 @@ class EmailNotificationSecondaryAuthenticationProviderTest extends \MediaWikiInt
 	}
 
 	public function testBeginSecondaryAuthentication() {
-		$provider = $this->getProvider( [
+		$provider = new EmailNotificationSecondaryAuthenticationProvider( [
 			'sendConfirmationEmail' => true,
 		] );
 		$this->assertEquals( AuthenticationResponse::newAbstain(),
@@ -101,65 +75,55 @@ class EmailNotificationSecondaryAuthenticationProviderTest extends \MediaWikiInt
 			$mwServices->getReadOnlyMode(),
 			$userNameUtils,
 			$mwServices->getBlockManager(),
-			$mwServices->getWatchlistManager(),
-			$mwServices->getDBLoadBalancer(),
-			$mwServices->getContentLanguage(),
-			$mwServices->getLanguageConverterFactory(),
-			$mwServices->getBotPasswordStore(),
-			$mwServices->getUserFactory(),
-			$mwServices->getUserIdentityLookup(),
-			$mwServices->getUserOptionsManager()
+			$mwServices->getBlockErrorFormatter()
 		);
 
 		$creator = $this->getMockBuilder( \User::class )->getMock();
 		$userWithoutEmail = $this->getMockBuilder( \User::class )->getMock();
-		$userWithoutEmail->method( 'getEmail' )->willReturn( '' );
-		$userWithoutEmail->method( 'getInstanceForUpdate' )->willReturnSelf();
+		$userWithoutEmail->expects( $this->any() )->method( 'getEmail' )->willReturn( '' );
+		$userWithoutEmail->expects( $this->any() )->method( 'getInstanceForUpdate' )->willReturnSelf();
 		$userWithoutEmail->expects( $this->never() )->method( 'sendConfirmationMail' );
 		$userWithEmailError = $this->getMockBuilder( \User::class )->getMock();
-		$userWithEmailError->method( 'getEmail' )->willReturn( 'foo@bar.baz' );
-		$userWithEmailError->method( 'getInstanceForUpdate' )->willReturnSelf();
-		$userWithEmailError->method( 'sendConfirmationMail' )
+		$userWithEmailError->expects( $this->any() )->method( 'getEmail' )->willReturn( 'foo@bar.baz' );
+		$userWithEmailError->expects( $this->any() )->method( 'getInstanceForUpdate' )->willReturnSelf();
+		$userWithEmailError->expects( $this->any() )->method( 'sendConfirmationMail' )
 			->willReturn( \Status::newFatal( 'fail' ) );
 		$userExpectsConfirmation = $this->getMockBuilder( \User::class )->getMock();
-		$userExpectsConfirmation->method( 'getEmail' )
+		$userExpectsConfirmation->expects( $this->any() )->method( 'getEmail' )
 			->willReturn( 'foo@bar.baz' );
-		$userExpectsConfirmation->method( 'getInstanceForUpdate' )
+		$userExpectsConfirmation->expects( $this->any() )->method( 'getInstanceForUpdate' )
 			->willReturnSelf();
 		$userExpectsConfirmation->expects( $this->once() )->method( 'sendConfirmationMail' )
 			->willReturn( \Status::newGood() );
 		$userNotExpectsConfirmation = $this->getMockBuilder( \User::class )->getMock();
-		$userNotExpectsConfirmation->method( 'getEmail' )
+		$userNotExpectsConfirmation->expects( $this->any() )->method( 'getEmail' )
 			->willReturn( 'foo@bar.baz' );
-		$userNotExpectsConfirmation->method( 'getInstanceForUpdate' )
+		$userNotExpectsConfirmation->expects( $this->any() )->method( 'getInstanceForUpdate' )
 			->willReturnSelf();
 		$userNotExpectsConfirmation->expects( $this->never() )->method( 'sendConfirmationMail' );
 
-		$provider = $this->getProvider( [
+		$provider = new EmailNotificationSecondaryAuthenticationProvider( [
 			'sendConfirmationEmail' => false,
-			'authManager' => $authManager,
-			'hookContainer' => $hookContainer,
-			'userNameUtils' => $userNameUtils
 		] );
+		$provider->setManager( $authManager );
 		$provider->beginSecondaryAccountCreation( $userNotExpectsConfirmation, $creator, [] );
 
-		$provider = $this->getProvider( [
+		$provider = new EmailNotificationSecondaryAuthenticationProvider( [
 			'sendConfirmationEmail' => true,
-			'authManager' => $authManager,
-			'userNameUtils' => $userNameUtils
 		] );
+		$provider->setManager( $authManager );
 		$provider->beginSecondaryAccountCreation( $userWithoutEmail, $creator, [] );
 		$provider->beginSecondaryAccountCreation( $userExpectsConfirmation, $creator, [] );
 
 		// test logging of email errors
 		$logger = $this->getMockForAbstractClass( LoggerInterface::class );
 		$logger->expects( $this->once() )->method( 'warning' );
-		$this->initProvider( $provider, null, $logger, $authManager );
+		$provider->setLogger( $logger );
 		$provider->beginSecondaryAccountCreation( $userWithEmailError, $creator, [] );
 
 		// test disable flag used by other providers
 		$authManager->setAuthenticationSessionData( 'no-email', true );
-		$this->initProvider( $provider, null, null, $authManager );
+		$provider->setManager( $authManager );
 		$provider->beginSecondaryAccountCreation( $userNotExpectsConfirmation, $creator, [] );
 	}
 }

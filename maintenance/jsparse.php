@@ -43,6 +43,8 @@ class JSParseHelper extends Maintenance {
 		} else {
 			// @todo fixme this is a lame API :)
 			$this->maybeHelp( true );
+			// it should exit from the above first...
+			exit( 1 );
 		}
 
 		$parser = new JSParser();
@@ -68,7 +70,7 @@ class JSParseHelper extends Maintenance {
 		}
 
 		if ( $this->errs > 0 ) {
-			$this->fatalError( 'Failed.' );
+			exit( 1 );
 		}
 	}
 }

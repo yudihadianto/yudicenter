@@ -30,6 +30,11 @@ class StaticUserOptionsLookup extends UserOptionsLookup {
 	}
 
 	/** @inheritDoc */
+	public function getDefaultOption( string $opt ) {
+		return $this->defaults[$opt] ?? null;
+	}
+
+	/** @inheritDoc */
 	public function getOption(
 		UserIdentity $user,
 		string $oname,

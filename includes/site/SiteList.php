@@ -32,7 +32,7 @@ class SiteList extends GenericArrayObject {
 	 *
 	 * @since 1.21
 	 *
-	 * @var array Maps int identifiers to local ArrayObject keys
+	 * @var array Array of integer
 	 */
 	protected $byInternalId = [];
 
@@ -41,7 +41,7 @@ class SiteList extends GenericArrayObject {
 	 *
 	 * @since 1.21
 	 *
-	 * @var array Maps string identifiers to local ArrayObject keys
+	 * @var array Array of string
 	 */
 	protected $byGlobalId = [];
 
@@ -51,7 +51,7 @@ class SiteList extends GenericArrayObject {
 	 *
 	 * @since 1.23
 	 *
-	 * @var array Maps string identifiers to local ArrayObject keys
+	 * @var array Array of string
 	 */
 	protected $byNavigationId = [];
 

@@ -1,8 +1,7 @@
 'use strict';
 
 var util,
-	config = require( './config.json' ),
-	portletLinkOptions = require( './portletLinkOptions.json' );
+	config = require( './config.json' );
 
 require( './jquery.accessKeyLabel.js' );
 
@@ -159,11 +158,7 @@ util = {
 		if ( params ) {
 			query = $.param( params );
 		}
-
-		if ( !title && fragment ) {
-			// If only a fragment was given, make a fragment-only link (T288415)
-			url = '';
-		} else if ( query ) {
+		if ( query ) {
 			url = title ?
 				util.wikiScript() + '?title=' + util.wikiUrlencode( title ) + '&' + query :
 				util.wikiScript() + '?' + query;
@@ -173,7 +168,7 @@ util = {
 		}
 
 		// Append the encoded fragment
-		if ( fragment ) {
+		if ( fragment && fragment.length ) {
 			url += '#' + util.escapeIdForLink( fragment );
 		}
 
@@ -360,22 +355,7 @@ util = {
 		// Setup the anchor tag and set any the properties
 		link = document.createElement( 'a' );
 		link.href = href;
-
-		var linkChild = document.createTextNode( text );
-		var i = portletLinkOptions[ 'text-wrapper' ].length;
-		// Wrap link using text-wrapper option if provided
-		// Iterate backward since the wrappers are declared from outer to inner,
-		// and we build it up from the inside out.
-		while ( i-- ) {
-			var wrapper = portletLinkOptions[ 'text-wrapper' ][ i ];
-			var wrapperElement = document.createElement( wrapper.tag );
-			if ( wrapper.attributes ) {
-				$( wrapperElement ).attr( wrapper.attributes );
-			}
-			wrapperElement.appendChild( linkChild );
-			linkChild = wrapperElement;
-		}
-		link.appendChild( linkChild );
+		link.textContent = text;
 
 		if ( tooltip ) {
 			link.title = tooltip;
@@ -388,8 +368,7 @@ util = {
 		util.showPortlet( portletId );
 
 		item = $( '<li>' ).append( link )[ 0 ];
-		// mw-list-item-js distinguishes portlet links added via javascript and the server
-		item.className = 'mw-list-item mw-list-item-js';
+
 		if ( id ) {
 			item.id = id;
 		}

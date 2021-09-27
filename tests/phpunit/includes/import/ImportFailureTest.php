@@ -29,20 +29,7 @@ class ImportFailureTest extends MediaWikiLangTestCase {
 		$config = new HashConfig( [
 			'CommandLineMode' => true,
 		] );
-		$services = $this->getServiceContainer();
-		$importer = new WikiImporter(
-			$source,
-			$config,
-			$services->getHookContainer(),
-			$services->getContentLanguage(),
-			$services->getNamespaceInfo(),
-			$services->getTitleFactory(),
-			$services->getWikiPageFactory(),
-			$services->getWikiRevisionUploadImporter(),
-			$services->getPermissionManager(),
-			$services->getContentHandlerFactory(),
-			$services->getSlotRoleRegistry()
-		);
+		$importer = new WikiImporter( $source, $config );
 		return $importer;
 	}
 

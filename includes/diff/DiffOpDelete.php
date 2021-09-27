@@ -37,7 +37,7 @@ class DiffOpDelete extends DiffOp {
 	public $type = 'delete';
 
 	/**
-	 * @param string[] $lines
+	 * @param string[]|false $lines
 	 */
 	public function __construct( $lines ) {
 		$this->orig = $lines;

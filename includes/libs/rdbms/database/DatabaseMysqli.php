@@ -24,43 +24,38 @@ namespace Wikimedia\Rdbms;
 
 use mysqli;
 use mysqli_result;
+use stdClass;
 use Wikimedia\AtEase\AtEase;
 use Wikimedia\IPUtils;
 
 /**
  * Database abstraction object for PHP extension mysqli.
  *
- * TODO: This could probably be merged with DatabaseMysqlBase.
- * The split was created to support a transition from the old "mysql" extension
- * to mysqli, and there may be an argument for retaining it in order to support
- * some future transition to something else, but it's complexity and YAGNI.
- *
  * @ingroup Database
  * @since 1.22
  * @see Database
+ * @phan-file-suppress PhanParamSignatureMismatch resource vs mysqli_result
  */
 class DatabaseMysqli extends DatabaseMysqlBase {
 	/**
 	 * @param string $sql
-	 * @return MysqliResultWrapper|bool
+	 * @return mysqli_result|bool
 	 */
 	protected function doQuery( $sql ) {
 		AtEase::suppressWarnings();
 		$res = $this->getBindingHandle()->query( $sql );
 		AtEase::restoreWarnings();
 
-		return $res instanceof mysqli_result ? new MysqliResultWrapper( $this, $res ) : $res;
+		return $res;
 	}
 
 	/**
-	 * @param string|null $server
-	 * @param string|null $user
-	 * @param string|null $password
-	 * @param string|null $db
+	 * @param string $realServer
+	 * @param string|null $dbName
 	 * @return mysqli|null
 	 * @throws DBConnectionError
 	 */
-	protected function mysqlConnect( $server, $user, $password, $db ) {
+	protected function mysqlConnect( $realServer, $dbName ) {
 		if ( !function_exists( 'mysqli_init' ) ) {
 			throw $this->newExceptionAfterConnectError(
 				"MySQLi functions missing, have you compiled PHP with the --with-mysqli option?"
@@ -77,27 +72,25 @@ class DatabaseMysqli extends DatabaseMysqlBase {
 		// We need to parse the port or socket path out of $realServer
 		$port = null;
 		$socket = null;
-		$hostAndPort = IPUtils::splitHostAndPort( $server );
+		$hostAndPort = IPUtils::splitHostAndPort( $realServer );
 		if ( $hostAndPort ) {
 			$realServer = $hostAndPort[0];
 			if ( $hostAndPort[1] ) {
 				$port = $hostAndPort[1];
 			}
-		} elseif ( substr_count( $server, ':/' ) == 1 ) {
+		} elseif ( substr_count( $realServer, ':/' ) == 1 ) {
 			// If we have a colon slash instead of a colon and a port number
 			// after the ip or hostname, assume it's the Unix domain socket path
-			list( $realServer, $socket ) = explode( ':', $server, 2 );
-		} else {
-			$realServer = $server;
+			list( $realServer, $socket ) = explode( ':', $realServer, 2 );
 		}
 
 		$mysqli = mysqli_init();
 		// Make affectedRows() for UPDATE reflect the number of matching rows, regardless
 		// of whether any column values changed. This is what callers want to know and is
 		// consistent with what Postgres, SQLite, and SQL Server return.
-		$flags = MYSQLI_CLIENT_FOUND_ROWS;
+		$connFlags = MYSQLI_CLIENT_FOUND_ROWS;
 		if ( $this->getFlag( self::DBO_SSL ) ) {
-			$flags |= MYSQLI_CLIENT_SSL;
+			$connFlags |= MYSQLI_CLIENT_SSL;
 			$mysqli->ssl_set(
 				$this->sslKeyPath,
 				$this->sslCertPath,
@@ -107,7 +100,7 @@ class DatabaseMysqli extends DatabaseMysqlBase {
 			);
 		}
 		if ( $this->getFlag( self::DBO_COMPRESS ) ) {
-			$flags |= MYSQLI_CLIENT_COMPRESS;
+			$connFlags |= MYSQLI_CLIENT_COMPRESS;
 		}
 		if ( $this->getFlag( self::DBO_PERSISTENT ) ) {
 			$realServer = 'p:' . $realServer;
@@ -122,9 +115,19 @@ class DatabaseMysqli extends DatabaseMysqlBase {
 		}
 		$mysqli->options( MYSQLI_OPT_CONNECT_TIMEOUT, 3 );
 
-		$ok = $mysqli->real_connect( $realServer, $user, $password, $db, $port, $socket, $flags );
+		if ( $mysqli->real_connect(
+			$realServer,
+			$this->user,
+			$this->password,
+			$dbName,
+			$port,
+			$socket,
+			$connFlags
+		) ) {
+			return $mysqli;
+		}
 
-		return $ok ? $mysqli : null;
+		return null;
 	}
 
 	/**
@@ -167,13 +170,108 @@ class DatabaseMysqli extends DatabaseMysqlBase {
 
 	/**
 	 * @param mysqli_result $res
+	 * @return bool
+	 */
+	protected function mysqlFreeResult( $res ) {
+		$res->free_result();
+
+		return true;
+	}
+
+	/**
+	 * @param mysqli_result $res
+	 * @return stdClass|bool
+	 */
+	protected function mysqlFetchObject( $res ) {
+		$object = $res->fetch_object();
+		if ( $object === null ) {
+			return false;
+		}
+
+		return $object;
+	}
+
+	/**
+	 * @param mysqli_result $res
+	 * @return array|false
+	 */
+	protected function mysqlFetchArray( $res ) {
+		$array = $res->fetch_array();
+		if ( $array === null ) {
+			return false;
+		}
+
+		return $array;
+	}
+
+	/**
+	 * @param mysqli_result $res
+	 * @return mixed
+	 */
+	protected function mysqlNumRows( $res ) {
+		return $res->num_rows;
+	}
+
+	/**
+	 * @param mysqli_result $res
+	 * @return mixed
+	 */
+	protected function mysqlNumFields( $res ) {
+		return $res->field_count;
+	}
+
+	/**
+	 * @param mysqli_result $res
 	 * @param int $n
-	 * @return string
+	 * @return mixed
+	 */
+	protected function mysqlFetchField( $res, $n ) {
+		$field = $res->fetch_field_direct( $n );
+
+		// Add missing properties to result (using flags property)
+		// which will be part of function mysql-fetch-field for backward compatibility
+		$field->not_null = $field->flags & MYSQLI_NOT_NULL_FLAG;
+		$field->primary_key = $field->flags & MYSQLI_PRI_KEY_FLAG;
+		$field->unique_key = $field->flags & MYSQLI_UNIQUE_KEY_FLAG;
+		$field->multiple_key = $field->flags & MYSQLI_MULTIPLE_KEY_FLAG;
+		$field->binary = $field->flags & MYSQLI_BINARY_FLAG;
+		$field->numeric = $field->flags & MYSQLI_NUM_FLAG;
+		$field->blob = $field->flags & MYSQLI_BLOB_FLAG;
+		$field->unsigned = $field->flags & MYSQLI_UNSIGNED_FLAG;
+		$field->zerofill = $field->flags & MYSQLI_ZEROFILL_FLAG;
+
+		return $field;
+	}
+
+	/**
+	 * @param mysqli_result $res
+	 * @param int $n
+	 * @return mixed
+	 */
+	protected function mysqlFieldName( $res, $n ) {
+		$field = $res->fetch_field_direct( $n );
+
+		return $field->name;
+	}
+
+	/**
+	 * @param mysqli_result $res
+	 * @param int $n
+	 * @return mixed
 	 */
 	protected function mysqlFieldType( $res, $n ) {
 		$field = $res->fetch_field_direct( $n );
 
 		return $field->type;
+	}
+
+	/**
+	 * @param mysqli_result $res
+	 * @param int $row
+	 * @return mixed
+	 */
+	protected function mysqlDataSeek( $res, $row ) {
+		return $res->data_seek( $row );
 	}
 
 	/**

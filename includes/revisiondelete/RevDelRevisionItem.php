@@ -37,7 +37,7 @@ class RevDelRevisionItem extends RevDelItem {
 	}
 
 	/**
-	 * Create RevisionRecord object from $row sourced from $list
+	 * Create revision object from $row sourced from $list
 	 *
 	 * @param RevisionListBase $list
 	 * @param mixed $row
@@ -54,7 +54,7 @@ class RevDelRevisionItem extends RevDelItem {
 	 *
 	 * @return RevisionRecord
 	 */
-	protected function getRevisionRecord(): RevisionRecord {
+	protected function getRevisionRecord() : RevisionRecord {
 		return $this->revisionRecord;
 	}
 
@@ -99,7 +99,7 @@ class RevDelRevisionItem extends RevDelItem {
 	public function setBits( $bits ) {
 		$revRecord = $this->getRevisionRecord();
 
-		$dbw = wfGetDB( DB_PRIMARY );
+		$dbw = wfGetDB( DB_MASTER );
 		// Update revision table
 		$dbw->update( 'revision',
 			[ 'rev_deleted' => $bits ],
@@ -154,7 +154,7 @@ class RevDelRevisionItem extends RevDelItem {
 		}
 
 		return $this->getLinkRenderer()->makeKnownLink(
-			$this->list->getPage(),
+			$this->list->title,
 			$date,
 			[],
 			[
@@ -174,7 +174,7 @@ class RevDelRevisionItem extends RevDelItem {
 			return $this->list->msg( 'diff' )->escaped();
 		} else {
 			return $this->getLinkRenderer()->makeKnownLink(
-				$this->list->getPage(),
+				$this->list->title,
 				$this->list->msg( 'diff' )->text(),
 				[],
 				[
@@ -199,8 +199,7 @@ class RevDelRevisionItem extends RevDelItem {
 		$userlink = Linker::revUserLink( $revRecord );
 		$comment = Linker::revComment( $revRecord );
 		if ( $this->isDeleted() ) {
-			$class = Linker::getRevisionDeletedClass( $revRecord );
-			$revlink = "<span class=\"$class\">$revlink</span>";
+			$revlink = "<span class=\"history-deleted\">$revlink</span>";
 		}
 		$content = "$difflink $revlink $userlink $comment";
 		$attribs = [];

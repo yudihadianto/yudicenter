@@ -28,25 +28,23 @@
 class ResourceLoaderOOUIFileModule extends ResourceLoaderFileModule {
 	use ResourceLoaderOOUIModule;
 
-	/** @var array<string,string|ResourceLoaderFilePath> */
-	private $themeStyles = [];
-
 	public function __construct( array $options = [] ) {
 		if ( isset( $options['themeScripts'] ) ) {
 			$skinScripts = $this->getSkinSpecific( $options['themeScripts'], 'scripts' );
-			$options['skinScripts'] = $this->extendSkinSpecific( $options['skinScripts'] ?? [], $skinScripts );
+			if ( !isset( $options['skinScripts'] ) ) {
+				$options['skinScripts'] = [];
+			}
+			$this->extendSkinSpecific( $options['skinScripts'], $skinScripts );
 		}
 		if ( isset( $options['themeStyles'] ) ) {
-			$this->themeStyles = $this->getSkinSpecific( $options['themeStyles'], 'styles' );
+			$skinStyles = $this->getSkinSpecific( $options['themeStyles'], 'styles' );
+			if ( !isset( $options['skinStyles'] ) ) {
+				$options['skinStyles'] = [];
+			}
+			$this->extendSkinSpecific( $options['skinStyles'], $skinStyles );
 		}
 
 		parent::__construct( $options );
-	}
-
-	public function setSkinStylesOverride( array $moduleSkinStyles ): void {
-		parent::setSkinStylesOverride( $moduleSkinStyles );
-
-		$this->skinStyles = $this->extendSkinSpecific( $this->skinStyles, $this->themeStyles );
 	}
 
 	/**
@@ -55,9 +53,9 @@ class ResourceLoaderOOUIFileModule extends ResourceLoaderFileModule {
 	 * @param string $module Module to generate skinStyles/skinScripts for:
 	 *   'core', 'widgets', 'toolbars', 'windows'
 	 * @param string $which 'scripts' or 'styles'
-	 * @return array<string,string|ResourceLoaderFilePath>
+	 * @return array
 	 */
-	private function getSkinSpecific( $module, $which ): array {
+	private function getSkinSpecific( $module, $which ) : array {
 		$themes = self::getSkinThemeMap();
 
 		return array_combine(
@@ -73,42 +71,29 @@ class ResourceLoaderOOUIFileModule extends ResourceLoaderFileModule {
 	}
 
 	/**
-	 * Prepend theme-specific resources on behalf of the skin.
+	 * Prepend the $extraSkinSpecific assoc. array to the $skinSpecific assoc. array.
+	 * Both of them represent a 'skinScripts' or 'skinStyles' definition.
 	 *
-	 * The expected order of styles and scripts in the output is:
-	 *
-	 * 1. Theme-specific resources for a given skin.
-	 *
-	 * 2. Module-defined resources for a specific skin,
-	 *    falling back to module-defined "default" skin resources.
-	 *
-	 * 3. Skin-defined resources for a specific module, which can either
-	 *    append to or replace the "default" (via ResourceModuleSkinStyles in skin.json)
-	 *    Note that skins can only define resources for a module if that
-	 *    module does not already explicitly provide resources for that skin.
-	 *
-	 * @param array $skinSpecific Module-defined 'skinScripts' or 'skinStyles'.
-	 * @param array $themeSpecific
-	 * @return array Modified $skinSpecific
+	 * @param array &$skinSpecific
+	 * @param array $extraSkinSpecific
 	 */
-	private function extendSkinSpecific( array $skinSpecific, array $themeSpecific ): array {
-		// If the module or skin already set skinStyles/skinScripts, prepend ours
+	private function extendSkinSpecific( array &$skinSpecific, array $extraSkinSpecific ) : void {
+		// For each skin where skinStyles/skinScripts are defined, add our ones at the beginning
 		foreach ( $skinSpecific as $skin => $files ) {
 			if ( !is_array( $files ) ) {
 				$files = [ $files ];
 			}
-			if ( isset( $themeSpecific[$skin] ) ) {
-				$skinSpecific[$skin] = array_merge( [ $themeSpecific[$skin] ], $files );
-			} elseif ( isset( $themeSpecific['default'] ) ) {
-				$skinSpecific[$skin] = array_merge( [ $themeSpecific['default'] ], $files );
+			if ( isset( $extraSkinSpecific[$skin] ) ) {
+				$skinSpecific[$skin] = array_merge( [ $extraSkinSpecific[$skin] ], $files );
+			} elseif ( isset( $extraSkinSpecific['default'] ) ) {
+				$skinSpecific[$skin] = array_merge( [ $extraSkinSpecific['default'] ], $files );
 			}
 		}
-		// If the module has no skinStyles/skinScripts for a skin, then set ours
-		foreach ( $themeSpecific as $skin => $file ) {
+		// Add our remaining skinStyles/skinScripts for skins that did not have them defined
+		foreach ( $extraSkinSpecific as $skin => $file ) {
 			if ( !isset( $skinSpecific[$skin] ) ) {
-				$skinSpecific[$skin] = [ $file ];
+				$skinSpecific[$skin] = $file;
 			}
 		}
-		return $skinSpecific;
 	}
 }

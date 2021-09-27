@@ -81,7 +81,7 @@ class ApiQueryLangBacklinks extends ApiQueryGeneratorBase {
 			);
 		}
 
-		$prop = array_fill_keys( $params['prop'], true );
+		$prop = array_flip( $params['prop'] );
 		$lllang = isset( $prop['lllang'] );
 		$lltitle = isset( $prop['lltitle'] );
 

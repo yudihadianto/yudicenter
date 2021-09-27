@@ -50,6 +50,8 @@ class DeleteBatch extends Maintenance {
 	}
 
 	public function execute() {
+		global $wgUser;
+
 		# Change to current working directory
 		$oldCwd = getcwd();
 		chdir( $oldCwd );
@@ -67,7 +69,7 @@ class DeleteBatch extends Maintenance {
 		if ( !$user ) {
 			$this->fatalError( "Invalid username" );
 		}
-		StubGlobalUser::setUser( $user );
+		$wgUser = $user;
 
 		if ( $this->hasArg( 0 ) ) {
 			$file = fopen( $this->getArg( 0 ), 'r' );
@@ -107,7 +109,7 @@ class DeleteBatch extends Maintenance {
 					$title, [ 'ignoreRedirect' => true ]
 				);
 				if ( $img && $img->isLocal() && !$img->deleteFile( $reason, $user ) ) {
-					$this->output( " FAILED to delete associated file..." );
+					$this->output( " FAILED to delete associated file... " );
 				}
 			}
 			$page = $wikiPageFactory->newFromTitle( $title );

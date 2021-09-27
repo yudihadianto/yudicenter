@@ -15,7 +15,7 @@ class ReverseChronologicalPagerTest extends MediaWikiLangTestCase {
 	public function testGetDateCond() {
 		$pager = $this->getMockForAbstractClass( ReverseChronologicalPager::class );
 		$timestamp = MWTimestamp::getInstance();
-		$db = wfGetDB( DB_PRIMARY );
+		$db = wfGetDB( DB_MASTER );
 
 		$currYear = $timestamp->format( 'Y' );
 		$currMonth = $timestamp->format( 'n' );

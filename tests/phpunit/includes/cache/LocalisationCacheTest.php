@@ -66,10 +66,12 @@ class LocalisationCacheTest extends MediaWikiIntegrationTestCase {
 				$mockLangNameUtils,
 				$hookContainer
 			] )
-			->onlyMethods( [ 'getMessagesDirs' ] )
+			->setMethods( [ 'getMessagesDirs' ] )
 			->getMock();
-		$lc->method( 'getMessagesDirs' )
-			->willReturn( [ "$IP/tests/phpunit/data/localisationcache" ] );
+		$lc->expects( $this->any() )->method( 'getMessagesDirs' )
+			->will( $this->returnValue(
+				[ "$IP/tests/phpunit/data/localisationcache" ]
+			) );
 
 		return $lc;
 	}

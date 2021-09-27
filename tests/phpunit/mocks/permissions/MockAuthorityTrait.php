@@ -2,7 +2,6 @@
 
 namespace MediaWiki\Tests\Unit\Permissions;
 
-use MediaWiki\Block\Block;
 use MediaWiki\Permissions\Authority;
 use MediaWiki\Permissions\SimpleAuthority;
 use MediaWiki\Permissions\UltimateAuthority;
@@ -11,7 +10,6 @@ use MediaWiki\User\UserIdentityValue;
 
 /**
  * Various useful Authority mocks.
- * @stable to use (since 1.37)
  */
 trait MockAuthorityTrait {
 
@@ -30,7 +28,7 @@ trait MockAuthorityTrait {
 	 * @return Authority
 	 */
 	private function mockRegisteredUltimateAuthority(): Authority {
-		return new UltimateAuthority( new UserIdentityValue( 9999, 'Petr' ) );
+		return new UltimateAuthority( new UserIdentityValue( 42, 'Petr' ) );
 	}
 
 	/**
@@ -48,7 +46,7 @@ trait MockAuthorityTrait {
 	 * @return Authority
 	 */
 	private function mockRegisteredNullAuthority(): Authority {
-		return new SimpleAuthority( new UserIdentityValue( 9999, 'Petr' ), [] );
+		return new SimpleAuthority( new UserIdentityValue( 42, 'Petr' ), [] );
 	}
 
 	/**
@@ -68,7 +66,7 @@ trait MockAuthorityTrait {
 	 * @return Authority
 	 */
 	private function mockRegisteredAuthorityWithPermissions( array $permissions ): Authority {
-		return new SimpleAuthority( new UserIdentityValue( 9999, 'Petr' ), $permissions );
+		return new SimpleAuthority( new UserIdentityValue( 42, 'Petr' ), $permissions );
 	}
 
 	/**
@@ -83,29 +81,6 @@ trait MockAuthorityTrait {
 		array $permissions
 	): Authority {
 		return new SimpleAuthority( $user, $permissions );
-	}
-
-	/**
-	 * Create a mock Authority for $user with $block and $permissions.
-	 *
-	 * @param UserIdentity $user
-	 * @param Block $block
-	 * @param array $permissions
-	 *
-	 * @return Authority
-	 */
-	private function mockUserAuthorityWithBlock(
-		UserIdentity $user,
-		Block $block,
-		array $permissions = []
-	): Authority {
-		return $this->mockAuthority(
-			$user,
-			static function ( $permission ) use ( $permissions ) {
-				return in_array( $permission, $permissions );
-			},
-			$block
-		);
 	}
 
 	/**
@@ -127,7 +102,7 @@ trait MockAuthorityTrait {
 	 */
 	private function mockRegisteredAuthorityWithoutPermissions( array $permissions ): Authority {
 		return $this->mockUserAuthorityWithoutPermissions(
-			new UserIdentityValue( 9999, 'Petr' ),
+			new UserIdentityValue( 42, 'Petr' ),
 			$permissions
 		);
 	}
@@ -144,7 +119,7 @@ trait MockAuthorityTrait {
 	): Authority {
 		return $this->mockAuthority(
 			$user,
-			static function ( $permission ) use ( $permissions ) {
+			function ( $permission ) use ( $permissions ) {
 				return !in_array( $permission, $permissions );
 			}
 		);
@@ -171,7 +146,7 @@ trait MockAuthorityTrait {
 	 */
 	private function mockRegisteredAuthority( callable $permissionCallback ): Authority {
 		return $this->mockAuthority(
-			new UserIdentityValue( 9999, 'Petr' ),
+			new UserIdentityValue( 42, 'Petr' ),
 			$permissionCallback
 		);
 	}
@@ -181,15 +156,9 @@ trait MockAuthorityTrait {
 	 *
 	 * @param UserIdentity $user
 	 * @param callable $permissionCallback ( string $permission, ?PageIdentity $page )
-	 * @param Block|null $block
-	 *
 	 * @return Authority
 	 */
-	private function mockAuthority(
-		UserIdentity $user,
-		callable $permissionCallback,
-		Block $block = null
-	): Authority {
+	private function mockAuthority( UserIdentity $user, callable $permissionCallback ): Authority {
 		$mock = $this->createMock( Authority::class );
 		$mock->method( 'getUser' )->willReturn( $user );
 		$methods = [ 'isAllowed', 'probablyCan', 'definitelyCan', 'authorizeRead', 'authorizeWrite' ];
@@ -208,13 +177,12 @@ trait MockAuthorityTrait {
 		$mock->method( 'isAllowedAll' )
 			->willReturnCallback( static function ( ...$permissions ) use ( $permissionCallback ) {
 				foreach ( $permissions as $permission ) {
-					if ( !$permissionCallback( $permission ) ) {
+					if ( $permissionCallback( $permission ) ) {
 						return false;
 					}
 				}
 				return true;
 			} );
-		$mock->method( 'getBlock' )->willReturn( $block );
 		return $mock;
 	}
 }

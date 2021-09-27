@@ -15,16 +15,16 @@ use MediaWiki\MediaWikiServices;
  */
 class CompositeBlockTest extends MediaWikiLangTestCase {
 	private function getPartialBlocks() {
-		$sysopUser = $this->getTestSysop()->getUser();
+		$sysopId = $this->getTestSysop()->getUser()->getId();
 
 		$userBlock = new DatabaseBlock( [
 			'address' => $this->getTestUser()->getUser(),
-			'by' => $sysopUser,
+			'by' => $sysopId,
 			'sitewide' => false,
 		] );
 		$ipBlock = new DatabaseBlock( [
 			'address' => '127.0.0.1',
-			'by' => $sysopUser,
+			'by' => $sysopId,
 			'sitewide' => false,
 		] );
 
@@ -192,9 +192,7 @@ class CompositeBlockTest extends MediaWikiLangTestCase {
 			'originalBlocks' => $blocks,
 		] );
 
-		$userFactory = $this->getServiceContainer()->getUserFactory();
-		$targetIdentity = $userFactory->newFromUserIdentity( $blocks[ 'user' ]->getTargetUserIdentity() );
-		$title = $targetIdentity->getTalkPage();
+		$title = $blocks[ 'user' ]->getTarget()->getTalkPage();
 		$page = $this->getExistingTestPage( 'User talk:' . $title->getText() );
 
 		$this->getBlockRestrictionStore()->insert( [
@@ -202,7 +200,7 @@ class CompositeBlockTest extends MediaWikiLangTestCase {
 			new NamespaceRestriction( $blocks[ 'ip' ]->getId(), NS_USER ),
 		] );
 
-		$this->assertTrue( $block->appliesToUsertalk( $title ) );
+		$this->assertTrue( $block->appliesToUsertalk( $blocks[ 'user' ]->getTarget()->getTalkPage() ) );
 
 		$this->deleteBlocks( $blocks );
 	}
@@ -228,7 +226,7 @@ class CompositeBlockTest extends MediaWikiLangTestCase {
 
 	private function getMockBlockForTestAppliesToRight( $applies ) {
 		$mockBlock = $this->getMockBuilder( DatabaseBlock::class )
-			->onlyMethods( [ 'appliesToRight' ] )
+			->setMethods( [ 'appliesToRight' ] )
 			->getMock();
 		$mockBlock->method( 'appliesToRight' )
 			->willReturn( $applies );
@@ -283,7 +281,7 @@ class CompositeBlockTest extends MediaWikiLangTestCase {
 
 		$context = new DerivativeContext( RequestContext::getMain() );
 		$request = $this->getMockBuilder( FauxRequest::class )
-			->onlyMethods( [ 'getIP' ] )
+			->setMethods( [ 'getIP' ] )
 			->getMock();
 		$request->method( 'getIP' )
 			->willReturn( '1.2.3.4' );
@@ -318,7 +316,7 @@ class CompositeBlockTest extends MediaWikiLangTestCase {
 	 *
 	 * @return BlockRestrictionStore
 	 */
-	protected function getBlockRestrictionStore(): BlockRestrictionStore {
+	protected function getBlockRestrictionStore() : BlockRestrictionStore {
 		return MediaWikiServices::getInstance()->getBlockRestrictionStore();
 	}
 }

@@ -92,7 +92,7 @@ class LocalFileDeleteBatch {
 	public function addOlds() {
 		$archiveNames = [];
 
-		$dbw = $this->file->repo->getPrimaryDB();
+		$dbw = $this->file->repo->getMasterDB();
 		$result = $dbw->select( 'oldimage',
 			[ 'oi_archive_name' ],
 			[ 'oi_name' => $this->file->getName() ],
@@ -135,7 +135,7 @@ class LocalFileDeleteBatch {
 		}
 
 		if ( count( $oldRels ) ) {
-			$dbw = $this->file->repo->getPrimaryDB();
+			$dbw = $this->file->repo->getMasterDB();
 			$res = $dbw->select(
 				'oldimage',
 				[ 'oi_archive_name', 'oi_sha1' ],
@@ -184,9 +184,10 @@ class LocalFileDeleteBatch {
 
 	protected function doDBInserts() {
 		$now = time();
-		$dbw = $this->file->repo->getPrimaryDB();
+		$dbw = $this->file->repo->getMasterDB();
 
 		$commentStore = MediaWikiServices::getInstance()->getCommentStore();
+		$actorMigration = ActorMigration::newMigration();
 
 		$encTimestamp = $dbw->addQuotes( $dbw->timestamp( $now ) );
 		$encUserId = $dbw->addQuotes( $this->user->getId() );
@@ -280,11 +281,11 @@ class LocalFileDeleteBatch {
 						'fa_media_type' => $row->oi_media_type,
 						'fa_major_mime' => $row->oi_major_mime,
 						'fa_minor_mime' => $row->oi_minor_mime,
-						'fa_actor' => $row->oi_actor,
 						'fa_timestamp' => $row->oi_timestamp,
 						'fa_sha1' => $row->oi_sha1
 					] + $commentStore->insert( $dbw, 'fa_deleted_reason', $reason )
-					+ $commentStore->insert( $dbw, 'fa_description', $comment );
+					+ $commentStore->insert( $dbw, 'fa_description', $comment )
+					+ $actorMigration->getInsertValues( $dbw, 'fa_user', $user );
 				}
 			}
 
@@ -293,7 +294,7 @@ class LocalFileDeleteBatch {
 	}
 
 	private function doDBDeletes() {
-		$dbw = $this->file->repo->getPrimaryDB();
+		$dbw = $this->file->repo->getMasterDB();
 		list( $oldRels, $deleteCurrent ) = $this->getOldRels();
 
 		if ( count( $oldRels ) ) {

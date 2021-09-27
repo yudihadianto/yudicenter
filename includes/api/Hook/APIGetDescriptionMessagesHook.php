@@ -19,7 +19,7 @@ interface APIGetDescriptionMessagesHook {
 	 * @since 1.35
 	 *
 	 * @param ApiBase $module
-	 * @param Message[] &$msg
+	 * @param Message[] &$msg Array of Message objects
 	 * @return bool|void True or no return value to continue or false to abort
 	 */
 	public function onAPIGetDescriptionMessages( $module, &$msg );

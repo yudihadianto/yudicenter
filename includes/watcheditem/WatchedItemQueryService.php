@@ -3,8 +3,9 @@
 use MediaWiki\HookContainer\HookContainer;
 use MediaWiki\HookContainer\HookRunner;
 use MediaWiki\Linker\LinkTarget;
-use MediaWiki\Permissions\Authority;
+use MediaWiki\Permissions\PermissionManager;
 use MediaWiki\Revision\RevisionRecord;
+use MediaWiki\User\UserFactory;
 use MediaWiki\User\UserIdentity;
 use Wikimedia\Assert\Assert;
 use Wikimedia\Rdbms\IDatabase;
@@ -67,11 +68,20 @@ class WatchedItemQueryService {
 	/** @var CommentStore */
 	private $commentStore;
 
+	/** @var ActorMigration */
+	private $actorMigration;
+
 	/** @var WatchedItemStoreInterface */
 	private $watchedItemStore;
 
+	/** @var PermissionManager */
+	private $permissionManager;
+
 	/** @var HookRunner */
 	private $hookRunner;
+
+	/** @var UserFactory */
+	private $userFactory;
 
 	/**
 	 * @var bool Correlates to $wgWatchlistExpiry feature flag.
@@ -81,14 +91,20 @@ class WatchedItemQueryService {
 	public function __construct(
 		ILoadBalancer $loadBalancer,
 		CommentStore $commentStore,
+		ActorMigration $actorMigration,
 		WatchedItemStoreInterface $watchedItemStore,
+		PermissionManager $permissionManager,
 		HookContainer $hookContainer,
+		UserFactory $userFactory,
 		bool $expiryEnabled = false
 	) {
 		$this->loadBalancer = $loadBalancer;
 		$this->commentStore = $commentStore;
+		$this->actorMigration = $actorMigration;
 		$this->watchedItemStore = $watchedItemStore;
+		$this->permissionManager = $permissionManager;
 		$this->hookRunner = new HookRunner( $hookContainer );
+		$this->userFactory = $userFactory;
 		$this->expiryEnabled = $expiryEnabled;
 	}
 
@@ -356,13 +372,16 @@ class WatchedItemQueryService {
 	}
 
 	private function getRecentChangeFieldsFromRow( stdClass $row ) {
-		return array_filter(
-			get_object_vars( $row ),
+		// FIXME: This can be simplified to single array_filter call filtering by key value,
+		// now we have stopped supporting PHP 5.5
+		$allFields = get_object_vars( $row );
+		$rcKeys = array_filter(
+			array_keys( $allFields ),
 			static function ( $key ) {
 				return substr( $key, 0, 3 ) === 'rc_';
-			},
-			ARRAY_FILTER_USE_KEY
+			}
 		);
+		return array_intersect_key( $allFields, array_flip( $rcKeys ) );
 	}
 
 	private function getWatchedItemsWithRCInfoQueryTables( array $options ) {
@@ -384,7 +403,7 @@ class WatchedItemQueryService {
 			in_array( self::FILTER_NOT_ANON, $options['filters'] ) ||
 			array_key_exists( 'onlyByUser', $options ) || array_key_exists( 'notByUser', $options )
 		) {
-			$tables['watchlist_actor'] = 'actor';
+			$tables += $this->actorMigration->getJoin( 'rc_user' )['tables'];
 		}
 		return $tables;
 	}
@@ -422,10 +441,10 @@ class WatchedItemQueryService {
 			$fields = array_merge( $fields, [ 'rc_type', 'rc_minor', 'rc_bot' ] );
 		}
 		if ( in_array( self::INCLUDE_USER, $options['includeFields'] ) ) {
-			$fields['rc_user_text'] = 'watchlist_actor.actor_name';
+			$fields['rc_user_text'] = $this->actorMigration->getJoin( 'rc_user' )['fields']['rc_user_text'];
 		}
 		if ( in_array( self::INCLUDE_USER_ID, $options['includeFields'] ) ) {
-			$fields['rc_user'] = 'watchlist_actor.actor_user';
+			$fields['rc_user'] = $this->actorMigration->getJoin( 'rc_user' )['fields']['rc_user'];
 		}
 		if ( in_array( self::INCLUDE_COMMENT, $options['includeFields'] ) ) {
 			$fields += $this->commentStore->getJoin( 'rc_comment' )['fields'];
@@ -527,9 +546,13 @@ class WatchedItemQueryService {
 		}
 
 		if ( in_array( self::FILTER_ANON, $options['filters'] ) ) {
-			$conds[] = 'watchlist_actor.actor_user IS NULL';
+			$conds[] = $this->actorMigration->isAnon(
+				$this->actorMigration->getJoin( 'rc_user' )['fields']['rc_user']
+			);
 		} elseif ( in_array( self::FILTER_NOT_ANON, $options['filters'] ) ) {
-			$conds[] = 'watchlist_actor.actor_user IS NOT NULL';
+			$conds[] = $this->actorMigration->isNotAnon(
+				$this->actorMigration->getJoin( 'rc_user' )['fields']['rc_user']
+			);
 		}
 
 		if ( $user->useRCPatrol() || $user->useNPPatrol() ) {
@@ -579,7 +602,7 @@ class WatchedItemQueryService {
 		return $conds;
 	}
 
-	private function getUserRelatedConds( IDatabase $db, Authority $user, array $options ) {
+	private function getUserRelatedConds( IDatabase $db, UserIdentity $user, array $options ) {
 		if ( !array_key_exists( 'onlyByUser', $options ) && !array_key_exists( 'notByUser', $options ) ) {
 			return [];
 		}
@@ -587,16 +610,26 @@ class WatchedItemQueryService {
 		$conds = [];
 
 		if ( array_key_exists( 'onlyByUser', $options ) ) {
-			$conds['watchlist_actor.actor_name'] = $options['onlyByUser'];
+			$byUser = $this->userFactory->newFromName(
+				$options['onlyByUser'],
+				UserFactory::RIGOR_NONE
+			);
+			$conds[] = $this->actorMigration->getWhere( $db, 'rc_user', $byUser )['conds'];
 		} elseif ( array_key_exists( 'notByUser', $options ) ) {
-			$conds[] = 'watchlist_actor.actor_name<>' . $db->addQuotes( $options['notByUser'] );
+			$byUser = $this->userFactory->newFromName(
+				$options['notByUser'],
+				UserFactory::RIGOR_NONE
+			);
+			$conds[] = 'NOT(' . $this->actorMigration->getWhere( $db, 'rc_user', $byUser )['conds'] . ')';
 		}
 
 		// Avoid brute force searches (T19342)
 		$bitmask = 0;
-		if ( !$user->isAllowed( 'deletedhistory' ) ) {
+		if ( !$this->permissionManager->userHasRight( $user, 'deletedhistory' ) ) {
 			$bitmask = RevisionRecord::DELETED_USER;
-		} elseif ( !$user->isAllowedAny( 'suppressrevision', 'viewsuppressed' ) ) {
+		} elseif ( !$this->permissionManager
+			->userHasAnyRight( $user, 'suppressrevision', 'viewsuppressed' )
+		) {
 			$bitmask = RevisionRecord::DELETED_USER | RevisionRecord::DELETED_RESTRICTED;
 		}
 		if ( $bitmask ) {
@@ -606,13 +639,15 @@ class WatchedItemQueryService {
 		return $conds;
 	}
 
-	private function getExtraDeletedPageLogEntryRelatedCond( IDatabase $db, Authority $user ) {
+	private function getExtraDeletedPageLogEntryRelatedCond( IDatabase $db, UserIdentity $user ) {
 		// LogPage::DELETED_ACTION hides the affected page, too. So hide those
 		// entirely from the watchlist, or someone could guess the title.
 		$bitmask = 0;
-		if ( !$user->isAllowed( 'deletedhistory' ) ) {
+		if ( !$this->permissionManager->userHasRight( $user, 'deletedhistory' ) ) {
 			$bitmask = LogPage::DELETED_ACTION;
-		} elseif ( !$user->isAllowedAny( 'suppressrevision', 'viewsuppressed' ) ) {
+		} elseif ( !$this->permissionManager
+			->userHasAnyRight( $user, 'suppressrevision', 'viewsuppressed' )
+		) {
 			$bitmask = LogPage::DELETED_ACTION | LogPage::DELETED_RESTRICTED;
 		}
 		if ( $bitmask ) {
@@ -759,7 +794,7 @@ class WatchedItemQueryService {
 			in_array( self::FILTER_NOT_ANON, $options['filters'] ) ||
 			array_key_exists( 'onlyByUser', $options ) || array_key_exists( 'notByUser', $options )
 		) {
-			$joinConds['watchlist_actor'] = [ 'JOIN', 'actor_id=rc_actor' ];
+			$joinConds += $this->actorMigration->getJoin( 'rc_user' )['joins'];
 		}
 		return $joinConds;
 	}

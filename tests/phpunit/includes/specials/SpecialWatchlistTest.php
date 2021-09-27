@@ -11,7 +11,7 @@ use Wikimedia\TestingAccessWrapper;
  * @covers SpecialWatchlist
  */
 class SpecialWatchlistTest extends SpecialPageTestBase {
-	protected function setUp(): void {
+	protected function setUp() : void {
 		parent::setUp();
 		$this->tablesUsed = [ 'watchlist' ];
 		$this->setTemporaryHook(
@@ -114,9 +114,8 @@ class SpecialWatchlistTest extends SpecialPageTestBase {
 		$fauxRequest = new FauxRequest( $inputParams, /* $wasPosted= */ false );
 		$user = $this->getTestUser()->getUser();
 
-		$userOptionsManager = $this->getServiceContainer()->getUserOptionsManager();
 		foreach ( $preferences as $key => $value ) {
-			$userOptionsManager->setOption( $user, $key, $value );
+			$user->setOption( $key, $value );
 		}
 
 		$context->setRequest( $fauxRequest );

@@ -17,9 +17,8 @@ class ApiQueryAllPagesTest extends ApiTestCase {
 		$title = Title::newFromText( 'Category:Template:xyz' );
 		$page = WikiPage::factory( $title );
 
-		$page->doUserEditContent(
+		$page->doEditContent(
 			ContentHandler::makeContent( 'Some text', $page->getTitle() ),
-			$this->getTestSysop()->getUser(),
 			'inserting content'
 		);
 

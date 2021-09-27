@@ -1,7 +1,5 @@
 <?php
 
-use MediaWiki\Tests\Unit\Permissions\MockAuthorityTrait;
-
 /**
  * Tests for editing page content model via api
  *
@@ -13,9 +11,8 @@ use MediaWiki\Tests\Unit\Permissions\MockAuthorityTrait;
  * @author DannyS712
  */
 class ApiChangeContentModelTest extends ApiTestCase {
-	use MockAuthorityTrait;
 
-	protected function setUp(): void {
+	protected function setUp() : void {
 		parent::setUp();
 
 		$this->tablesUsed = array_merge(
@@ -25,7 +22,15 @@ class ApiChangeContentModelTest extends ApiTestCase {
 
 		$this->getExistingTestPage( 'ExistingPage' );
 
+		$this->mergeMwGlobalArrayValue( 'wgGroupPermissions', [
+			'editcontentmodel' => [ 'editcontentmodel' => true ]
+		] );
+
 		$this->setMwGlobals( [
+			'wgRevokePermissions' => [
+				'noeditcontentmodel' => [ 'editcontentmodel' => true ],
+				'noapplychangetags' => [ 'applychangetags' => true ],
+			],
 			'wgExtraNamespaces' => [
 				12312 => 'Dummy',
 				12313 => 'Dummy_talk',
@@ -60,18 +65,18 @@ class ApiChangeContentModelTest extends ApiTestCase {
 	 * Test user needs `editcontentmodel` rights
 	 */
 	public function testRightsNeeded() {
+		$user = $this->getTestUser( [ 'noeditcontentmodel' ] )->getUser();
+
 		$this->setExpectedApiException( [
 			'apierror-permissiondenied',
 			wfMessage( 'action-editcontentmodel' )
 		] );
 
 		$this->doApiRequestWithToken( [
-				'action' => 'changecontentmodel',
-				'title' => 'ExistingPage',
-				'model' => 'text'
-			],
-			null,
-			$this->mockAnonAuthorityWithoutPermissions( [ 'editcontentmodel' ] ) );
+			'action' => 'changecontentmodel',
+			'title' => 'ExistingPage',
+			'model' => 'text'
+		], null, $user );
 	}
 
 	/**
@@ -99,11 +104,12 @@ class ApiChangeContentModelTest extends ApiTestCase {
 	public function testInvalidContent() {
 		$wikipage = $this->getExistingTestPage( 'PageWithTextThatIsNotValidJSON' );
 		$invalidJSON = 'Foo\nBar\nEaster egg\nT22281';
-		$wikipage->doUserEditContent(
+		$wikipage->doEditContent(
 			ContentHandler::makeContent( $invalidJSON, $wikipage->getTitle() ),
-			$this->getTestSysop()->getUser(),
 			'EditSummaryForThisTest',
-			EDIT_UPDATE | EDIT_SUPPRESS_RC
+			EDIT_UPDATE | EDIT_SUPPRESS_RC,
+			false,
+			$this->getTestSysop()->getUser()
 		);
 		$this->assertSame(
 			'wikitext',
@@ -112,14 +118,12 @@ class ApiChangeContentModelTest extends ApiTestCase {
 		);
 
 		$this->setExpectedApiException( 'invalid-content-data' );
+		$user = $this->getTestUser( [ 'editcontentmodel' ] )->getUser();
 		$this->doApiRequestWithToken( [
-				'action' => 'changecontentmodel',
-				'title' => 'PageWithTextThatIsNotValidJSON',
-				'model' => 'json'
-			],
-			null,
-			$this->mockAnonAuthorityWithPermissions( [ 'edit', 'editcontentmodel', 'writeapi' ] )
-		);
+			'action' => 'changecontentmodel',
+			'title' => 'PageWithTextThatIsNotValidJSON',
+			'model' => 'json'
+		], null, $user );
 	}
 
 	/**
@@ -131,6 +135,7 @@ class ApiChangeContentModelTest extends ApiTestCase {
 	 */
 	public function testEditFilterMergedContent( $customMessage, $expectedMessage ) {
 		$title = Title::newFromText( 'ExistingPage' );
+		$user = $this->getTestUser( [ 'editcontentmodel' ] )->getUser();
 
 		$this->assertSame(
 			'wikitext',
@@ -155,13 +160,10 @@ class ApiChangeContentModelTest extends ApiTestCase {
 		$this->expectExceptionMessage( $exception->getMessage() );
 
 		$this->doApiRequestWithToken( [
-				'action' => 'changecontentmodel',
-				'title' => 'ExistingPage',
-				'model' => 'text'
-			],
-			null,
-			$this->mockAnonAuthorityWithPermissions( [ 'edit', 'editcontentmodel', 'writeapi' ] )
-		);
+			'action' => 'changecontentmodel',
+			'title' => 'ExistingPage',
+			'model' => 'text'
+		], null, $user );
 	}
 
 	public function provideTestEditFilterMergedContent() {
@@ -176,6 +178,7 @@ class ApiChangeContentModelTest extends ApiTestCase {
 	 */
 	public function testContentModelCanBeUsedOn() {
 		$title = Title::newFromText( 'ExistingPage' );
+		$user = $this->getTestUser( [ 'editcontentmodel' ] )->getUser();
 
 		$this->assertSame(
 			'wikitext',
@@ -197,13 +200,10 @@ class ApiChangeContentModelTest extends ApiTestCase {
 		] );
 
 		$this->doApiRequestWithToken( [
-				'action' => 'changecontentmodel',
-				'title' => 'ExistingPage',
-				'model' => 'text'
-			],
-			null,
-			$this->mockAnonAuthorityWithPermissions( [ 'edit', 'editcontentmodel', 'writeapi' ] )
-		);
+			'action' => 'changecontentmodel',
+			'title' => 'ExistingPage',
+			'model' => 'text'
+		], null, $user );
 	}
 
 	/**
@@ -213,11 +213,12 @@ class ApiChangeContentModelTest extends ApiTestCase {
 		$title = Title::newFromText( 'Dummy:NoDirectEditing' );
 
 		$dummyContent = ContentHandler::getForModelID( 'testing' )->makeEmptyContent();
-		WikiPage::factory( $title )->doUserEditContent(
+		WikiPage::factory( $title )->doEditContent(
 			$dummyContent,
-			$this->getTestSysop()->getUser(),
 			'EditSummaryForThisTest',
-			EDIT_NEW | EDIT_SUPPRESS_RC
+			EDIT_NEW | EDIT_SUPPRESS_RC,
+			false,
+			$this->getTestSysop()->getUser()
 		);
 		$this->assertSame(
 			'testing',
@@ -230,28 +231,25 @@ class ApiChangeContentModelTest extends ApiTestCase {
 			ContentHandler::getLocalizedName( 'testing' )
 		] );
 
+		$user = $this->getTestUser( [ 'editcontentmodel' ] )->getUser();
 		$this->doApiRequestWithToken( [
-				'action' => 'changecontentmodel',
-				'title' => 'Dummy:NoDirectEditing',
-				'model' => 'wikitext'
-			],
-			null,
-			$this->mockAnonAuthorityWithPermissions( [ 'edit', 'editcontentmodel', 'writeapi' ] )
-		);
+			'action' => 'changecontentmodel',
+			'title' => 'Dummy:NoDirectEditing',
+			'model' => 'wikitext'
+		], null, $user );
 	}
 
 	public function testCannotApplyTags() {
+		$user = $this->getTestUser( [ 'noapplychangetags' ] )->getUser();
 		ChangeTags::defineTag( 'api edit content model tag' );
 		$this->setExpectedApiException( 'tags-apply-no-permission' );
 
 		$this->doApiRequestWithToken( [
-				'action' => 'changecontentmodel',
-				'title' => 'ExistingPage',
-				'model' => 'text',
-				'tags' => 'api edit content model tag',
-			],
-			null,
-			$this->mockAnonAuthorityWithoutPermissions( [ 'applychangetags' ] ) );
+			'action' => 'changecontentmodel',
+			'title' => 'ExistingPage',
+			'model' => 'text',
+			'tags' => 'api edit content model tag',
+		], null, $user );
 	}
 
 	/**
@@ -259,15 +257,13 @@ class ApiChangeContentModelTest extends ApiTestCase {
 	 */
 	public function testEverythingWorks() {
 		$title = Title::newFromText( 'ExistingPage' );
-		$performer = $this->mockAnonAuthorityWithPermissions(
-			[ 'edit', 'editcontentmodel', 'writeapi', 'applychangetags' ]
-		);
 		$this->assertSame(
 			'wikitext',
 			$title->getContentModel( Title::READ_LATEST ),
 			'Sanity check: `ExistingPage` should be wikitext'
 		);
 
+		$user = $this->getTestUser( [ 'editcontentmodel' ] )->getUser();
 		ChangeTags::defineTag( 'api edit content model tag' );
 
 		$data = $this->doApiRequestWithToken( [
@@ -275,7 +271,7 @@ class ApiChangeContentModelTest extends ApiTestCase {
 			'title' => 'ExistingPage',
 			'model' => 'text',
 			'tags' => 'api edit content model tag',
-		], null, $performer );
+		], null, $user );
 
 		$this->assertSame(
 			'text',
@@ -295,7 +291,7 @@ class ApiChangeContentModelTest extends ApiTestCase {
 			'title' => 'ExistingPage',
 			'model' => 'wikitext',
 			'tags' => 'api edit content model tag',
-		], null, $performer );
+		], null, $user );
 
 		$this->assertSame(
 			'wikitext',
@@ -316,7 +312,7 @@ class ApiChangeContentModelTest extends ApiTestCase {
 			'Second revision should come after the first'
 		);
 
-		$dbw = wfGetDB( DB_PRIMARY );
+		$dbw = wfGetDB( DB_MASTER );
 		$this->assertSame(
 			'4',
 			$dbw->selectField(

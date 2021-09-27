@@ -92,7 +92,10 @@ class OOUIHTMLForm extends HTMLForm {
 		}
 
 		if ( $this->mShowCancel ) {
-			$target = $this->getCancelTargetURL();
+			$target = $this->mCancelTarget ?: Title::newMainPage();
+			if ( $target instanceof Title ) {
+				$target = $target->getLocalURL();
+			}
 			$buttons .= new OOUI\ButtonWidget( [
 				'label' => $this->msg( 'cancel' )->text(),
 				'href' => $target,

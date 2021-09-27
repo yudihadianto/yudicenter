@@ -107,6 +107,14 @@ class DefaultOptionsLookup extends UserOptionsLookup {
 	/**
 	 * @inheritDoc
 	 */
+	public function getDefaultOption( string $opt ) {
+		$defOpts = $this->getDefaultOptions();
+		return $defOpts[$opt] ?? null;
+	}
+
+	/**
+	 * @inheritDoc
+	 */
 	public function getOption(
 		UserIdentity $user,
 		string $oname,

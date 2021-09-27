@@ -22,7 +22,7 @@ class HTMLMultiSelectField extends HTMLFormField implements HTMLNestedFilterable
 		parent::__construct( $params );
 
 		// If the disabled-options parameter is not provided, use an empty array
-		if ( !isset( $this->mParams['disabled-options'] ) ) {
+		if ( isset( $this->mParams['disabled-options'] ) === false ) {
 			$this->mParams['disabled-options'] = [];
 		}
 
@@ -149,7 +149,6 @@ class HTMLMultiSelectField extends HTMLFormField implements HTMLNestedFilterable
 	 * @throws MWException
 	 */
 	public function getOptionsOOUI() {
-		// @phan-suppress-previous-line PhanPluginNeverReturnMethod
 		// Sections make this difficult. See getInputOOUI().
 		throw new MWException( 'HTMLMultiSelectField#getOptionsOOUI() is not supported' );
 	}

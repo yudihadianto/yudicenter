@@ -42,7 +42,7 @@ class SelfRedirectConstraintTest extends MediaWikiUnitTestCase {
 			->willReturn( $contentRedirectTarget );
 		$contentRedirectTarget->expects( $this->once() )
 			->method( 'equals' )
-			->with( $title )
+			->with( $this->equalTo( $title ) )
 			->willReturn( $isSelfRedirect );
 		return $content;
 	}

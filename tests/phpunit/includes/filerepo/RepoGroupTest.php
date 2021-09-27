@@ -21,7 +21,7 @@ class RepoGroupTest extends MediaWikiIntegrationTestCase {
 		$this->setUpForeignRepo();
 		$fakeCallback = $this->createMock( RepoGroupTestHelper::class );
 		$fakeCallback->expects( $this->once() )->method( 'callback' );
-		$this->getServiceContainer()->getRepoGroup()->forEachForeignRepo(
+		RepoGroup::singleton()->forEachForeignRepo(
 			[ $fakeCallback, 'callback' ], [ [] ] );
 	}
 
@@ -29,7 +29,7 @@ class RepoGroupTest extends MediaWikiIntegrationTestCase {
 		$this->setMwGlobals( 'wgForeignFileRepos', [] );
 		$fakeCallback = $this->createMock( RepoGroupTestHelper::class );
 		$fakeCallback->expects( $this->never() )->method( 'callback' );
-		$this->getServiceContainer()->getRepoGroup()->forEachForeignRepo(
+		RepoGroup::singleton()->forEachForeignRepo(
 			[ $fakeCallback, 'callback' ], [ [] ] );
 	}
 

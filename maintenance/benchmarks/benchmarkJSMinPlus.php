@@ -32,17 +32,18 @@ class BenchmarkJSMinPlus extends Benchmarker {
 	public function __construct() {
 		parent::__construct();
 		$this->addDescription( 'Benchmarks JSMinPlus.' );
-		$this->addOption( 'file', 'Path to JS file. Default: jquery', false, true );
+		$this->addOption( 'file', 'Path to JS file', true, true );
 	}
 
 	public function execute() {
-		$file = $this->getOption( 'file', __DIR__ . '/data/jsmin/jquery-3.2.1.js.gz' );
-		$content = $this->loadFile( $file );
+		Wikimedia\suppressWarnings();
+		$content = file_get_contents( $this->getOption( 'file' ) );
+		Wikimedia\restoreWarnings();
 		if ( $content === false ) {
 			$this->fatalError( 'Unable to open input file' );
 		}
 
-		$filename = basename( $file );
+		$filename = basename( $this->getOption( 'file' ) );
 		$parser = new JSParser();
 
 		$this->bench( [

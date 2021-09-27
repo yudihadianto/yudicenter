@@ -2,14 +2,11 @@
 
 use MediaWiki\BadFileLookup;
 use MediaWiki\HookContainer\HookContainer;
-use MediaWiki\Tests\Unit\DummyServicesTrait;
 
 /**
  * @coversDefaultClass MediaWiki\BadFileLookup
  */
 class BadFileLookupTest extends MediaWikiUnitTestCase {
-	use DummyServicesTrait;
-
 	/** Shared with GlobalWithDBTest */
 	public const BAD_FILE_LIST = <<<WIKITEXT
 Comment line, no effect [[File:Good.jpg]]
@@ -89,7 +86,34 @@ WIKITEXT;
 		return $mock;
 	}
 
-	protected function setUp(): void {
+	private function getMockTitleParser() {
+		$mock = $this->createMock( TitleParser::class );
+		$mock->method( 'parseTitle' )->will( $this->returnCallback( function ( $text ) {
+			if ( strpos( $text, '<' ) !== false ) {
+				throw $this->createMock( MalformedTitleException::class );
+			}
+			if ( strpos( $text, ':' ) === false ) {
+				return new TitleValue( NS_MAIN, $text );
+			}
+			list( $ns, $text ) = explode( ':', $text );
+			switch ( $ns ) {
+				case 'Image':
+				case 'File':
+					$ns = NS_FILE;
+					break;
+
+				case 'User':
+					$ns = NS_USER;
+					break;
+			}
+			return new TitleValue( $ns, $text );
+		} ) );
+		$mock->expects( $this->never() )->method( $this->anythingBut( 'parseTitle' ) );
+
+		return $mock;
+	}
+
+	protected function setUp() : void {
 		parent::setUp();
 		$this->hookContainer = $this->createHookContainer( [
 			'BadImage' => __CLASS__ . '::badImageHook'
@@ -108,7 +132,7 @@ WIKITEXT;
 			},
 			new EmptyBagOStuff,
 			$this->getMockRepoGroup(),
-			$this->getDummyTitleParser( [ 'throwMockExceptions' => true ] ),
+			$this->getMockTitleParser(),
 			$this->hookContainer
 		);
 
@@ -127,7 +151,7 @@ WIKITEXT;
 			},
 			new EmptyBagOStuff,
 			$this->getMockRepoGroupNull(),
-			$this->getDummyTitleParser( [ 'throwMockExceptions' => true ] ),
+			$this->getMockTitleParser(),
 			$this->hookContainer
 		);
 

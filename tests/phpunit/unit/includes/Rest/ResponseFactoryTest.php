@@ -20,7 +20,6 @@ class ResponseFactoryTest extends MediaWikiUnitTestCase {
 			[ '/', '"/"' ],
 			[ '£', '"£"' ],
 			[ [], '[]' ],
-			[ "\xc0", "\"\u{FFFD}\"" ] // T289597
 		];
 	}
 

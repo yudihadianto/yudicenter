@@ -12,7 +12,7 @@ use MediaWiki\MediaWikiServices;
  */
 class ApiUserrightsTest extends ApiTestCase {
 
-	protected function setUp(): void {
+	protected function setUp() : void {
 		parent::setUp();
 		$this->tablesUsed = array_merge(
 			$this->tablesUsed,
@@ -80,10 +80,8 @@ class ApiUserrightsTest extends ApiTestCase {
 		$res = $this->doApiRequestWithToken( $params );
 
 		$user->clearInstanceCache();
-		$this->getServiceContainer()->getPermissionManager()->invalidateUsersRightsCache();
-		$this->assertSame(
-			$expectedGroups, $this->getServiceContainer()->getUserGroupManager()->getUserGroups( $user )
-		);
+		MediaWikiServices::getInstance()->getPermissionManager()->invalidateUsersRightsCache();
+		$this->assertSame( $expectedGroups, $user->getGroups() );
 
 		$this->assertArrayNotHasKey( 'warnings', $res[0] );
 	}
@@ -101,7 +99,6 @@ class ApiUserrightsTest extends ApiTestCase {
 		$expectedException, array $params = [], User $user = null
 	) {
 		$params['action'] = 'userrights';
-		$userGroupManager = $this->getServiceContainer()->getUserGroupManager();
 
 		$this->expectException( ApiUsageException::class );
 		$this->expectExceptionMessage( $expectedException );
@@ -123,13 +120,13 @@ class ApiUserrightsTest extends ApiTestCase {
 		if ( !isset( $params['add'] ) && !isset( $params['remove'] ) ) {
 			$params['add'] = 'sysop';
 		}
-		$expectedGroups = $userGroupManager->getUserGroups( $user );
+		$expectedGroups = $user->getGroups();
 
 		try {
 			$this->doApiRequestWithToken( $params );
 		} finally {
 			$user->clearInstanceCache();
-			$this->assertSame( $expectedGroups, $userGroupManager->getUserGroups( $user ) );
+			$this->assertSame( $expectedGroups, $user->getGroups() );
 		}
 	}
 
@@ -140,7 +137,7 @@ class ApiUserrightsTest extends ApiTestCase {
 	public function testBlockedWithUserrights() {
 		$user = $this->getTestSysop()->getUser();
 
-		$block = new DatabaseBlock( [ 'address' => $user, 'by' => $user, ] );
+		$block = new DatabaseBlock( [ 'address' => $user, 'by' => $user->getId(), ] );
 		$blockStore = MediaWikiServices::getInstance()->getDatabaseBlockStore();
 		$blockStore->insertBlock( $block );
 
@@ -157,7 +154,7 @@ class ApiUserrightsTest extends ApiTestCase {
 
 		$this->setPermissions( true, true );
 
-		$block = new DatabaseBlock( [ 'address' => $user, 'by' => $user ] );
+		$block = new DatabaseBlock( [ 'address' => $user, 'by' => $user->getId() ] );
 		$blockStore = MediaWikiServices::getInstance()->getDatabaseBlockStore();
 		$blockStore->insertBlock( $block );
 
@@ -257,7 +254,7 @@ class ApiUserrightsTest extends ApiTestCase {
 		] );
 
 		$user->clearInstanceCache();
-		$this->assertSame( [ 'sysop' ], $this->getServiceContainer()->getUserGroupManager()->getUserGroups( $user ) );
+		$this->assertSame( [ 'sysop' ], $user->getGroups() );
 
 		$this->assertArrayNotHasKey( 'warnings', $res[0] );
 	}
@@ -285,13 +282,13 @@ class ApiUserrightsTest extends ApiTestCase {
 		] ) );
 
 		$mockUserRightsPage = $this->getMockBuilder( UserrightsPage::class )
-			->onlyMethods( [ 'canProcessExpiries' ] )
+			->setMethods( [ 'canProcessExpiries' ] )
 			->getMock();
 		$mockUserRightsPage->method( 'canProcessExpiries' )->willReturn( $canProcessExpiries );
 
 		$mockApi = $this->getMockBuilder( ApiUserrights::class )
 			->setConstructorArgs( [ $main, 'userrights' ] )
-			->onlyMethods( [ 'getUserRightsPage' ] )
+			->setMethods( [ 'getUserRightsPage' ] )
 			->getMock();
 		$mockApi->method( 'getUserRightsPage' )->willReturn( $mockUserRightsPage );
 

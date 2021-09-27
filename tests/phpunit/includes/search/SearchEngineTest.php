@@ -21,7 +21,7 @@ class SearchEngineTest extends MediaWikiLangTestCase {
 	 * Checks for database type & version.
 	 * Will skip current test if DB does not support search.
 	 */
-	protected function setUp(): void {
+	protected function setUp() : void {
 		parent::setUp();
 
 		// Search tests require MySQL or SQLite with FTS
@@ -47,7 +47,7 @@ class SearchEngineTest extends MediaWikiLangTestCase {
 		$this->search->setHookContainer( MediaWikiServices::getInstance()->getHookContainer() );
 	}
 
-	protected function tearDown(): void {
+	protected function tearDown() : void {
 		unset( $this->search );
 
 		parent::tearDown();
@@ -284,7 +284,7 @@ class SearchEngineTest extends MediaWikiLangTestCase {
 		 * @var SearchEngine $mockEngine
 		 */
 		$mockEngine = $this->getMockBuilder( SearchEngine::class )
-			->onlyMethods( [ 'makeSearchFieldMapping' ] )->getMock();
+			->setMethods( [ 'makeSearchFieldMapping' ] )->getMock();
 
 		$mockFieldBuilder = function ( $name, $type ) {
 			$mockField =
@@ -293,13 +293,14 @@ class SearchEngineTest extends MediaWikiLangTestCase {
 					$type,
 				] )->getMock();
 
-			$mockField->method( 'getMapping' )->willReturn( [
+			$mockField->expects( $this->any() )->method( 'getMapping' )->willReturn( [
 				'testData' => 'test',
 				'name' => $name,
 				'type' => $type,
 			] );
 
-			$mockField->method( 'merge' )
+			$mockField->expects( $this->any() )
+				->method( 'merge' )
 				->willReturn( $mockField );
 
 			return $mockField;
@@ -401,9 +402,8 @@ class SearchEngineTest extends MediaWikiLangTestCase {
 
 	private function editSearchResultPage( $title ) {
 		$page = WikiPage::factory( Title::newFromText( $title ) );
-		$page->doUserEditContent(
+		$page->doEditContent(
 			new WikitextContent( 'UTContent' ),
-			$this->getTestSysop()->getUser(),
 			'UTPageSummary',
 			EDIT_NEW | EDIT_SUPPRESS_RC
 		);

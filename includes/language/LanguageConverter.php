@@ -24,7 +24,6 @@
 use MediaWiki\Linker\LinkTarget;
 use MediaWiki\Logger\LoggerFactory;
 use MediaWiki\MediaWikiServices;
-use MediaWiki\Page\PageReference;
 use MediaWiki\Revision\RevisionRecord;
 use MediaWiki\Revision\SlotRecord;
 
@@ -176,8 +175,8 @@ abstract class LanguageConverter implements ILanguageConverter {
 	}
 
 	/**
-	 * Provides additional flags for converter. By default it return empty array and
-	 * typically should be overridden by implementation of converter.
+	 * Provides additinal flags for converter. By default it return empty array and
+	 * typicslly should be overridden by implementation of converter..
 	 *
 	 * @return array
 	 */
@@ -205,8 +204,8 @@ abstract class LanguageConverter implements ILanguageConverter {
 	}
 
 	/**
-	 * Provides additional flags for converter. By default it return empty array and
-	 * typically should be overridden by implementation of converter.
+	 * Provides additinal flags for converter. By default it return empty array and
+	 * typicslly should be overridden by implementation of converter.
 	 * @since 1.36
 	 *
 	 * @return array
@@ -286,19 +285,17 @@ abstract class LanguageConverter implements ILanguageConverter {
 	 * @return string The preferred language code
 	 */
 	public function getPreferredVariant() {
-		global $wgDefaultLanguageVariant;
+		global $wgDefaultLanguageVariant, $wgUser;
 
 		$req = $this->getURLVariant();
 
 		Hooks::runner()->onGetLangPreferredVariant( $req );
 
-		$user = RequestContext::getMain()->getUser();
-		// NOTE: For some calls there may not be a context user or session that is safe
-		// to use, see (T235360)
-		// Use case: During autocreation, UserNameUtils::isUsable is called which uses interface
+		// NOTE: For calls from Setup.php, wgUser or the session might not be set yet (T235360)
+		// Use case: During autocreation, User::isUsableName is called which uses interface
 		// messages for reserved usernames.
-		if ( $user->isSafeToLoad() && $user->isRegistered() && !$req ) {
-			$req = $this->getUserVariant( $user );
+		if ( $wgUser && $wgUser->isSafeToLoad() && $wgUser->isRegistered() && !$req ) {
+			$req = $this->getUserVariant( $wgUser );
 		} elseif ( !$req ) {
 			$req = $this->getHeaderVariant();
 		}
@@ -410,23 +407,21 @@ abstract class LanguageConverter implements ILanguageConverter {
 			return false;
 		}
 
-		$services = MediaWikiServices::getInstance();
 		if ( $user->isRegistered() ) {
 			// Get language variant preference from logged in users
 			if (
 				$this->getMainCode() ==
-				$services->getContentLanguage()->getCode()
+				MediaWikiServices::getInstance()->getContentLanguage()->getCode()
 			) {
-				$optionName = 'variant';
+				$ret = $user->getOption( 'variant' );
 			} else {
-				$optionName = 'variant-' . $this->getMainCode();
+				$ret = $user->getOption( 'variant-' . $this->getMainCode() );
 			}
 		} else {
 			// figure out user lang without constructing wgLang to avoid
 			// infinite recursion
-			$optionName = 'language';
+			$ret = $user->getOption( 'language' );
 		}
-		$ret = $services->getUserOptionsLookup()->getOption( $user, $optionName );
 
 		$this->mUserVariant = $this->validateVariant( $ret );
 		return $this->mUserVariant;
@@ -536,7 +531,7 @@ abstract class LanguageConverter implements ILanguageConverter {
 			$htmlFullTag = '<(?:[^>=]*+(?>[^>=]*+=\s*+(?:"[^"]*"|\'[^\']*\'|[^\'">\s]*+))*+[^>=]*+>|.*+)|';
 
 			$reg = '/' . $codefix . $scriptfix . $prefix . $htmlFullTag .
-				'&[a-zA-Z#][a-z0-9]++;' . $marker . $htmlfix . '|\004$/s';
+				 '&[a-zA-Z#][a-z0-9]++;' . $marker . $htmlfix . '|\004$/s';
 		}
 		$startPos = 0;
 		$sourceBlob = '';
@@ -718,22 +713,21 @@ abstract class LanguageConverter implements ILanguageConverter {
 	}
 
 	/**
-	 * Auto convert a LinkTarget or PageReference to a readable string in the
+	 * Auto convert a LinkTarget object to a readable string in the
 	 * preferred variant.
 	 *
-	 * @param LinkTarget|PageReference $title
+	 * @param LinkTarget $linkTarget
 	 * @return string Converted title text
 	 */
-	public function convertTitle( $title ) {
+	public function convertTitle( LinkTarget $linkTarget ) {
 		$variant = $this->getPreferredVariant();
-		$index = $title->getNamespace();
+		$index = $linkTarget->getNamespace();
 		if ( $index !== NS_MAIN ) {
 			$text = $this->convertNamespace( $index, $variant ) . ':';
 		} else {
 			$text = '';
 		}
-		$name = str_replace( '_', ' ', $title->getDBKey() );
-		$text .= $this->translate( $name, $variant );
+		$text .= $this->translate( $linkTarget->getText(), $variant );
 
 		return $text;
 	}
@@ -1123,7 +1117,7 @@ abstract class LanguageConverter implements ILanguageConverter {
 	 *
 	 * Also used by test suites which need to reset the converter state.
 	 *
-	 * Called by ParserTestRunner with the help of TestingAccessWrapper
+	 * @private
 	 */
 	private function reloadTables() {
 		if ( $this->mTables ) {

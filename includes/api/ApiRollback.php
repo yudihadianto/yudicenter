@@ -20,11 +20,8 @@
  * @file
  */
 
-use MediaWiki\Page\RollbackPageFactory;
 use MediaWiki\ParamValidator\TypeDef\UserDef;
 use MediaWiki\User\UserIdentity;
-use MediaWiki\User\UserOptionsLookup;
-use MediaWiki\Watchlist\WatchlistManager;
 
 /**
  * @ingroup API
@@ -33,24 +30,11 @@ class ApiRollback extends ApiBase {
 
 	use ApiWatchlistTrait;
 
-	/** @var RollbackPageFactory */
-	private $rollbackPageFactory;
+	public function __construct( ApiMain $mainModule, $moduleName, $modulePrefix = '' ) {
+		parent::__construct( $mainModule, $moduleName, $modulePrefix );
 
-	public function __construct(
-		ApiMain $mainModule,
-		$moduleName,
-		RollbackPageFactory $rollbackPageFactory,
-		WatchlistManager $watchlistManager,
-		UserOptionsLookup $userOptionsLookup
-	) {
-		parent::__construct( $mainModule, $moduleName );
-		$this->rollbackPageFactory = $rollbackPageFactory;
-
-		// Variables needed in ApiWatchlistTrait trait
 		$this->watchlistExpiryEnabled = $this->getConfig()->get( 'WatchlistExpiry' );
 		$this->watchlistMaxDuration = $this->getConfig()->get( 'WatchlistExpiryMaxDuration' );
-		$this->watchlistManager = $watchlistManager;
-		$this->userOptionsLookup = $userOptionsLookup;
 	}
 
 	/**
@@ -70,9 +54,12 @@ class ApiRollback extends ApiBase {
 		$params = $this->extractRequestParams();
 
 		$titleObj = $this->getRbTitle( $params );
+		$pageObj = WikiPage::factory( $titleObj );
+		$summary = $params['summary'];
+		$details = [];
 
 		// If change tagging was requested, check that the user is allowed to tag,
-		// and the tags are valid. TODO: move inside rollback command?
+		// and the tags are valid
 		if ( $params['tags'] ) {
 			$tagStatus = ChangeTags::canAddTagsAccompanyingChange( $params['tags'], $this->getAuthority() );
 			if ( !$tagStatus->isOK() ) {
@@ -89,15 +76,18 @@ class ApiRollback extends ApiBase {
 			$trxProfiler->redefineExpectations( $trxLimits['PostSend-POST'], $fname );
 		} );
 
-		$rollbackResult = $this->rollbackPageFactory
-			->newRollbackPage( $titleObj, $this->getAuthority(), $this->getRbUser( $params ) )
-			->setSummary( $params['summary'] )
-			->markAsBot( $params['markbot'] )
-			->setChangeTags( $params['tags'] )
-			->rollbackIfAllowed();
+		$retval = $pageObj->doRollback(
+			$this->getRbUser( $params )->getName(),
+			$summary,
+			$params['token'],
+			$params['markbot'],
+			$details,
+			$this->getAuthority(),
+			$params['tags']
+		);
 
-		if ( !$rollbackResult->isGood() ) {
-			$this->dieStatus( $rollbackResult );
+		if ( $retval ) {
+			$this->dieStatus( $this->errorArrayToStatus( $retval, $user ) );
 		}
 
 		$watch = $params['watchlist'] ?? 'preferences';
@@ -106,7 +96,6 @@ class ApiRollback extends ApiBase {
 		// Watch pages
 		$this->setWatch( $watch, $titleObj, $user, 'watchrollback', $watchlistExpiry );
 
-		$details = $rollbackResult->getValue();
 		$currentRevisionRecord = $details['current-revision-record'];
 		$targetRevisionRecord = $details['target-revision-record'];
 
@@ -173,7 +162,7 @@ class ApiRollback extends ApiBase {
 	 *
 	 * @return UserIdentity
 	 */
-	private function getRbUser( array $params ): UserIdentity {
+	private function getRbUser( array $params ) : UserIdentity {
 		if ( $this->mUser !== null ) {
 			return $this->mUser;
 		}

@@ -20,10 +20,6 @@
  * @file
  */
 
-use MediaWiki\Permissions\Authority;
-use MediaWiki\User\UserOptionsLookup;
-use MediaWiki\Watchlist\WatchlistManager;
-
 /**
  * @ingroup API
  */
@@ -31,25 +27,11 @@ class ApiUndelete extends ApiBase {
 
 	use ApiWatchlistTrait;
 
-	/**
-	 * @param ApiMain $mainModule
-	 * @param string $moduleName
-	 * @param WatchlistManager $watchlistManager
-	 * @param UserOptionsLookup $userOptionsLookup
-	 */
-	public function __construct(
-		ApiMain $mainModule,
-		$moduleName,
-		WatchlistManager $watchlistManager,
-		UserOptionsLookup $userOptionsLookup
-	) {
-		parent::__construct( $mainModule, $moduleName );
+	public function __construct( ApiMain $mainModule, $moduleName, $modulePrefix = '' ) {
+		parent::__construct( $mainModule, $moduleName, $modulePrefix );
 
-		// Variables needed in ApiWatchlistTrait trait
 		$this->watchlistExpiryEnabled = $this->getConfig()->get( 'WatchlistExpiry' );
 		$this->watchlistMaxDuration = $this->getConfig()->get( 'WatchlistExpiryMaxDuration' );
-		$this->watchlistManager = $watchlistManager;
-		$this->userOptionsLookup = $userOptionsLookup;
 	}
 
 	public function execute() {
@@ -58,9 +40,9 @@ class ApiUndelete extends ApiBase {
 		$params = $this->extractRequestParams();
 
 		$user = $this->getUser();
-		$block = $user->getBlock( Authority::READ_LATEST );
+		$block = $user->getBlock();
 		if ( $block && $block->isSitewide() ) {
-			$this->dieBlocked( $block );
+			$this->dieBlocked( $user->getBlock() );
 		}
 
 		$titleObj = Title::newFromText( $params['title'] );
@@ -91,7 +73,7 @@ class ApiUndelete extends ApiBase {
 			$params['timestamps'][$i] = wfTimestamp( TS_MW, $ts );
 		}
 
-		$pa = new PageArchive( $titleObj );
+		$pa = new PageArchive( $titleObj, $this->getConfig() );
 		$retval = $pa->undeleteAsUser(
 			( $params['timestamps'] ?? [] ),
 			$user,

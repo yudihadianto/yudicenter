@@ -19,7 +19,6 @@
  */
 
 use MediaWiki\MediaWikiServices;
-use MediaWiki\Permissions\Authority;
 use MediaWiki\User\UserIdentity;
 
 /**
@@ -30,11 +29,11 @@ use MediaWiki\User\UserIdentity;
 trait MediaFileTrait {
 	/**
 	 * @param File $file
-	 * @param Authority $performer for permissions check
+	 * @param User $user user object (for permissions check)
 	 * @param array $transforms array of transforms to include in the response
 	 * @return array response data
 	 */
-	private function getFileInfo( $file, Authority $performer, $transforms ) {
+	private function getFileInfo( $file, $user, $transforms ) {
 		// If there is a problem with the file, there is very little info we can reliably
 		// return (T228286, T239213), but we do what we can (T201205).
 		$responseFile = [
@@ -50,11 +49,10 @@ trait MediaFileTrait {
 		}
 
 		if ( $file->exists() ) {
-			$uploader = $file->getUploader( File::FOR_THIS_USER, $performer );
-			if ( $uploader ) {
+			if ( $file->userCan( File::DELETED_USER, $user ) ) {
 				$fileUser = [
-					'id' => $uploader->getId(),
-					'name' => $uploader->getName(),
+					'id' => $file->getUser( 'id' ),
+					'name' => $file->getUser( 'text' ),
 				];
 			} else {
 				$fileUser = [

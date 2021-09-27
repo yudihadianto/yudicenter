@@ -31,14 +31,14 @@ use IDBAccessObject;
 use InvalidArgumentException;
 use JobQueueGroup;
 use Language;
+use LinksDeletionUpdate;
 use LinksUpdate;
 use LogicException;
 use MediaWiki\Content\IContentHandlerFactory;
-use MediaWiki\Content\Transform\ContentTransformer;
 use MediaWiki\Edit\PreparedEdit;
 use MediaWiki\HookContainer\HookContainer;
 use MediaWiki\HookContainer\HookRunner;
-use MediaWiki\Permissions\PermissionManager;
+use MediaWiki\MediaWikiServices;
 use MediaWiki\Revision\MutableRevisionRecord;
 use MediaWiki\Revision\RenderedRevision;
 use MediaWiki\Revision\RevisionRecord;
@@ -47,9 +47,7 @@ use MediaWiki\Revision\RevisionSlots;
 use MediaWiki\Revision\RevisionStore;
 use MediaWiki\Revision\SlotRecord;
 use MediaWiki\Revision\SlotRoleRegistry;
-use MediaWiki\User\TalkPageNotificationManager;
 use MediaWiki\User\UserIdentity;
-use MediaWiki\User\UserNameUtils;
 use MessageCache;
 use MWTimestamp;
 use MWUnknownContentModelException;
@@ -62,11 +60,11 @@ use Psr\Log\NullLogger;
 use RefreshSecondaryDataUpdate;
 use ResourceLoaderWikiModule;
 use RevertedTagUpdateJob;
+use Revision;
 use SearchUpdate;
 use SiteStatsUpdate;
 use Title;
 use User;
-use WANObjectCache;
 use Wikimedia\Assert\Assert;
 use Wikimedia\Rdbms\ILBFactory;
 use WikiPage;
@@ -288,24 +286,6 @@ class DerivedPageDataUpdater implements IDBAccessObject, LoggerAwareInterface {
 	/** @var EditResultCache */
 	private $editResultCache;
 
-	/** @var UserNameUtils */
-	private $userNameUtils;
-
-	/** @var ContentTransformer */
-	private $contentTransformer;
-
-	/** @var PageEditStash */
-	private $pageEditStash;
-
-	/** @var TalkPageNotificationManager */
-	private $talkPageNotificationManager;
-
-	/** @var WANObjectCache */
-	private $mainWANObjectCache;
-
-	/** @var PermissionManager */
-	private $permissionManager;
-
 	/**
 	 * @param WikiPage $wikiPage ,
 	 * @param RevisionStore $revisionStore
@@ -319,12 +299,6 @@ class DerivedPageDataUpdater implements IDBAccessObject, LoggerAwareInterface {
 	 * @param IContentHandlerFactory $contentHandlerFactory
 	 * @param HookContainer $hookContainer
 	 * @param EditResultCache $editResultCache
-	 * @param UserNameUtils $userNameUtils
-	 * @param ContentTransformer $contentTransformer
-	 * @param PageEditStash $pageEditStash
-	 * @param TalkPageNotificationManager $talkPageNotificationManager
-	 * @param WANObjectCache $mainWANObjectCache
-	 * @param PermissionManager $permissionManager
 	 */
 	public function __construct(
 		WikiPage $wikiPage,
@@ -338,13 +312,7 @@ class DerivedPageDataUpdater implements IDBAccessObject, LoggerAwareInterface {
 		ILBFactory $loadbalancerFactory,
 		IContentHandlerFactory $contentHandlerFactory,
 		HookContainer $hookContainer,
-		EditResultCache $editResultCache,
-		UserNameUtils $userNameUtils,
-		ContentTransformer $contentTransformer,
-		PageEditStash $pageEditStash,
-		TalkPageNotificationManager $talkPageNotificationManager,
-		WANObjectCache $mainWANObjectCache,
-		PermissionManager $permissionManager
+		EditResultCache $editResultCache
 	) {
 		$this->wikiPage = $wikiPage;
 
@@ -361,12 +329,6 @@ class DerivedPageDataUpdater implements IDBAccessObject, LoggerAwareInterface {
 		$this->contentHandlerFactory = $contentHandlerFactory;
 		$this->hookRunner = new HookRunner( $hookContainer );
 		$this->editResultCache = $editResultCache;
-		$this->userNameUtils = $userNameUtils;
-		$this->contentTransformer = $contentTransformer;
-		$this->pageEditStash = $pageEditStash;
-		$this->talkPageNotificationManager = $talkPageNotificationManager;
-		$this->mainWANObjectCache = $mainWANObjectCache;
-		$this->permissionManager = $permissionManager;
 
 		$this->logger = new NullLogger();
 	}
@@ -557,7 +519,7 @@ class DerivedPageDataUpdater implements IDBAccessObject, LoggerAwareInterface {
 		}
 
 		$oldId = $this->revision->getParentId();
-		$flags = $this->usePrimary() ? RevisionStore::READ_LATEST : 0;
+		$flags = $this->useMaster() ? RevisionStore::READ_LATEST : 0;
 		$this->parentRevision = $oldId
 			? $this->revisionStore->getRevisionById( $oldId, $flags )
 			: null;
@@ -699,7 +661,7 @@ class DerivedPageDataUpdater implements IDBAccessObject, LoggerAwareInterface {
 			->getContentHandler( $this->getContentModel( $role ) );
 	}
 
-	private function usePrimary() {
+	private function useMaster() {
 		// TODO: can we just set a flag to true in prepareContent()?
 		return $this->wikiPage->wasLoadedFrom( self::READ_LATEST );
 	}
@@ -838,14 +800,15 @@ class DerivedPageDataUpdater implements IDBAccessObject, LoggerAwareInterface {
 
 		// TODO: MCR: allow output for all slots to be stashed.
 		if ( $useStash && $slotsUpdate->isModifiedSlot( SlotRecord::MAIN ) ) {
-			$stashedEdit = $this->pageEditStash->checkCache(
+			$editStash = MediaWikiServices::getInstance()->getPageEditStash();
+			$stashedEdit = $editStash->checkCache(
 				$title,
 				$slotsUpdate->getModifiedSlot( SlotRecord::MAIN )->getContent(),
 				$legacyUser
 			);
 		}
 
-		$userPopts = ParserOptions::newFromUserAndLang( $user, $this->contLang );
+		$userPopts = ParserOptions::newFromUserAndLang( $legacyUser, $this->contLang );
 		$this->hookRunner->onArticlePrepareTextForEdit( $wikiPage, $userPopts );
 
 		$this->user = $user;
@@ -887,13 +850,9 @@ class DerivedPageDataUpdater implements IDBAccessObject, LoggerAwareInterface {
 				// TODO: MCR: allow PST content for all slots to be stashed.
 				$pstSlot = SlotRecord::newUnsaved( $role, $stashedEdit->pstContent );
 			} else {
-				$pstContent = $this->contentTransformer->preSaveTransform(
-					$slot->getContent(),
-					$title,
-					$user,
-					$userPopts
-				);
-
+				$content = $slot->getContent();
+				$legacyUser = self::toLegacyUser( $user );
+				$pstContent = $content->preSaveTransform( $title, $legacyUser, $userPopts );
 				$pstSlot = SlotRecord::newUnsaved( $role, $pstContent );
 			}
 
@@ -930,7 +889,7 @@ class DerivedPageDataUpdater implements IDBAccessObject, LoggerAwareInterface {
 			$this->parentRevision = $parentRevision;
 		}
 
-		$renderHints = [ 'use-master' => $this->usePrimary(), 'audience' => RevisionRecord::RAW ];
+		$renderHints = [ 'use-master' => $this->useMaster(), 'audience' => RevisionRecord::RAW ];
 
 		if ( $stashedEdit ) {
 			/** @var ParserOutput $output */
@@ -942,8 +901,6 @@ class DerivedPageDataUpdater implements IDBAccessObject, LoggerAwareInterface {
 
 			$this->logger->debug( __METHOD__ . ': using stashed edit output...' );
 		}
-
-		$renderHints['generate-html'] = $this->shouldGenerateHTMLOnEdit();
 
 		// NOTE: we want a canonical rendering, so don't pass $this->user or ParserOptions
 		// NOTE: the revision is either new or current, so we can bypass audience checks.
@@ -1115,7 +1072,7 @@ class DerivedPageDataUpdater implements IDBAccessObject, LoggerAwareInterface {
 	}
 
 	/**
-	 * Prepare derived data updates targeting the given RevisionRecord.
+	 * Prepare derived data updates targeting the given Revision.
 	 *
 	 * Calling this method requires the given revision to be present in the database.
 	 * This may be right after a new revision has been created, or when re-generating
@@ -1139,6 +1096,7 @@ class DerivedPageDataUpdater implements IDBAccessObject, LoggerAwareInterface {
 	 * - moved: bool, whether the page was moved (default false)
 	 * - restored: bool, whether the page was undeleted (default false)
 	 * - oldrevision: RevisionRecord object for the pre-update revision (default null)
+	 *     can also be a Revision object, which is deprecated since 1.35
 	 * - triggeringUser: The user triggering the update (UserIdentity, defaults to the
 	 *   user who created the revision)
 	 * - oldredirect: bool, null, or string 'no-change' (default null):
@@ -1168,11 +1126,19 @@ class DerivedPageDataUpdater implements IDBAccessObject, LoggerAwareInterface {
 	 *    default: false) (since 1.36)
 	 */
 	public function prepareUpdate( RevisionRecord $revision, array $options = [] ) {
+		if ( isset( $options['oldrevision'] ) && $options['oldrevision'] instanceof Revision ) {
+			wfDeprecated(
+				__METHOD__ . ' with the `oldrevision` option being a ' .
+				'Revision object',
+				'1.35'
+			);
+			$options['oldrevision'] = $options['oldrevision']->getRevisionRecord();
+		}
 		Assert::parameter(
 			!isset( $options['oldrevision'] )
 			|| $options['oldrevision'] instanceof RevisionRecord,
 			'$options["oldrevision"]',
-			'must be a RevisionRecord'
+			'must be a RevisionRecord (or Revision)'
 		);
 		Assert::parameter(
 			!isset( $options['triggeringUser'] )
@@ -1210,7 +1176,7 @@ class DerivedPageDataUpdater implements IDBAccessObject, LoggerAwareInterface {
 			&& !$this->revision->getSlots()->hasSameContent( $revision->getSlots() )
 		) {
 			throw new LogicException(
-				'The revision provided has mismatching content!'
+				'The Revision provided has mismatching content!'
 			);
 		}
 
@@ -1243,9 +1209,9 @@ class DerivedPageDataUpdater implements IDBAccessObject, LoggerAwareInterface {
 				// Null-edit!
 				$this->options['changed'] = false;
 			} else {
-				// This indicates that calling code has given us the wrong RevisionRecord object
+				// This indicates that calling code has given us the wrong Revision object
 				throw new LogicException(
-					'The RevisionRecord mismatches old revision ID: '
+					'The Revision mismatches old revision ID: '
 					. 'Old ID is ' . $oldId
 					. ', parent ID is ' . $revision->getParentId()
 					. ', revision ID is ' . $revision->getId()
@@ -1261,7 +1227,7 @@ class DerivedPageDataUpdater implements IDBAccessObject, LoggerAwareInterface {
 			$user = $revision->getUser();
 			if ( !$this->user->equals( $user ) ) {
 				throw new LogicException(
-					'The RevisionRecord provided has a mismatching actor: expected '
+					'The Revision provided has a mismatching actor: expected '
 					. $this->user->getName()
 					. ', got '
 					. $user->getName()
@@ -1323,7 +1289,7 @@ class DerivedPageDataUpdater implements IDBAccessObject, LoggerAwareInterface {
 				null,
 				null,
 				[
-					'use-master' => $this->usePrimary(),
+					'use-master' => $this->useMaster(),
 					'audience' => RevisionRecord::RAW,
 					'known-revision-output' => $options['known-revision-output'] ?? null
 				]
@@ -1375,14 +1341,6 @@ class DerivedPageDataUpdater implements IDBAccessObject, LoggerAwareInterface {
 	}
 
 	/**
-	 * @since 1.37
-	 * @return ParserOutput
-	 */
-	public function getParserOutputForMetaData(): ParserOutput {
-		return $this->getRenderedRevision()->getRevisionParserOutput( [ 'generate-html' => false ] );
-	}
-
-	/**
 	 * @return ParserOutput
 	 */
 	public function getCanonicalParserOutput() {
@@ -1415,24 +1373,22 @@ class DerivedPageDataUpdater implements IDBAccessObject, LoggerAwareInterface {
 			return [];
 		}
 
+		$output = $this->getCanonicalParserOutput();
 		$title = $wikiPage->getTitle();
-		$allUpdates = [];
-		$parserOutput = $this->shouldGenerateHTMLOnEdit() ?
-			$this->getCanonicalParserOutput() : $this->getParserOutputForMetaData();
 
 		// Construct a LinksUpdate for the combined canonical output.
 		$linksUpdate = new LinksUpdate(
 			$title,
-			$parserOutput,
+			$output,
 			$recursive
 		);
 
-		$allUpdates[] = $linksUpdate;
+		$allUpdates = [ $linksUpdate ];
+
 		// NOTE: Run updates for all slots, not just the modified slots! Otherwise,
 		// info for an inherited slot may end up being removed. This is also needed
 		// to ensure that purges are effective.
 		$renderedRevision = $this->getRenderedRevision();
-
 		foreach ( $this->getSlots()->getSlotRoles() as $role ) {
 			$slot = $this->getRawSlot( $role );
 			$content = $slot->getContent();
@@ -1444,8 +1400,24 @@ class DerivedPageDataUpdater implements IDBAccessObject, LoggerAwareInterface {
 				$role,
 				$renderedRevision
 			);
-
 			$allUpdates = array_merge( $allUpdates, $updates );
+
+			// TODO: remove B/C hack in 1.32!
+			// NOTE: we assume that the combined output contains all relevant meta-data for
+			// all slots!
+			$legacyUpdates = $content->getSecondaryDataUpdates(
+				$title,
+				null,
+				$recursive,
+				$output
+			);
+
+			// HACK: filter out redundant and incomplete LinksUpdates
+			$legacyUpdates = array_filter( $legacyUpdates, static function ( $update ) {
+				return !( $update instanceof LinksUpdate );
+			} );
+
+			$allUpdates = array_merge( $allUpdates, $legacyUpdates );
 		}
 
 		// XXX: if a slot was removed by an earlier edit, but deletion updates failed to run at
@@ -1469,29 +1441,23 @@ class DerivedPageDataUpdater implements IDBAccessObject, LoggerAwareInterface {
 				$title,
 				$role
 			);
-
 			$allUpdates = array_merge( $allUpdates, $updates );
+
+			// TODO: remove B/C hack in 1.32!
+			$legacyUpdates = $content->getDeletionUpdates( $wikiPage );
+
+			// HACK: filter out redundant and incomplete LinksDeletionUpdate
+			$legacyUpdates = array_filter( $legacyUpdates, static function ( $update ) {
+				return !( $update instanceof LinksDeletionUpdate );
+			} );
+
+			$allUpdates = array_merge( $allUpdates, $legacyUpdates );
 		}
 
 		// TODO: hard deprecate SecondaryDataUpdates in favor of RevisionDataUpdates in 1.33!
 		$this->hookRunner->onRevisionDataUpdates( $title, $renderedRevision, $allUpdates );
 
 		return $allUpdates;
-	}
-
-	/**
-	 * @return bool true if at least one of slots require rendering HTML on edit, false otherwise.
-	 *              This is needed for example in populating ParserCache.
-	 */
-	private function shouldGenerateHTMLOnEdit(): bool {
-		foreach ( $this->getSlots()->getSlotRoles() as $role ) {
-			$slot = $this->getRawSlot( $role );
-			$contentHandler = $this->contentHandlerFactory->getContentHandler( $slot->getModel() );
-			if ( $contentHandler->generateHTMLOnEdit() ) {
-				return true;
-			}
-		}
-		return false;
 	}
 
 	/**
@@ -1511,8 +1477,24 @@ class DerivedPageDataUpdater implements IDBAccessObject, LoggerAwareInterface {
 
 		$wikiPage = $this->getWikiPage(); // TODO: use only for legacy hooks!
 
-		if ( $this->shouldGenerateHTMLOnEdit() ) {
-			$this->triggerParserCacheUpdate();
+		$legacyUser = self::toLegacyUser( $this->user );
+
+		$userParserOptions = ParserOptions::newFromUser( $legacyUser );
+		// Decide whether to save the final canonical parser ouput based on the fact that
+		// users are typically redirected to viewing pages right after they edit those pages.
+		// Due to vary-revision-id, getting/saving that output here might require a reparse.
+		if ( $userParserOptions->matchesForCacheKey( $this->getCanonicalParserOptions() ) ) {
+			// Whether getting the final output requires a reparse or not, the user will
+			// need canonical output anyway, since that is what their parser options use.
+			// A reparse now at least has the benefit of various warm process caches.
+			$this->doParserCacheUpdate();
+		} else {
+			// If the user does not have canonical parse options, then don't risk another parse
+			// to make output they cannot use on the page refresh that typically occurs after
+			// editing. Doing the parser output save post-send will still benefit *other* users.
+			DeferredUpdates::addCallableUpdate( function () {
+				$this->doParserCacheUpdate();
+			} );
 		}
 
 		$this->doSecondaryDataUpdates( [
@@ -1538,6 +1520,12 @@ class DerivedPageDataUpdater implements IDBAccessObject, LoggerAwareInterface {
 				)
 			);
 		}
+
+		// TODO: replace legacy hook! Use a listener on PageEventEmitter instead!
+		// @note: Extensions should *avoid* calling getCannonicalParserOutput() when using
+		// this hook whenever possible in order to avoid unnecessary additional parses.
+		$editInfo = $this->getPreparedEdit();
+		$this->hookRunner->onArticleEditUpdates( $wikiPage, $editInfo, $this->options['changed'] );
 
 		$id = $this->getPageId();
 		$title = $this->getTitle();
@@ -1581,21 +1569,16 @@ class DerivedPageDataUpdater implements IDBAccessObject, LoggerAwareInterface {
 			DeferredUpdates::addUpdate( new SearchUpdate( $id, $title, $mainSlot->getContent() ) );
 		}
 
-		$legacyUser = self::toLegacyUser( $this->user );
-
 		// If this is another user's talk page, update newtalk.
 		// Don't do this if $options['changed'] = false (null-edits) nor if
 		// it's a minor edit and the user making the edit doesn't generate notifications for those.
 		// TODO: the permission check should be performed by the callers, see T276181.
 		if ( $this->options['changed']
 			&& $title->getNamespace() === NS_USER_TALK
-
-			// TODO User::getTitleKey is just a string manipulation of the user name,
-			// duplicate it here and use $this->user (a UserIdentity) instead
 			&& $shortTitle != $legacyUser->getTitleKey()
-			&& !( $this->revision->isMinor() && $this->permissionManager
-				->userHasRight( $this->user, 'nominornewtalk' )
-			)
+			&& !( $this->revision->isMinor() && MediaWikiServices::getInstance()
+					->getPermissionManager()
+					->userHasRight( $legacyUser, 'nominornewtalk' ) )
 		) {
 			$recipient = User::newFromName( $shortTitle, false );
 			if ( !$recipient ) {
@@ -1606,11 +1589,13 @@ class DerivedPageDataUpdater implements IDBAccessObject, LoggerAwareInterface {
 				// TODO: replace legacy hook!  Use a listener on PageEventEmitter instead!
 				if ( $this->hookRunner->onArticleEditUpdateNewTalk( $wikiPage, $recipient ) ) {
 					$revRecord = $this->revision;
-					if ( $this->userNameUtils->isIP( $shortTitle ) ) {
+					$talkPageNotificationManager = MediaWikiServices::getInstance()
+						->getTalkPageNotificationManager();
+					if ( User::isIP( $shortTitle ) ) {
 						// An anonymous user
-						$this->talkPageNotificationManager->setUserHasNewMessages( $recipient, $revRecord );
+						$talkPageNotificationManager->setUserHasNewMessages( $recipient, $revRecord );
 					} elseif ( $recipient->isRegistered() ) {
-						$this->talkPageNotificationManager->setUserHasNewMessages( $recipient, $revRecord );
+						$talkPageNotificationManager->setUserHasNewMessages( $recipient, $revRecord );
 					} else {
 						wfDebug( __METHOD__ . ": don't need to notify a nonexistent user" );
 					}
@@ -1632,7 +1617,7 @@ class DerivedPageDataUpdater implements IDBAccessObject, LoggerAwareInterface {
 		} elseif ( $this->options['changed'] ) { // T52785
 			WikiPage::onArticleEdit( $title, $this->revision, $this->getTouchedSlotRoles() );
 		} elseif ( $this->options['restored'] ) {
-			$this->mainWANObjectCache->touchCheckKey(
+			MediaWikiServices::getInstance()->getMainWANObjectCache()->touchCheckKey(
 				"DerivedPageDataUpdater:restore:page:$id"
 			);
 		}
@@ -1651,26 +1636,6 @@ class DerivedPageDataUpdater implements IDBAccessObject, LoggerAwareInterface {
 		$this->maybeEnqueueRevertedTagUpdateJob();
 
 		$this->doTransition( 'done' );
-	}
-
-	private function triggerParserCacheUpdate() {
-		$userParserOptions = ParserOptions::newFromUser( $this->user );
-		// Decide whether to save the final canonical parser output based on the fact that
-		// users are typically redirected to viewing pages right after they edit those pages.
-		// Due to vary-revision-id, getting/saving that output here might require a reparse.
-		if ( $userParserOptions->matchesForCacheKey( $this->getCanonicalParserOptions() ) ) {
-			// Whether getting the final output requires a reparse or not, the user will
-			// need canonical output anyway, since that is what their parser options use.
-			// A reparse now at least has the benefit of various warm process caches.
-			$this->doParserCacheUpdate();
-		} else {
-			// If the user does not have canonical parse options, then don't risk another parse
-			// to make output they cannot use on the page refresh that typically occurs after
-			// editing. Doing the parser output save post-send will still benefit *other* users.
-			DeferredUpdates::addCallableUpdate( function () {
-				$this->doParserCacheUpdate();
-			} );
-		}
 	}
 
 	/**
@@ -1726,6 +1691,9 @@ class DerivedPageDataUpdater implements IDBAccessObject, LoggerAwareInterface {
 		}
 
 		$triggeringUser = $this->options['triggeringUser'] ?? $this->user;
+		if ( !$triggeringUser instanceof User ) {
+			$triggeringUser = self::toLegacyUser( $triggeringUser );
+		}
 		$causeAction = $this->options['causeAction'] ?? 'unknown';
 		$causeAgent = $this->options['causeAgent'] ?? 'unknown';
 

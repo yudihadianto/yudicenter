@@ -250,7 +250,7 @@ abstract class HTMLFormField {
 						case '!==':
 							return ( $value !== $testValue );
 					}
-					// fall-through, if $op is not added to both cases
+
 				default:
 					throw new MWException( "Unknown operation" );
 			}
@@ -642,7 +642,7 @@ abstract class HTMLFormField {
 
 		if ( $infusable && $this->shouldInfuseOOUI() ) {
 			$preloadModules = true;
-			$config['classes'][] = 'mw-htmlform-autoinfuse';
+			$config['classes'][] = 'mw-htmlform-field-autoinfuse';
 		}
 
 		// the element could specify, that the label doesn't need to be added
@@ -1070,17 +1070,14 @@ abstract class HTMLFormField {
 	 * being the message texts. It also forces values to strings.
 	 *
 	 * @param array $options
-	 * @param bool $needsParse
 	 * @return array
-	 * @return-taint tainted
 	 */
-	private function lookupOptionsKeys( $options, $needsParse ) {
+	private function lookupOptionsKeys( $options ) {
 		$ret = [];
 		foreach ( $options as $key => $value ) {
-			$msg = $this->msg( $key );
-			$key = $needsParse ? $msg->parse() : $msg->plain();
+			$key = $this->msg( $key )->plain();
 			$ret[$key] = is_array( $value )
-				? $this->lookupOptionsKeys( $value, $needsParse )
+				? $this->lookupOptionsKeys( $value )
 				: strval( $value );
 		}
 		return $ret;
@@ -1105,16 +1102,12 @@ abstract class HTMLFormField {
 	 * Fetch the array of options from the field's parameters. In order, this
 	 * checks 'options-messages', 'options', then 'options-message'.
 	 *
-	 * @return array|null
+	 * @return array|null Options array
 	 */
 	public function getOptions() {
 		if ( $this->mOptions === false ) {
 			if ( array_key_exists( 'options-messages', $this->mParams ) ) {
-				$needsParse = $this->mParams['options-messages-parse'] ?? false;
-				if ( $needsParse ) {
-					$this->mOptionsLabelsNotFromMessage = true;
-				}
-				$this->mOptions = $this->lookupOptionsKeys( $this->mParams['options-messages'], $needsParse );
+				$this->mOptions = $this->lookupOptionsKeys( $this->mParams['options-messages'] );
 			} elseif ( array_key_exists( 'options', $this->mParams ) ) {
 				$this->mOptionsLabelsNotFromMessage = true;
 				$this->mOptions = self::forceToStringRecursive( $this->mParams['options'] );

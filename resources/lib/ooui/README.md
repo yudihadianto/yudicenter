@@ -93,7 +93,7 @@ Community
 Get updates, ask questions and join the discussion with maintainers and contributors:
 
 * Join the Wikimedia Developers mailing list, [wikitech-l](https://lists.wikimedia.org/mailman/listinfo/wikitech-l).
-* Chat with the maintainers on `#wikimedia-dev` on `irc.libera.chat`.
+* Chat with the maintainers on `#wikimedia-dev` on `irc.freenode.net`.
 * Ask questions on [StackOverflow](https://stackoverflow.com/tags/oojs-ui/info).
 * Watchlist the [documentation](https://www.mediawiki.org/wiki/OOUI) on MediaWiki to stay updated.
 

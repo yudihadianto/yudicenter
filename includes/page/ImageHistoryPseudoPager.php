@@ -26,7 +26,7 @@ class ImageHistoryPseudoPager extends ReverseChronologicalPager {
 	protected $preventClickjacking = false;
 
 	/**
-	 * @var File|null
+	 * @var File
 	 */
 	protected $mImg;
 
@@ -118,11 +118,9 @@ class ImageHistoryPseudoPager extends ReverseChronologicalPager {
 				$linkBatch = $this->linkBatchFactory->newLinkBatch();
 				for ( $i = $this->mRange[0]; $i <= $this->mRange[1]; $i++ ) {
 					$file = $this->mHist[$i];
-					$uploader = $file->getUploader( File::FOR_THIS_USER, $this->getAuthority() );
-					if ( $uploader ) {
-						$linkBatch->add( NS_USER, $uploader->getName() );
-						$linkBatch->add( NS_USER_TALK, $uploader->getName() );
-					}
+					$user = $file->getUser( 'text' );
+					$linkBatch->add( NS_USER, $user );
+					$linkBatch->add( NS_USER_TALK, $user );
 				}
 				$linkBatch->execute();
 			}

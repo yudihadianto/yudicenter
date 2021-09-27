@@ -1,8 +1,6 @@
 <?php
 
 use MediaWiki\Linker\LinkTarget;
-use MediaWiki\Page\PageReference;
-use MediaWiki\Page\PageReferenceValue;
 
 /**
  * @group Language
@@ -19,19 +17,20 @@ class LanguageConverterTest extends MediaWikiLangTestCase {
 	 * @param User $user
 	 */
 	private function setContextUser( User $user ) {
-		// LanguageConverter::getPreferredVariant() reads the user from
-		// RequestContext::getMain(), so set it occordingly
-		RequestContext::getMain()->setUser( $user );
+		// TODO stop using the deprecated global here, and convert
+		// LanguageConverter to use RequestContext or dependency injection
+		global $wgUser;
+		$wgUser = $user;
 	}
 
-	protected function setUp(): void {
+	protected function setUp() : void {
 		parent::setUp();
 		$this->setContentLang( 'tg' );
 
 		$this->setMwGlobals( [
 			'wgDefaultLanguageVariant' => false,
+			'wgUser' => new User,
 		] );
-		$this->setContextUser( new User );
 
 		$this->lang = $this->createMock( Language::class );
 		$this->lang->method( 'getNsText' )->with( NS_MEDIAWIKI )->willReturn( 'MediaWiki' );
@@ -43,7 +42,7 @@ class LanguageConverterTest extends MediaWikiLangTestCase {
 		$this->lc = new DummyConverter( $this->lang );
 	}
 
-	protected function tearDown(): void {
+	protected function tearDown() : void {
 		unset( $this->lc );
 		unset( $this->lang );
 
@@ -106,13 +105,11 @@ class LanguageConverterTest extends MediaWikiLangTestCase {
 			$optionName = 'variant-tg';
 		}
 
-		$userOptionsManager = $this->getServiceContainer()->getUserOptionsManager();
-
 		$user = new User;
 		$user->load(); // from 'defaults'
 		$user->mId = 1;
 		$user->mDataLoaded = true;
-		$userOptionsManager->setOption( $user, $optionName, $optionVal );
+		$user->setOption( $optionName, $optionVal );
 
 		$this->setContextUser( $user );
 
@@ -138,14 +135,11 @@ class LanguageConverterTest extends MediaWikiLangTestCase {
 
 		$this->setContentLang( 'tg-latn' );
 		$wgRequest->setVal( 'variant', 'tg' );
-
-		$userOptionsManager = $this->getServiceContainer()->getUserOptionsManager();
-
 		$user = User::newFromId( "admin" );
 		$user->setId( 1 );
 		$user->mFrom = 'defaults';
 		// The user's data is ignored because the variant is set in the URL.
-		$userOptionsManager->setOption( $user, 'variant', 'tg-latn' );
+		$user->setOption( 'variant', 'tg-latn' );
 
 		$this->setContextUser( $user );
 
@@ -207,15 +201,15 @@ class LanguageConverterTest extends MediaWikiLangTestCase {
 	 * @dataProvider provideTitlesToConvert
 	 * @covers LanguageConverter::convertTitle
 	 *
-	 * @param LinkTarget|PageReference $title title to convert
+	 * @param LinkTarget $linkTarget LinkTarget to convert
 	 * @param string $expected
 	 */
-	public function testConvertTitle( $title, string $expected ): void {
-		$actual = $this->lc->convertTitle( $title );
+	public function testConvertTitle( LinkTarget $linkTarget, string $expected ) : void {
+		$actual = $this->lc->convertTitle( $linkTarget );
 		$this->assertSame( $expected, $actual );
 	}
 
-	public function provideTitlesToConvert(): array {
+	public function provideTitlesToConvert() : array {
 		return [
 			'Title FromText default' => [
 				Title::newFromText( 'Dummy_title' ),
@@ -235,10 +229,6 @@ class LanguageConverterTest extends MediaWikiLangTestCase {
 			],
 			'TitleValue' => [
 				new TitleValue( NS_FILE, 'Dummy page' ),
-				'Акс:Dummy page',
-			],
-			'PageReference' => [
-				new PageReferenceValue( NS_FILE, 'Dummy page', PageReference::LOCAL ),
 				'Акс:Dummy page',
 			],
 		];

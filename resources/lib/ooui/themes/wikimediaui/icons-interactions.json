@@ -52,8 +52,7 @@
 			"file": "images/icons/clock.svg"
 		},
 		"close": {
-			"file": "images/icons/close.svg",
-			"variants": [ "destructive" ]
+			"file": "images/icons/close.svg"
 		},
 		"ellipsis": {
 			"file": "images/icons/ellipsis.svg"

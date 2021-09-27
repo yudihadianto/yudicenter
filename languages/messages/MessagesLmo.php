@@ -1,5 +1,5 @@
 <?php
-/** Lombard (lombard)
+/** lumbaart (lumbaart)
  *
  * To improve a translation please visit https://translatewiki.net
  *

@@ -21,27 +21,24 @@
 namespace MediaWiki\Preferences;
 
 use CentralIdLookup;
-use MediaWiki\MediaWikiServices;
-use MediaWiki\Permissions\Authority;
 
 class MultiUsernameFilter implements Filter {
 	/**
 	 * @var CentralIdLookup|null
 	 */
 	private $lookup;
-	/** @var Authority|int User querying central usernames or one of the audience constants */
-	private $authorityOrAudience;
+	/** @var CentralIdLookup|int User querying central usernames or one of the audience constants */
+	private $userOrAudience;
 
 	/**
 	 * @param CentralIdLookup|null $lookup
-	 * @param Authority|int $authorityOrAudience
+	 * @param int $userOrAudience
 	 */
-	public function __construct(
-		CentralIdLookup $lookup = null,
-		$authorityOrAudience = CentralIdLookup::AUDIENCE_PUBLIC
+	public function __construct( CentralIdLookup $lookup = null,
+		$userOrAudience = CentralIdLookup::AUDIENCE_PUBLIC
 	) {
 		$this->lookup = $lookup;
-		$this->authorityOrAudience = $authorityOrAudience;
+		$this->userOrAudience = $userOrAudience;
 	}
 
 	/**
@@ -51,7 +48,7 @@ class MultiUsernameFilter implements Filter {
 		$names = trim( $names );
 		if ( $names !== '' ) {
 			$names = preg_split( '/\n/', $names, -1, PREG_SPLIT_NO_EMPTY );
-			$ids = $this->getLookup()->centralIdsFromNames( $names, $this->authorityOrAudience );
+			$ids = $this->getLookup()->centralIdsFromNames( $names, $this->userOrAudience );
 			if ( $ids ) {
 				return implode( "\n", $ids );
 			}
@@ -65,7 +62,7 @@ class MultiUsernameFilter implements Filter {
 	 */
 	public function filterForForm( $value ) {
 		$ids = self::splitIds( $value );
-		$names = $ids ? $this->getLookup()->namesFromCentralIds( $ids, $this->authorityOrAudience ) : [];
+		$names = $ids ? $this->getLookup()->namesFromCentralIds( $ids, $this->userOrAudience ) : [];
 		return implode( "\n", $names );
 	}
 
@@ -83,7 +80,7 @@ class MultiUsernameFilter implements Filter {
 	 * @return CentralIdLookup
 	 */
 	private function getLookup() {
-		$this->lookup = $this->lookup ?? MediaWikiServices::getInstance()->getCentralIdLookup();
+		$this->lookup = $this->lookup ?? CentralIdLookup::factory();
 		return $this->lookup;
 	}
 }

@@ -23,7 +23,6 @@
 	 * @cfg {boolean} [showRedirectTargets=true] Show the targets of redirects
 	 * @cfg {boolean} [showImages] Show page images
 	 * @cfg {boolean} [showDescriptions] Show page descriptions
-	 * @cfg {boolean} [showDisambigsLast] Show disambiguation pages as the last results
 	 * @cfg {boolean} [showMissing=true] Show missing pages
 	 * @cfg {boolean} [showInterwikis=false] Show pages with a valid interwiki prefix
 	 * @cfg {boolean} [addQueryInput=true] Add exact user's input query to results
@@ -51,7 +50,6 @@
 		this.showRedirectTargets = config.showRedirectTargets !== false;
 		this.showImages = !!config.showImages;
 		this.showDescriptions = !!config.showDescriptions;
-		this.showDisambigsLast = !!config.showDisambigsLast;
 		this.showMissing = config.showMissing !== false;
 		this.showInterwikis = !!config.showInterwikis;
 		this.addQueryInput = config.addQueryInput !== false;
@@ -142,7 +140,7 @@
 	};
 
 	/**
-	 * Get a promise which resolves with an API response for suggested
+	 * Get a promise which resolves with an API repsonse for suggested
 	 * links for the current query.
 	 *
 	 * @return {jQuery.Promise} Suggestions promise
@@ -239,11 +237,10 @@
 	 * @return {OO.ui.OptionWidget[]} Menu items
 	 */
 	mw.widgets.TitleWidget.prototype.getOptionsFromData = function ( data ) {
-		var i, len, index, option, pageExists, pageExistsExact, suggestionPage, page, redirect, redirects,
+		var i, len, index, pageExists, pageExistsExact, suggestionPage, page, redirect, redirects,
 			currentPageName = new mw.Title( mw.config.get( 'wgRelevantPageName' ) ).getPrefixedText(),
 			items = [],
 			titles = [],
-			disambigs = [],
 			titleObj = mw.Title.newFromText( this.getQueryValue() ),
 			redirectsTo = {},
 			pageData = {};
@@ -338,16 +335,10 @@
 
 		for ( i = 0, len = titles.length; i < len; i++ ) {
 			page = hasOwn.call( pageData, titles[ i ] ) ? pageData[ titles[ i ] ] : {};
-			option = this.createOptionWidget( this.getOptionWidgetData( titles[ i ], page ) );
-
-			if ( this.showDisambigsLast && page.disambiguation ) {
-				disambigs.push( option );
-			} else {
-				items.push( option );
-			}
+			items.push( this.createOptionWidget( this.getOptionWidgetData( titles[ i ], page ) ) );
 		}
 
-		return items.concat( disambigs );
+		return items;
 	};
 
 	/**

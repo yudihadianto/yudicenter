@@ -22,11 +22,9 @@
 namespace MediaWiki\Auth;
 
 use MediaWiki\MediaWikiServices;
-use MediaWiki\User\UserNameUtils;
 use SpecialPage;
 use User;
 use Wikimedia\IPUtils;
-use Wikimedia\Rdbms\ILoadBalancer;
 
 /**
  * A primary authentication provider that uses the temporary password field in
@@ -54,18 +52,14 @@ class TemporaryPasswordPrimaryAuthenticationProvider
 	/** @var bool */
 	protected $allowRequiringEmail = null;
 
-	/** @var ILoadBalancer */
-	private $loadBalancer;
-
 	/**
-	 * @param ILoadBalancer $loadBalancer
 	 * @param array $params
 	 *  - emailEnabled: (bool) must be true for the option to email passwords to be present
 	 *  - newPasswordExpiry: (int) expiraton time of temporary passwords, in seconds
 	 *  - passwordReminderResendTime: (int) cooldown period in hours until a password reminder can
-	 *    be sent to the same user again
+	 *    be sent to the same user again,
 	 */
-	public function __construct( ILoadBalancer $loadBalancer, $params = [] ) {
+	public function __construct( $params = [] ) {
 		parent::__construct( $params );
 
 		if ( isset( $params['emailEnabled'] ) ) {
@@ -80,10 +74,11 @@ class TemporaryPasswordPrimaryAuthenticationProvider
 		if ( isset( $params['allowRequiringEmailForResets'] ) ) {
 			$this->allowRequiringEmail = $params['allowRequiringEmailForResets'];
 		}
-		$this->loadBalancer = $loadBalancer;
 	}
 
-	protected function postInitSetup() {
+	public function setConfig( \Config $config ) {
+		parent::setConfig( $config );
+
 		if ( $this->emailEnabled === null ) {
 			$this->emailEnabled = $this->config->get( 'EnableEmail' );
 		}
@@ -138,12 +133,12 @@ class TemporaryPasswordPrimaryAuthenticationProvider
 			return AuthenticationResponse::newAbstain();
 		}
 
-		$username = $this->userNameUtils->getCanonical( $req->username, UserNameUtils::RIGOR_USABLE );
+		$username = User::getCanonicalName( $req->username, 'usable' );
 		if ( $username === false ) {
 			return AuthenticationResponse::newAbstain();
 		}
 
-		$dbr = $this->loadBalancer->getConnectionRef( DB_REPLICA );
+		$dbr = wfGetDB( DB_REPLICA );
 		$row = $dbr->selectRow(
 			'user',
 			[
@@ -187,12 +182,12 @@ class TemporaryPasswordPrimaryAuthenticationProvider
 	}
 
 	public function testUserCanAuthenticate( $username ) {
-		$username = $this->userNameUtils->getCanonical( $username, UserNameUtils::RIGOR_USABLE );
+		$username = User::getCanonicalName( $username, 'usable' );
 		if ( $username === false ) {
 			return false;
 		}
 
-		$dbr = $this->loadBalancer->getConnectionRef( DB_REPLICA );
+		$dbr = wfGetDB( DB_REPLICA );
 		$row = $dbr->selectRow(
 			'user',
 			[ 'user_newpassword', 'user_newpass_time' ],
@@ -215,13 +210,13 @@ class TemporaryPasswordPrimaryAuthenticationProvider
 	}
 
 	public function testUserExists( $username, $flags = User::READ_NORMAL ) {
-		$username = $this->userNameUtils->getCanonical( $username, UserNameUtils::RIGOR_USABLE );
+		$username = User::getCanonicalName( $username, 'usable' );
 		if ( $username === false ) {
 			return false;
 		}
 
 		list( $db, $options ) = \DBAccessObjectUtils::getDBOptions( $flags );
-		return (bool)$this->loadBalancer->getConnectionRef( $db )->selectField(
+		return (bool)wfGetDB( $db )->selectField(
 			[ 'user' ],
 			'user_id',
 			[ 'user_name' => $username ],
@@ -242,12 +237,12 @@ class TemporaryPasswordPrimaryAuthenticationProvider
 			return \StatusValue::newGood();
 		}
 
-		$username = $this->userNameUtils->getCanonical( $req->username, UserNameUtils::RIGOR_USABLE );
+		$username = User::getCanonicalName( $req->username, 'usable' );
 		if ( $username === false ) {
 			return \StatusValue::newGood( 'ignored' );
 		}
 
-		$row = $this->loadBalancer->getConnectionRef( DB_PRIMARY )->selectRow(
+		$row = wfGetDB( DB_MASTER )->selectRow(
 			'user',
 			[ 'user_id', 'user_newpass_time' ],
 			[ 'user_name' => $username ],
@@ -299,13 +294,12 @@ class TemporaryPasswordPrimaryAuthenticationProvider
 	}
 
 	public function providerChangeAuthenticationData( AuthenticationRequest $req ) {
-		$username = $req->username !== null ?
-			$this->userNameUtils->getCanonical( $req->username, UserNameUtils::RIGOR_USABLE ) : false;
+		$username = $req->username !== null ? User::getCanonicalName( $req->username, 'usable' ) : false;
 		if ( $username === false ) {
 			return;
 		}
 
-		$dbw = $this->loadBalancer->getConnectionRef( DB_PRIMARY );
+		$dbw = wfGetDB( DB_MASTER );
 
 		$sendMail = false;
 		if ( $req->action !== AuthManager::ACTION_REMOVE &&
@@ -404,7 +398,7 @@ class TemporaryPasswordPrimaryAuthenticationProvider
 
 		if ( $mailpassword ) {
 			// Send email after DB commit
-			$this->loadBalancer->getConnectionRef( DB_PRIMARY )->onTransactionCommitOrIdle(
+			wfGetDB( DB_MASTER )->onTransactionCommitOrIdle(
 				function () use ( $user, $creator, $req ) {
 					$this->sendNewAccountEmail( $user, $creator, $req->password );
 				},

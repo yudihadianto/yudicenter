@@ -22,7 +22,7 @@
  */
 use MediaWiki\Interwiki\InterwikiLookup;
 use MediaWiki\Linker\LinkTarget;
-use MediaWiki\Page\PageReference;
+use MediaWiki\Page\PageIdentity;
 use Wikimedia\IPUtils;
 
 /**
@@ -37,29 +37,30 @@ use Wikimedia\IPUtils;
  * @since 1.23
  */
 class MediaWikiTitleCodec implements TitleFormatter, TitleParser {
-	/** @var Language */
+	/**
+	 * @var Language
+	 */
 	protected $language;
 
-	/** @var GenderCache */
+	/**
+	 * @var GenderCache
+	 */
 	protected $genderCache;
 
-	/** @var string[] */
+	/**
+	 * @var string[]
+	 */
 	protected $localInterwikis;
 
-	/** @var InterwikiLookup */
+	/**
+	 * @var InterwikiLookup
+	 */
 	protected $interwikiLookup;
 
-	/** @var NamespaceInfo */
-	protected $nsInfo;
-
 	/**
-	 * The code here can throw MalformedTitleException, which cannot be created in
-	 * unit tests (see T281935). Until that changes, we use this helper callback
-	 * that can be overridden in unit tests to return a mock instead.
-	 *
-	 * @var callable
+	 * @var NamespaceInfo
 	 */
-	private $createMalformedTitleException;
+	protected $nsInfo;
 
 	/**
 	 * @param Language $language The language object to use for localizing namespace names,
@@ -81,29 +82,6 @@ class MediaWikiTitleCodec implements TitleFormatter, TitleParser {
 		$this->localInterwikis = (array)$localInterwikis;
 		$this->interwikiLookup = $interwikiLookup;
 		$this->nsInfo = $nsInfo;
-
-		// Default callback is to return a real MalformedTitleException,
-		// callback signature matches constructor
-		$this->createMalformedTitleException = static function (
-			$errorMessage,
-			$titleText = null,
-			$errorMessageParameters = []
-		): MalformedTitleException {
-			return new MalformedTitleException( $errorMessage, $titleText, $errorMessageParameters );
-		};
-	}
-
-	/**
-	 * @internal
-	 * @param callable $callback
-	 */
-	public function overrideCreateMalformedTitleExceptionCallback( callable $callback ) {
-		// @codeCoverageIgnoreStart
-		if ( !defined( 'MW_PHPUNIT_TEST' ) ) {
-			throw new RuntimeException( __METHOD__ . ' can only be used in tests' );
-		}
-		// @codeCoverageIgnoreEnd
-		$this->createMalformedTitleException = $callback;
 	}
 
 	/**
@@ -235,14 +213,14 @@ class MediaWikiTitleCodec implements TitleFormatter, TitleParser {
 	/**
 	 * @see TitleFormatter::getText()
 	 *
-	 * @param LinkTarget|PageReference $title
+	 * @param LinkTarget|PageIdentity $title
 	 *
 	 * @return string
 	 */
 	public function getText( $title ) {
 		if ( $title instanceof LinkTarget ) {
 			return $title->getText();
-		} elseif ( $title instanceof PageReference ) {
+		} elseif ( $title instanceof PageIdentity ) {
 			return strtr( $title->getDBKey(), '_', ' ' );
 		} else {
 			throw new InvalidArgumentException( '$title has invalid type: ' . get_class( $title ) );
@@ -252,7 +230,7 @@ class MediaWikiTitleCodec implements TitleFormatter, TitleParser {
 	/**
 	 * @see TitleFormatter::getText()
 	 *
-	 * @param LinkTarget|PageReference $title
+	 * @param LinkTarget|PageIdentity $title
 	 *
 	 * @return string
 	 * @suppress PhanUndeclaredProperty
@@ -268,8 +246,8 @@ class MediaWikiTitleCodec implements TitleFormatter, TitleParser {
 				);
 			}
 			return $title->prefixedText;
-		} elseif ( $title instanceof PageReference ) {
-			$title->assertWiki( PageReference::LOCAL );
+		} elseif ( $title instanceof PageIdentity ) {
+			$title->assertWiki( PageIdentity::LOCAL );
 			return $this->formatTitle(
 				$title->getNamespace(),
 				$this->getText( $title )
@@ -282,7 +260,7 @@ class MediaWikiTitleCodec implements TitleFormatter, TitleParser {
 	/**
 	 * @since 1.27
 	 * @see TitleFormatter::getPrefixedDBkey()
-	 * @param LinkTarget|PageReference $target
+	 * @param LinkTarget|PageIdentity $target
 	 * @return string
 	 */
 	public function getPrefixedDBkey( $target ) {
@@ -293,8 +271,8 @@ class MediaWikiTitleCodec implements TitleFormatter, TitleParser {
 				'',
 				$target->getInterwiki()
 			), ' ', '_' );
-		} elseif ( $target instanceof PageReference ) {
-			$target->assertWiki( PageReference::LOCAL );
+		} elseif ( $target instanceof PageIdentity ) {
+			$target->assertWiki( PageIdentity::LOCAL );
 			return strtr( $this->formatTitle(
 				$target->getNamespace(),
 				$target->getDBkey()
@@ -307,7 +285,7 @@ class MediaWikiTitleCodec implements TitleFormatter, TitleParser {
 	/**
 	 * @see TitleFormatter::getText()
 	 *
-	 * @param LinkTarget|PageReference $title
+	 * @param LinkTarget|PageIdentity $title
 	 *
 	 * @return string
 	 */
@@ -319,8 +297,8 @@ class MediaWikiTitleCodec implements TitleFormatter, TitleParser {
 				$title->getFragment(),
 				$title->getInterwiki()
 			);
-		} elseif ( $title instanceof PageReference ) {
-			$title->assertWiki( PageReference::LOCAL );
+		} elseif ( $title instanceof PageIdentity ) {
+			$title->assertWiki( PageIdentity::LOCAL );
 			return $this->formatTitle(
 				$title->getNamespace(),
 				$this->getText( $title )
@@ -381,8 +359,7 @@ class MediaWikiTitleCodec implements TitleFormatter, TitleParser {
 
 		if ( strpos( $dbkey, UtfNormal\Constants::UTF8_REPLACEMENT ) !== false ) {
 			# Contained illegal UTF-8 sequences or forbidden Unicode chars.
-			$exception = ( $this->createMalformedTitleException )( 'title-invalid-utf8', $text );
-			throw $exception;
+			throw new MalformedTitleException( 'title-invalid-utf8', $text );
 		}
 
 		$parts['dbkey'] = $dbkey;
@@ -396,8 +373,7 @@ class MediaWikiTitleCodec implements TitleFormatter, TitleParser {
 		}
 
 		if ( $dbkey == '' ) {
-			$exception = ( $this->createMalformedTitleException )( 'title-invalid-empty', $text );
-			throw $exception;
+			throw new MalformedTitleException( 'title-invalid-empty', $text );
 		}
 
 		# Namespace or interwiki prefix
@@ -415,18 +391,10 @@ class MediaWikiTitleCodec implements TitleFormatter, TitleParser {
 					if ( $ns === NS_TALK && preg_match( $prefixRegexp, $dbkey, $x ) ) {
 						if ( $this->language->getNsIndex( $x[1] ) ) {
 							# Disallow Talk:File:x type titles...
-							$exception = ( $this->createMalformedTitleException )(
-								'title-invalid-talk-namespace',
-								$text
-							);
-							throw $exception;
+							throw new MalformedTitleException( 'title-invalid-talk-namespace', $text );
 						} elseif ( $this->interwikiLookup->isValidInterwiki( $x[1] ) ) {
 							# Disallow Talk:Interwiki:x type titles...
-							$exception = ( $this->createMalformedTitleException )(
-								'title-invalid-talk-namespace',
-								$text
-							);
-							throw $exception;
+							throw new MalformedTitleException( 'title-invalid-talk-namespace', $text );
 						}
 					}
 				} elseif ( $this->interwikiLookup->isValidInterwiki( $p ) ) {
@@ -485,8 +453,7 @@ class MediaWikiTitleCodec implements TitleFormatter, TitleParser {
 		$rxTc = self::getTitleInvalidRegex();
 		$matches = [];
 		if ( preg_match( $rxTc, $dbkey, $matches ) ) {
-			$exception = ( $this->createMalformedTitleException )( 'title-invalid-characters', $text, [ $matches[0] ] );
-			throw $exception;
+			throw new MalformedTitleException( 'title-invalid-characters', $text, [ $matches[0] ] );
 		}
 
 		# Pages with "/./" or "/../" appearing in the URLs will often be un-
@@ -504,14 +471,12 @@ class MediaWikiTitleCodec implements TitleFormatter, TitleParser {
 				substr( $dbkey, -3 ) == '/..'
 			)
 		) {
-			$exception = ( $this->createMalformedTitleException )( 'title-invalid-relative', $text );
-			throw $exception;
+			throw new MalformedTitleException( 'title-invalid-relative', $text );
 		}
 
 		# Magic tilde sequences? Nu-uh!
 		if ( strpos( $dbkey, '~~~' ) !== false ) {
-			$exception = ( $this->createMalformedTitleException )( 'title-invalid-magic-tilde', $text );
-			throw $exception;
+			throw new MalformedTitleException( 'title-invalid-magic-tilde', $text );
 		}
 
 		# Limit the size of titles to 255 bytes. This is typically the size of the
@@ -520,12 +485,8 @@ class MediaWikiTitleCodec implements TitleFormatter, TitleParser {
 		# to subpage syntax for long titles, e.g. [[Special:Block/Long name]]
 		$maxLength = ( $parts['namespace'] !== NS_SPECIAL ) ? 255 : 512;
 		if ( strlen( $dbkey ) > $maxLength ) {
-			$exception = ( $this->createMalformedTitleException )(
-				'title-invalid-too-long',
-				$text,
-				[ Message::numParam( $maxLength ) ]
-			);
-			throw $exception;
+			throw new MalformedTitleException( 'title-invalid-too-long', $text,
+				[ Message::numParam( $maxLength ) ] );
 		}
 
 		# Normally, all wiki links are forced to have an initial capital letter so [[foo]]
@@ -538,8 +499,7 @@ class MediaWikiTitleCodec implements TitleFormatter, TitleParser {
 		# Can't make a link to a namespace alone... "empty" local links can only be
 		# self-links with a fragment identifier.
 		if ( $dbkey == '' && $parts['interwiki'] === '' && $parts['namespace'] !== NS_MAIN ) {
-			$exception = ( $this->createMalformedTitleException )( 'title-invalid-empty', $text );
-			throw $exception;
+			throw new MalformedTitleException( 'title-invalid-empty', $text );
 		}
 
 		// Allow IPv6 usernames to start with '::' by canonicalizing IPv6 titles.
@@ -554,8 +514,7 @@ class MediaWikiTitleCodec implements TitleFormatter, TitleParser {
 
 		// Any remaining initial :s are illegal.
 		if ( $dbkey !== '' && $dbkey[0] == ':' ) {
-			$exception = ( $this->createMalformedTitleException )( 'title-invalid-leading-colon', $text );
-			throw $exception;
+			throw new MalformedTitleException( 'title-invalid-leading-colon', $text );
 		}
 
 		// Fill fields
@@ -571,8 +530,7 @@ class MediaWikiTitleCodec implements TitleFormatter, TitleParser {
 				$parts['interwiki']
 			);
 		} catch ( InvalidArgumentException $ex ) {
-			$exception = ( $this->createMalformedTitleException )( 'title-invalid', $text, [ $ex->getMessage() ] );
-			throw $exception;
+			throw new MalformedTitleException( 'title-invalid', $text, [ $ex->getMessage() ] );
 		}
 
 		return $parts;

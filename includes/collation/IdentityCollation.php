@@ -18,6 +18,8 @@
  * @file
  */
 
+use MediaWiki\MediaWikiServices;
+
 /**
  * Collation class that's essentially a no-op.
  *
@@ -27,16 +29,6 @@
  * @since 1.18
  */
 class IdentityCollation extends Collation {
-
-	/** @var Language */
-	private $contentLanguage;
-
-	/**
-	 * @param Language $contentLanguage
-	 */
-	public function __construct( Language $contentLanguage ) {
-		$this->contentLanguage = $contentLanguage;
-	}
 
 	public function getSortKey( $string ) {
 		return $string;
@@ -48,6 +40,6 @@ class IdentityCollation extends Collation {
 		if ( $string[0] == "\0" ) {
 			$string = substr( $string, 1 );
 		}
-		return $this->contentLanguage->firstChar( $string );
+		return MediaWikiServices::getInstance()->getContentLanguage()->firstChar( $string );
 	}
 }

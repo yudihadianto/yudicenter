@@ -102,10 +102,10 @@ class StreamFile {
 		 * have changed since.
 		 */
 		if ( $safe ) {
-			global $wgProhibitedFileExtensions, $wgCheckFileExtensions, $wgStrictFileExtensions,
-				$wgFileExtensions, $wgVerifyMimeType, $wgMimeTypeExclusions;
+			global $wgFileBlacklist, $wgCheckFileExtensions, $wgStrictFileExtensions,
+				$wgFileExtensions, $wgVerifyMimeType, $wgMimeTypeBlacklist;
 			list( , $extList ) = UploadBase::splitExtensions( $filename );
-			if ( UploadBase::checkFileExtensionList( $extList, $wgProhibitedFileExtensions ) ) {
+			if ( UploadBase::checkFileExtensionList( $extList, $wgFileBlacklist ) ) {
 				return 'unknown/unknown';
 			}
 			if ( $wgCheckFileExtensions && $wgStrictFileExtensions
@@ -113,7 +113,7 @@ class StreamFile {
 			) {
 				return 'unknown/unknown';
 			}
-			if ( $wgVerifyMimeType && in_array( strtolower( $type ), $wgMimeTypeExclusions ) ) {
+			if ( $wgVerifyMimeType && in_array( strtolower( $type ), $wgMimeTypeBlacklist ) ) {
 				return 'unknown/unknown';
 			}
 		}

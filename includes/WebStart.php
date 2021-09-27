@@ -51,9 +51,6 @@ if ( $IP === false ) {
 	$IP = dirname( __DIR__ );
 }
 
-/**
- * @return never
- */
 function wfWebStartNoLocalSettings() {
 	# LocalSettings.php is the per-site customization file. If it does not exist
 	# the wiki installer needs to be launched or the generated file uploaded to

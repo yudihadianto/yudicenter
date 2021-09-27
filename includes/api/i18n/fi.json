@@ -10,8 +10,7 @@
 			"Pitke",
 			"Pyscowicz",
 			"Silvonen",
-			"Stryn",
-			"Yupik"
+			"Stryn"
 		]
 	},
 	"apihelp-main-param-action": "Mikä toiminto suoritetaan.",
@@ -124,7 +123,5 @@
 	"apierror-badtoken": "Virheellinen CSRF-poletti.",
 	"apierror-invalidlang": "Virheellinen kielikoodi parametrille <var>$1</var>.",
 	"apierror-noapiwrite": "Tämän wikin muokkaaminen APIn kautta on estetty.",
-	"apierror-unknownerror-nocode": "Tuntematon virhe.",
-	"apierror-unknownerror": "Tuntematon virhe: \"$1\".",
 	"api-feed-error-title": "Virhe ($1)"
 }

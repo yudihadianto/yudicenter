@@ -105,12 +105,12 @@ function wfApiMain() {
 		if ( $processor ) {
 			try {
 				$manager = $processor->getModuleManager();
-				$module = $manager->getModule( $wgRequest->getRawVal( 'action' ), 'action' );
+				$module = $manager->getModule( $wgRequest->getVal( 'action' ), 'action' );
 			} catch ( Throwable $ex ) {
 				$module = null;
 			}
 			if ( !$module || $module->mustBePosted() ) {
-				$items[] = "action=" . $wgRequest->getRawVal( 'action' );
+				$items[] = "action=" . $wgRequest->getVal( 'action' );
 			} else {
 				$items[] = wfArrayToCgi( $wgRequest->getValues() );
 			}

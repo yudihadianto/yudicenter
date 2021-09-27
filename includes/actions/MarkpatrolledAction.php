@@ -20,7 +20,7 @@
  * @ingroup Actions
  */
 
-use MediaWiki\Linker\LinkRenderer;
+use MediaWiki\MediaWikiServices;
 
 /**
  * Mark a revision as patrolled on a page
@@ -28,23 +28,6 @@ use MediaWiki\Linker\LinkRenderer;
  * @ingroup Actions
  */
 class MarkpatrolledAction extends FormAction {
-
-	/** @var LinkRenderer */
-	private $linkRenderer;
-
-	/**
-	 * @param Page $page
-	 * @param IContextSource $context
-	 * @param LinkRenderer $linkRenderer
-	 */
-	public function __construct(
-		Page $page,
-		IContextSource $context,
-		LinkRenderer $linkRenderer
-	) {
-		parent::__construct( $page, $context );
-		$this->linkRenderer = $linkRenderer;
-	}
 
 	public function getName() {
 		return 'markpatrolled';
@@ -79,6 +62,7 @@ class MarkpatrolledAction extends FormAction {
 	protected function preText() {
 		$rc = $this->getRecentChange();
 		$title = $rc->getTitle();
+		$linkRenderer = MediaWikiServices::getInstance()->getLinkRenderer();
 
 		// Based on logentry-patrol-patrol (see PatrolLogFormatter)
 		$revId = $rc->getAttribute( 'rc_this_oldid' );
@@ -87,9 +71,8 @@ class MarkpatrolledAction extends FormAction {
 			'diff' => $revId,
 			'oldid' => $rc->getAttribute( 'rc_last_oldid' )
 		];
-		// @phan-suppress-next-line SecurityCheck-DoubleEscaped Triggered by RecentChange::getAttribute
-		$revlink = $this->linkRenderer->makeLink( $title, $revId, [], $query );
-		$pagelink = $this->linkRenderer->makeLink( $title, $title->getPrefixedText() );
+		$revlink = $linkRenderer->makeLink( $title, $revId, [], $query );
+		$pagelink = $linkRenderer->makeLink( $title, $title->getPrefixedText() );
 
 		return $this->msg( 'confirm-markpatrolled-top' )->params(
 			$title->getPrefixedText(),

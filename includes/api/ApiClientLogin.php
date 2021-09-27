@@ -23,6 +23,7 @@
 use MediaWiki\Auth\AuthenticationResponse;
 use MediaWiki\Auth\AuthManager;
 use MediaWiki\Auth\CreateFromLoginAuthenticationRequest;
+use MediaWiki\MediaWikiServices;
 
 /**
  * Log in to the wiki with AuthManager
@@ -31,21 +32,8 @@ use MediaWiki\Auth\CreateFromLoginAuthenticationRequest;
  */
 class ApiClientLogin extends ApiBase {
 
-	/** @var AuthManager */
-	private $authManager;
-
-	/**
-	 * @param ApiMain $main
-	 * @param string $action
-	 * @param AuthManager $authManager
-	 */
-	public function __construct(
-		ApiMain $main,
-		$action,
-		AuthManager $authManager
-	) {
+	public function __construct( ApiMain $main, $action ) {
 		parent::__construct( $main, $action, 'login' );
-		$this->authManager = $authManager;
 	}
 
 	public function getFinalDescription() {
@@ -77,10 +65,11 @@ class ApiClientLogin extends ApiBase {
 			}
 		}
 
-		$helper = new ApiAuthManagerHelper( $this, $this->authManager );
+		$manager = MediaWikiServices::getInstance()->getAuthManager();
+		$helper = new ApiAuthManagerHelper( $this, $manager );
 
 		// Make sure it's possible to log in
-		if ( !$this->authManager->canAuthenticateNow() ) {
+		if ( !$manager->canAuthenticateNow() ) {
 			$this->getResult()->addValue( null, 'clientlogin', $helper->formatAuthenticationResponse(
 				AuthenticationResponse::newFail( $this->msg( 'userlogin-cannot-' . AuthManager::ACTION_LOGIN ) )
 			) );
@@ -91,7 +80,7 @@ class ApiClientLogin extends ApiBase {
 		// Perform the login step
 		if ( $params['continue'] ) {
 			$reqs = $helper->loadAuthenticationRequests( AuthManager::ACTION_LOGIN_CONTINUE );
-			$res = $this->authManager->continueAuthentication( $reqs );
+			$res = $manager->continueAuthentication( $reqs );
 		} else {
 			$reqs = $helper->loadAuthenticationRequests( AuthManager::ACTION_LOGIN );
 			if ( $params['preservestate'] ) {
@@ -100,7 +89,7 @@ class ApiClientLogin extends ApiBase {
 					$reqs[] = $req;
 				}
 			}
-			$res = $this->authManager->beginAuthentication( $reqs, $params['returnurl'] );
+			$res = $manager->beginAuthentication( $reqs, $params['returnurl'] );
 		}
 
 		// Remove CreateFromLoginAuthenticationRequest from $res->neededRequests.
@@ -117,11 +106,6 @@ class ApiClientLogin extends ApiBase {
 
 	public function isReadMode() {
 		return false;
-	}
-
-	public function isWriteMode() {
-		// (T283394) Logging in triggers some database writes, so should be marked appropriately.
-		return true;
 	}
 
 	public function needsToken() {

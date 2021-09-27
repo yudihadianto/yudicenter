@@ -122,6 +122,7 @@ class GetConfiguration extends Maintenance {
 
 		# Filter out globals based on the regex
 		if ( $this->regex ) {
+			$res = [];
 			foreach ( $GLOBALS as $name => $value ) {
 				if ( preg_match( $this->regex, $name ) ) {
 					$res[$name] = $value;

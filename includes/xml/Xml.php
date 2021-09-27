@@ -554,8 +554,7 @@ class Xml {
 			$value = trim( $option );
 			if ( $value == '' ) {
 				continue;
-			}
-			if ( substr( $value, 0, 1 ) == '*' && substr( $value, 1, 1 ) != '*' ) {
+			} elseif ( substr( $value, 0, 1 ) == '*' && substr( $value, 1, 1 ) != '*' ) {
 				# A new group is starting...
 				$value = trim( substr( $value, 1 ) );
 				if ( $value !== '' &&

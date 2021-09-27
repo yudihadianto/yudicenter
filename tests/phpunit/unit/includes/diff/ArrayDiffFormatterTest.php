@@ -23,8 +23,9 @@ class ArrayDiffFormatterTest extends \MediaWikiUnitTestCase {
 		$diff = $this->getMockBuilder( Diff::class )
 			->disableOriginalConstructor()
 			->getMock();
-		$diff->method( 'getEdits' )
-			->willReturn( $edits );
+		$diff->expects( $this->any() )
+			->method( 'getEdits' )
+			->will( $this->returnValue( $edits ) );
 		return $diff;
 	}
 
@@ -32,19 +33,23 @@ class ArrayDiffFormatterTest extends \MediaWikiUnitTestCase {
 		$diffOp = $this->getMockBuilder( DiffOp::class )
 			->disableOriginalConstructor()
 			->getMock();
-		$diffOp->method( 'getType' )
-			->willReturn( $type );
-		$diffOp->method( 'getOrig' )
-			->willReturn( $orig );
+		$diffOp->expects( $this->any() )
+			->method( 'getType' )
+			->will( $this->returnValue( $type ) );
+		$diffOp->expects( $this->any() )
+			->method( 'getOrig' )
+			->will( $this->returnValue( $orig ) );
 		if ( $type === 'change' ) {
-			$diffOp->method( 'getClosing' )
+			$diffOp->expects( $this->any() )
+				->method( 'getClosing' )
 				->with( $this->isType( 'integer' ) )
 				->will( $this->returnCallback( static function () {
 					return 'mockLine';
 				} ) );
 		} else {
-			$diffOp->method( 'getClosing' )
-				->willReturn( $closing );
+			$diffOp->expects( $this->any() )
+				->method( 'getClosing' )
+				->will( $this->returnValue( $closing ) );
 		}
 		return $diffOp;
 	}

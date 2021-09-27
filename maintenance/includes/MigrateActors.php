@@ -60,7 +60,7 @@ class MigrateActors extends LoggedUpdateMaintenance {
 		if ( $this->doTable( 'user' ) ) {
 			$this->output( "Creating actor entries for all registered users\n" );
 			$end = 0;
-			$dbw = $this->getDB( DB_PRIMARY );
+			$dbw = $this->getDB( DB_MASTER );
 			$max = $dbw->selectField( 'user', 'MAX(user_id)', '', __METHOD__ );
 			$count = 0;
 			$lbFactory = MediaWikiServices::getInstance()->getDBLoadBalancerFactory();
@@ -84,12 +84,12 @@ class MigrateActors extends LoggedUpdateMaintenance {
 		} else {
 			$this->output( "Checking that actors exist for all registered users\n" );
 			$dbr = $this->getDB( DB_REPLICA, [ 'vslow' ] );
-			$anyMissing = (bool)$dbr->selectField(
+			$anyMissing = $dbr->selectField(
 				[ 'user', 'actor' ],
 				'1',
 				[ 'actor_id' => null ],
 				__METHOD__,
-				[],
+				[ 'LIMIT 1' ],
 				[ 'actor' => [ 'LEFT JOIN', 'actor_user = user_id' ] ]
 			);
 			if ( $anyMissing ) {
@@ -169,6 +169,7 @@ class MigrateActors extends LoggedUpdateMaintenance {
 	/**
 	 * Add actors for anons in a set of rows
 	 *
+	 * @suppress SecurityCheck-SQLInjection The array_keys/array_map is too much for static analysis
 	 * @param IDatabase $dbw
 	 * @param string $nameField
 	 * @param stdClass[] &$rows
@@ -258,7 +259,7 @@ class MigrateActors extends LoggedUpdateMaintenance {
 			return 0;
 		}
 
-		$dbw = $this->getDB( DB_PRIMARY );
+		$dbw = $this->getDB( DB_MASTER );
 		if ( !$dbw->fieldExists( $table, $userField, __METHOD__ ) ) {
 			$this->output( "No need to migrate $table.$userField, field does not exist\n" );
 			return 0;
@@ -267,7 +268,7 @@ class MigrateActors extends LoggedUpdateMaintenance {
 		$complainedAboutUsers = [];
 
 		$primaryKey = (array)$primaryKey;
-		$pkFilter = array_fill_keys( $primaryKey, true );
+		$pkFilter = array_flip( $primaryKey );
 		$this->output(
 			"Beginning migration of $table.$userField and $table.$nameField to $table.$actorField\n"
 		);
@@ -366,7 +367,7 @@ class MigrateActors extends LoggedUpdateMaintenance {
 			return 0;
 		}
 
-		$dbw = $this->getDB( DB_PRIMARY );
+		$dbw = $this->getDB( DB_MASTER );
 		if ( !$dbw->fieldExists( $table, $userField, __METHOD__ ) ) {
 			$this->output( "No need to migrate $table.$userField, field does not exist\n" );
 			return 0;
@@ -470,14 +471,17 @@ class MigrateActors extends LoggedUpdateMaintenance {
 		$lbFactory = MediaWikiServices::getInstance()->getDBLoadBalancerFactory();
 		$lbFactory->waitForReplication();
 
-		$dbw = $this->getDB( DB_PRIMARY );
+		$dbw = $this->getDB( DB_MASTER );
 		$countInserted = 0;
 		$countActors = 0;
 		$countErrors = 0;
 
-		$anyBad = (bool)$dbw->selectField( 'log_search', '1',
+		$anyBad = $dbw->selectField(
+			'log_search',
+			'1',
 			[ 'ls_field' => 'target_author_actor', 'ls_value' => '' ],
-			__METHOD__
+			__METHOD__,
+			[ 'LIMIT' => 1 ]
 		);
 		if ( $anyBad ) {
 			$this->output( "... Deleting bogus rows due to T215525\n" );

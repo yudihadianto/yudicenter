@@ -1,8 +1,10 @@
 <?php
 
+use Wikimedia\Assert\ParameterTypeException;
+
 class UserGroupMembershipTest extends MediaWikiIntegrationTestCase {
 
-	protected function setUp(): void {
+	protected function setUp() : void {
 		parent::setUp();
 
 		$this->setMwGlobals( [
@@ -15,6 +17,24 @@ class UserGroupMembershipTest extends MediaWikiIntegrationTestCase {
 				]
 			]
 		] );
+	}
+
+	public function provideInstantiationValidationErrors() {
+		return [
+			[ 'A', null, null, 'Bad value for parameter $userId: must be a integer' ],
+			[ 1, 1, null, 'Bad value for parameter $group: must be a string' ],
+			[ 1, null, 1, 'Bad value for parameter $expiry: must be a string' ],
+		];
+	}
+
+	/**
+	 * @dataProvider provideInstantiationValidationErrors
+	 * @covers UserGroupMembership
+	 */
+	public function testInstantiationValidationErrors( $userId, $group, $expiry, $exception ) {
+		$this->expectExceptionMessage( $exception );
+		$this->expectException( ParameterTypeException::class );
+		$ugm = new UserGroupMembership( $userId, $group, $expiry );
 	}
 
 	public function provideInstantiationValidation() {

@@ -15,10 +15,10 @@ class SamplingStatsdClientTest extends PHPUnit\Framework\TestCase {
 	 */
 	public function testSampling( $data, $sampleRate, $seed, $expectWrite ) {
 		$sender = $this->getMockBuilder( SenderInterface::class )->getMock();
-		$sender->method( 'open' )->willReturn( true );
+		$sender->expects( $this->any() )->method( 'open' )->will( $this->returnValue( true ) );
 		if ( $expectWrite ) {
 			$sender->expects( $this->once() )->method( 'write' )
-				->with( $this->anything(), $data );
+				->with( $this->anything(), $this->equalTo( $data ) );
 		} else {
 			$sender->expects( $this->never() )->method( 'write' );
 		}
@@ -62,9 +62,9 @@ class SamplingStatsdClientTest extends PHPUnit\Framework\TestCase {
 		$nonMatching->setValue( 1 );
 
 		$sender = $this->getMockBuilder( SenderInterface::class )->getMock();
-		$sender->method( 'open' )->willReturn( true );
-		$sender->expects( $this->once() )->method( 'write' )
-			->with( $this->anything(), $nonMatching );
+		$sender->expects( $this->any() )->method( 'open' )->will( $this->returnValue( true ) );
+		$sender->expects( $this->once() )->method( 'write' )->with( $this->anything(),
+			$this->equalTo( $nonMatching ) );
 
 		$client = new SamplingStatsdClient( $sender );
 		$client->setSamplingRates( [ 'foo.*' => 0.2 ] );

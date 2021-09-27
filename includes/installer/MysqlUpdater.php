@@ -139,7 +139,8 @@ class MysqlUpdater extends DatabaseUpdater {
 			[ 'addIndex', 'recentchanges', 'rc_this_oldid', 'patch-recentchanges-rc_this_oldid-index.sql' ],
 			[ 'dropTable', 'transcache' ],
 			[ 'runMaintenance', PopulateChangeTagDef::class, 'maintenance/populateChangeTagDef.php' ],
-			[ 'dropIndex', 'change_tag', 'change_tag_rc_tag', 'patch-change_tag-change_tag_rc_tag_id.sql' ],
+			[ 'addIndex', 'change_tag', 'change_tag_rc_tag_id',
+				'patch-change_tag-change_tag_rc_tag_id.sql' ],
 			[ 'addField', 'ipblocks', 'ipb_sitewide', 'patch-ipb_sitewide.sql' ],
 			[ 'addTable', 'ipblocks_restrictions', 'patch-ipblocks_restrictions-table.sql' ],
 			[ 'migrateImageCommentTemp' ],
@@ -245,16 +246,6 @@ class MysqlUpdater extends DatabaseUpdater {
 			[ 'modifyField', 'page', 'page_title', 'patch-page-page_title-varbinary.sql' ],
 			[ 'dropDefault', 'page', 'page_touched' ],
 			[ 'modifyField', 'user', 'user_name', 'patch-user_table-updates.sql' ],
-
-			// 1.37
-			[ 'renameIndex', 'revision', 'page_timestamp', 'rev_page_timestamp', false,
-				'patch-revision-rename-index.sql' ],
-			[ 'addField', 'objectcache', 'modtoken', 'patch-objectcache-modtoken.sql' ],
-			[ 'dropDefault', 'revision', 'rev_timestamp' ],
-			[ 'addIndex', 'oldimage', 'oi_timestamp', 'patch-oldimage-oi_timestamp.sql' ],
-			[ 'renameIndex', 'page', 'name_title', 'page_name_title', false, 'patch-page-rename-name_title-index.sql' ],
-			[ 'renameIndex', 'change_tag', 'change_tag_rc_tag_id', 'ct_rc_tag_id', false,
-				'patch-change_tag-rename-indexes.sql' ],
 		];
 	}
 
@@ -448,21 +439,11 @@ class MysqlUpdater extends DatabaseUpdater {
 	 * @param string $field
 	 */
 	protected function dropDefault( $table, $field ) {
-		$updateKey = "$table-$field-dropDefault";
-
-		if ( $this->updateRowExists( $updateKey ) ) {
-			return;
-		}
-
 		$info = $this->db->fieldInfo( $table, $field );
 		if ( $info && $info->defaultValue() !== false ) {
-			$this->output( "Removing '$table.$field' default value.\n" );
+			$this->output( "Removing '$table.$field' default value\n" );
 			$table = $this->db->tableName( $table );
-			$ret = $this->db->query( "ALTER TABLE $table ALTER COLUMN $field DROP DEFAULT", __METHOD__ );
-
-			if ( $ret ) {
-				$this->insertUpdateRow( $updateKey );
-			}
+			$this->db->query( "ALTER TABLE $table ALTER COLUMN $field DROP DEFAULT", __METHOD__ );
 		}
 	}
 
@@ -477,7 +458,7 @@ class MysqlUpdater extends DatabaseUpdater {
 	protected function setDefault( $table, $field, $default ) {
 		$info = $this->db->fieldInfo( $table, $field );
 		if ( $info && $info->defaultValue() !== $default ) {
-			$this->output( "Changing '$table.$field' default value.\n" );
+			$this->output( "Changing '$table.$field' default value\n" );
 			$table = $this->db->tableName( $table );
 			$this->db->query(
 				"ALTER TABLE $table ALTER COLUMN $field SET DEFAULT "

@@ -32,16 +32,6 @@
  */
 class TableDiffFormatter extends DiffFormatter {
 
-	/**
-	 * Constants for diff sides. Note: these are also used for context lines.
-	 */
-	private const SIDE_DELETED = 'deleted';
-	private const SIDE_ADDED = 'added';
-	private const SIDE_CLASSES = [
-		self::SIDE_DELETED => 'diff-side-deleted',
-		self::SIDE_ADDED => 'diff-side-added'
-	];
-
 	public function __construct() {
 		$this->leadingContextLines = 2;
 		$this->trailingContextLines = 2;
@@ -113,7 +103,7 @@ class TableDiffFormatter extends DiffFormatter {
 	 * @return string
 	 */
 	protected function addedLine( $line ) {
-		return $this->wrapLine( '+', [ 'diff-addedline', $this->getClassForSide( self::SIDE_ADDED ) ], $line );
+		return $this->wrapLine( '+', 'diff-addedline', $line );
 	}
 
 	/**
@@ -124,24 +114,23 @@ class TableDiffFormatter extends DiffFormatter {
 	 * @return string
 	 */
 	protected function deletedLine( $line ) {
-		return $this->wrapLine( '−', [ 'diff-deletedline', $this->getClassForSide( self::SIDE_DELETED ) ], $line );
+		return $this->wrapLine( '−', 'diff-deletedline', $line );
 	}
 
 	/**
 	 * HTML-escape parameter before calling this
 	 *
 	 * @param string $line
-	 * @param string $side self::SIDE_DELETED or self::SIDE_ADDED
 	 *
 	 * @return string
 	 */
-	protected function contextLine( $line, string $side ) {
-		return $this->wrapLine( '', [ 'diff-context', $this->getClassForSide( $side ) ], $line );
+	protected function contextLine( $line ) {
+		return $this->wrapLine( '', 'diff-context', $line );
 	}
 
 	/**
 	 * @param string $marker
-	 * @param string|string[] $class A single class or a list of classes
+	 * @param string $class Unused
 	 * @param string $line
 	 *
 	 * @return string
@@ -164,11 +153,10 @@ class TableDiffFormatter extends DiffFormatter {
 	}
 
 	/**
-	 * @param string $side self::SIDE_DELETED or self::SIDE_ADDED
 	 * @return string
 	 */
-	protected function emptyLine( string $side ) {
-		return Html::element( 'td', [ 'colspan' => '2', 'class' => $this->getClassForSide( $side ) ] );
+	protected function emptyLine() {
+		return Html::element( 'td', [ 'colspan' => '2' ] );
 	}
 
 	/**
@@ -182,7 +170,7 @@ class TableDiffFormatter extends DiffFormatter {
 				Html::rawElement(
 					'tr',
 					[],
-					$this->emptyLine( self::SIDE_DELETED ) .
+					$this->emptyLine() .
 					$this->addedLine(
 						Html::element(
 							'ins',
@@ -214,7 +202,7 @@ class TableDiffFormatter extends DiffFormatter {
 							$line
 						)
 					) .
-					$this->emptyLine( self::SIDE_ADDED )
+					$this->emptyLine()
 				) .
 				"\n"
 			);
@@ -232,8 +220,8 @@ class TableDiffFormatter extends DiffFormatter {
 				Html::rawElement(
 					'tr',
 					[],
-					$this->contextLine( htmlspecialchars( $line ), self::SIDE_DELETED ) .
-					$this->contextLine( htmlspecialchars( $line ), self::SIDE_ADDED )
+					$this->contextLine( htmlspecialchars( $line ) ) .
+					$this->contextLine( htmlspecialchars( $line ) )
 				) .
 				"\n"
 			);
@@ -258,8 +246,8 @@ class TableDiffFormatter extends DiffFormatter {
 		$nadd = count( $add );
 		$n = max( $ndel, $nadd );
 		for ( $i = 0; $i < $n; $i++ ) {
-			$delLine = $i < $ndel ? $this->deletedLine( $del[$i] ) : $this->emptyLine( self::SIDE_DELETED );
-			$addLine = $i < $nadd ? $this->addedLine( $add[$i] ) : $this->emptyLine( self::SIDE_ADDED );
+			$delLine = $i < $ndel ? $this->deletedLine( $del[$i] ) : $this->emptyLine();
+			$addLine = $i < $nadd ? $this->addedLine( $add[$i] ) : $this->emptyLine();
 			$this->writeOutput(
 				Html::rawElement(
 					'tr',
@@ -271,17 +259,4 @@ class TableDiffFormatter extends DiffFormatter {
 		}
 	}
 
-	/**
-	 * Get a class for the given diff side, or throw if the side is invalid.
-	 *
-	 * @param string $side self::SIDE_DELETED or self::SIDE_ADDED
-	 * @return string
-	 * @throws InvalidArgumentException
-	 */
-	private function getClassForSide( string $side ): string {
-		if ( !isset( self::SIDE_CLASSES[$side] ) ) {
-			throw new InvalidArgumentException( "Invalid diff side: $side" );
-		}
-		return self::SIDE_CLASSES[$side];
-	}
 }

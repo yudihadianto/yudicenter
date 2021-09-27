@@ -25,6 +25,7 @@ use Wikimedia\Assert\ParameterAssertionException;
 use Wikimedia\Assert\PreconditionException;
 
 /**
+ * @covers \MediaWiki\DAO\WikiAwareEntityTrait
  * @covers MediaWiki\Page\PageIdentityValue
  *
  * @group Title
@@ -54,21 +55,6 @@ class PageIdentityValueTest extends MediaWikiUnitTestCase {
 		$this->assertTrue( $pageIdentity->canExist() );
 	}
 
-	/**
-	 * @dataProvider goodConstructorProvider
-	 */
-	public function testTryNew( $pageId, $namespace, $dbKey, $wikiId ) {
-		$pageIdentity = PageIdentityValue::tryNew( $pageId, $namespace, $dbKey, $wikiId );
-
-		$this->assertSame( $wikiId, $pageIdentity->getWikiId() );
-		$this->assertSame( $pageId, $pageIdentity->getId( $wikiId ) );
-		$this->assertSame( $pageId > 0, $pageIdentity->exists() );
-		$this->assertSame( $namespace, $pageIdentity->getNamespace() );
-		$this->assertSame( $dbKey, $pageIdentity->getDBkey() );
-
-		$this->assertTrue( $pageIdentity->canExist() );
-	}
-
 	public function testGetIdFailsForForeignWiki() {
 		$pageIdentity = new PageIdentityValue( 7, NS_MAIN, 'Foo', 'h2g2' );
 
@@ -81,8 +67,9 @@ class PageIdentityValueTest extends MediaWikiUnitTestCase {
 			[ -1, NS_MAIN, 'Test', false ],
 			[ 0, NS_MAIN, 'Test', 2.3 ],
 			[ 0, NS_SPECIAL, 'Test', false ],
-			[ 0, NS_USER, '#1234', false ],
-			[ 0, NS_SPECIAL, 'foo|bar', false ],
+			[ 0, NS_MAIN, 'Foo#Bar', false ],
+			[ 0, NS_MAIN, 'Foo|Bar', false ],
+			[ 0, NS_MAIN, "Foo\tBar", false ],
 		];
 	}
 
@@ -94,25 +81,18 @@ class PageIdentityValueTest extends MediaWikiUnitTestCase {
 		new PageIdentityValue( $pageId, $namespace, $dbKey, $wikiId );
 	}
 
-	/**
-	 * @dataProvider badConstructorProvider
-	 */
-	public function testTryNewWithBadValue( $pageId, $namespace, $dbKey, $wikiId ) {
-		$this->assertNull( PageIdentityValue::tryNew( $pageId, $namespace, $dbKey, $wikiId ) );
-	}
-
 	public function provideToString() {
 		yield [
 			new PageIdentityValue( 5, 0, 'Foo', PageIdentity::LOCAL ),
-			'[0:Foo]'
+			'#5 [0:Foo]'
 		];
 		yield [
 			new PageIdentityValue( 0, 1, 'Bar_Baz', PageIdentity::LOCAL ),
-			'[1:Bar_Baz]'
+			'#0 [1:Bar_Baz]'
 		];
 		yield [
 			new PageIdentityValue( 7, 200, 'tea', 'codewiki' ),
-			'[200:tea]@codewiki'
+			'#7@codewiki [200:tea]'
 		];
 	}
 
@@ -170,16 +150,5 @@ class PageIdentityValueTest extends MediaWikiUnitTestCase {
 	public function testIsSamePageAs( PageIdentityValue $a, PageIdentityValue $b, $expected ) {
 		$this->assertSame( $expected, $a->isSamePageAs( $b ) );
 		$this->assertSame( $expected, $b->isSamePageAs( $a ) );
-	}
-
-	/**
-	 * @covers \MediaWiki\Page\PageIdentityValue::localIdentity
-	 */
-	public function testLocalIdentity() {
-		$page = PageIdentityValue::localIdentity( 1, NS_MAIN, __METHOD__ );
-		$this->assertSame( 1, $page->getId( PageIdentity::LOCAL ) );
-		$this->assertSame( NS_MAIN, $page->getNamespace() );
-		$this->assertSame( __METHOD__, $page->getDBkey() );
-		$this->assertSame( PageIdentity::LOCAL, $page->getWikiId() );
 	}
 }

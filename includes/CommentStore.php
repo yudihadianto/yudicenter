@@ -30,7 +30,7 @@ use Wikimedia\Rdbms\IDatabase;
  * The CommentStore class handles the database abstraction for reading
  * and writing comments, which are represented by CommentStoreComment objects.
  *
- * Data is internally stored in the `comment` table.
+ * Data is internally stored in the `comment` table..
  */
 
 /**
@@ -455,7 +455,7 @@ class CommentStore {
 			}
 
 			$hash = self::hash( $comment->text, $dbData );
-			$commentId = $dbw->selectField(
+			$comment->id = $dbw->selectField(
 				'comment',
 				'comment_id',
 				[
@@ -465,7 +465,7 @@ class CommentStore {
 				],
 				__METHOD__
 			);
-			if ( !$commentId ) {
+			if ( !$comment->id ) {
 				$dbw->insert(
 					'comment',
 					[
@@ -475,9 +475,8 @@ class CommentStore {
 					],
 					__METHOD__
 				);
-				$commentId = $dbw->insertId();
+				$comment->id = $dbw->insertId();
 			}
-			$comment->id = (int)$commentId;
 		}
 
 		return $comment;

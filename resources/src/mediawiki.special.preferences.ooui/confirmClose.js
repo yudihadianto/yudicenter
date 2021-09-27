@@ -65,9 +65,12 @@
 			}, true );
 		} );
 
-		// Prompt users if they try to leave the page without saving.
+		// Set up a message to notify users if they try to leave the page without
+		// saving.
 		allowCloseWindow = mw.confirmCloseWindow( {
-			test: isPrefsChanged
+			test: isPrefsChanged,
+			message: mw.msg( 'prefswarning-warning', mw.msg( 'saveprefs' ) ),
+			namespace: 'prefswarning'
 		} );
 		$( '#mw-prefs-form' ).on( 'submit', allowCloseWindow.release );
 		restoreButton.on( 'click', function () {

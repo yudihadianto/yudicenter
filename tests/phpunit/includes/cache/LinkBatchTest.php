@@ -1,9 +1,5 @@
 <?php
 
-use MediaWiki\Cache\CacheKeyHelper;
-use MediaWiki\Linker\LinkTarget;
-use MediaWiki\Page\PageReference;
-use MediaWiki\Page\PageReferenceValue;
 use Wikimedia\AtEase\AtEase;
 use Wikimedia\Rdbms\ILoadBalancer;
 
@@ -83,39 +79,25 @@ class LinkBatchTest extends MediaWikiIntegrationTestCase {
 	}
 
 	/**
-	 * @param iterable<LinkTarget>|iterable<PageReference> $objects
-	 *
-	 * @return LinkBatch
-	 * @throws Exception
-	 */
-	private function newLinkBatch( $objects = [] ) {
-		return new LinkBatch(
-			$objects,
-			$this->createMock( LinkCache::class ),
-			$this->createMock( TitleFormatter::class ),
-			$this->createMock( Language::class ),
-			$this->createMock( GenderCache::class ),
-			$this->getServiceContainer()->getDBLoadBalancer()
-		);
-	}
-
-	/**
 	 * @covers LinkBatch::addObj()
 	 * @covers LinkBatch::getSize()
 	 */
 	public function testAddObj() {
-		$batch = $this->newLinkBatch(
+		$batch = new LinkBatch(
 			[
-				new TitleValue( NS_MAIN, 'Foo' ),
-				new PageReferenceValue( NS_USER, 'Foo', PageReference::LOCAL ),
-			]
+				new TitleValue( NS_MAIN, 'Foo' )
+			],
+			$this->createMock( LinkCache::class ),
+			$this->createMock( TitleFormatter::class ),
+			$this->createMock( Language::class ),
+			$this->createMock( GenderCache::class ),
+			$this->createMock( ILoadBalancer::class )
 		);
 
-		$batch->addObj( new PageReferenceValue( NS_TALK, 'Bar', PageReference::LOCAL ) );
+		$batch->addObj( new TitleValue( NS_TALK, 'Bar' ) );
 		$batch->addObj( new TitleValue( NS_MAIN, 'Foo' ) );
 
-		$this->assertSame( 3, $batch->getSize() );
-		$this->assertCount( 3, $batch->getPageIdentities() );
+		$this->assertSame( 2, $batch->getSize() );
 	}
 
 	/**
@@ -123,17 +105,21 @@ class LinkBatchTest extends MediaWikiIntegrationTestCase {
 	 * @covers LinkBatch::getSize()
 	 */
 	public function testAdd() {
-		$batch = $this->newLinkBatch(
+		$batch = new LinkBatch(
 			[
 				new TitleValue( NS_MAIN, 'Foo' )
-			]
+			],
+			$this->createMock( LinkCache::class ),
+			$this->createMock( TitleFormatter::class ),
+			$this->createMock( Language::class ),
+			$this->createMock( GenderCache::class ),
+			$this->createMock( ILoadBalancer::class )
 		);
 
 		$batch->add( NS_TALK, 'Bar' );
 		$batch->add( NS_MAIN, 'Foo' );
 
 		$this->assertSame( 2, $batch->getSize() );
-		$this->assertCount( 2, $batch->getPageIdentities() );
 	}
 
 	public function testExecute() {
@@ -192,21 +178,6 @@ class LinkBatchTest extends MediaWikiIntegrationTestCase {
 
 		$this->assertArrayHasKey( $nonexisting1->getTitleValue()->__toString(), $bad );
 		$this->assertArrayHasKey( $nonexisting2->getTitleValue()->__toString(), $bad );
-
-		$expected = array_map(
-			[ CacheKeyHelper::class, 'getKeyForPage' ],
-			[ $existing1, $existing2, $nonexisting1, $nonexisting2 ]
-		);
-
-		$actual = array_map(
-			[ CacheKeyHelper::class, 'getKeyForPage' ],
-			$batch->getPageIdentities()
-		);
-
-		sort( $expected );
-		sort( $actual );
-
-		$this->assertEquals( $expected, $actual );
 	}
 
 	public function testDoGenderQueryWithEmptyLinkBatch() {
@@ -261,39 +232,5 @@ class LinkBatchTest extends MediaWikiIntegrationTestCase {
 		);
 
 		$this->assertTrue( $batch->doGenderQuery() );
-	}
-
-	public function provideBadObjects() {
-		yield 'null' => [ null ];
-		yield 'empty' => [ Title::makeTitle( NS_MAIN, '' ) ];
-		yield 'bad user' => [ Title::makeTitle( NS_USER, '#12345' ) ];
-		yield 'section' => [ new TitleValue( NS_MAIN, '', '#See_also' ) ];
-		yield 'special' => [ new TitleValue( NS_SPECIAL, 'RecentChanges' ) ];
-	}
-
-	/**
-	 * @dataProvider provideBadObjects
-	 */
-	public function testAddBadObj( $obj ) {
-		$linkBatch = $this->newLinkBatch();
-		$linkBatch->addObj( $obj );
-		$linkBatch->execute();
-		$this->addToAssertionCount( 1 );
-	}
-
-	public function provideBadDBKeys() {
-		yield 'empty' => [ '' ];
-		yield 'section' => [ '#See_also' ];
-		yield 'pipe' => [ 'foo|bar' ];
-	}
-
-	/**
-	 * @dataProvider provideBadDBKeys
-	 */
-	public function testAddBadDBKeys( $key ) {
-		$linkBatch = $this->newLinkBatch();
-		$linkBatch->add( NS_MAIN, $key );
-		$linkBatch->execute();
-		$this->addToAssertionCount( 1 );
 	}
 }

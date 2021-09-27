@@ -274,7 +274,6 @@ abstract class TransformationalImageHandler extends ImageHandler {
 				wfMessage( 'unknown-error' )
 			);
 		} elseif ( $mto ) {
-			// @phan-suppress-next-line PhanTypeMismatchReturnSuperType
 			return $mto;
 		} else {
 			$newParams = [
@@ -618,11 +617,6 @@ abstract class TransformationalImageHandler extends ImageHandler {
 		if ( $checkImageAreaHookResult !== null ) {
 			// was set by hook, so return that value
 			return (bool)$checkImageAreaHookResult;
-		}
-
-		if ( $wgMaxImageArea === false ) {
-			// Checking is disabled, fine to thumbnail
-			return true;
 		}
 
 		$srcWidth = $file->getWidth( $params['page'] );

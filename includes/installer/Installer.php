@@ -28,6 +28,7 @@ use MediaWiki\HookContainer\HookContainer;
 use MediaWiki\HookContainer\StaticHookRegistry;
 use MediaWiki\Interwiki\NullInterwikiLookup;
 use MediaWiki\MediaWikiServices;
+use MediaWiki\Shell\Shell;
 
 /**
  * The Installer helps admins create or upgrade their wiki.
@@ -61,12 +62,6 @@ abstract class Installer {
 	public const MINIMUM_PCRE_VERSION = '7.2';
 
 	/**
-	 * URL to mediawiki-announce list summary page
-	 */
-	private const MEDIAWIKI_ANNOUNCE_URL =
-		'https://lists.wikimedia.org/postorius/lists/mediawiki-announce.lists.wikimedia.org/';
-
-	/**
 	 * @var array
 	 */
 	protected $settings;
@@ -86,7 +81,7 @@ abstract class Installer {
 	protected $dbInstallers = [];
 
 	/**
-	 * Minimum memory size in MiB.
+	 * Minimum memory size in MB.
 	 *
 	 * @var int
 	 */
@@ -143,6 +138,7 @@ abstract class Installer {
 		'envCheckGit',
 		'envCheckServer',
 		'envCheckPath',
+		'envCheckShellLocale',
 		'envCheckUploadsDirectory',
 		'envCheckLibicu',
 		'envCheckSuhosinMaxValueLength',
@@ -170,7 +166,6 @@ abstract class Installer {
 		'wgSitename',
 		'wgPasswordSender',
 		'wgLanguageCode',
-		'wgLocaltimezone',
 		'wgRightsIcon',
 		'wgRightsText',
 		'wgRightsUrl',
@@ -189,6 +184,7 @@ abstract class Installer {
 		'wgMetaNamespace',
 		'wgDeletedDirectory',
 		'wgEnableUploads',
+		'wgShellLocale',
 		'wgSecretKey',
 		'wgUseInstantCommons',
 		'wgUpgradeKey',
@@ -324,6 +320,21 @@ abstract class Installer {
 	];
 
 	/**
+	 * URL to mediawiki-announce subscription
+	 */
+	protected $mediaWikiAnnounceUrl =
+		'https://lists.wikimedia.org/mailman/subscribe/mediawiki-announce';
+
+	/**
+	 * Supported language codes for Mailman
+	 */
+	protected $mediaWikiAnnounceLanguages = [
+		'ca', 'cs', 'da', 'de', 'en', 'es', 'et', 'eu', 'fi', 'fr', 'hr', 'hu',
+		'it', 'ja', 'ko', 'lt', 'nl', 'no', 'pl', 'pt', 'pt-br', 'ro', 'ru',
+		'sl', 'sr', 'sv', 'tr', 'uk'
+	];
+
+	/**
 	 * @var HookContainer|null
 	 */
 	protected $autoExtensionHookContainer;
@@ -444,7 +455,7 @@ abstract class Installer {
 	 * @throws MWException
 	 */
 	public function resetMediaWikiServices( Config $installerConfig = null, $serviceOverrides = [] ) {
-		global $wgObjectCaches, $wgLang;
+		global $wgUser, $wgObjectCaches, $wgLang;
 
 		$serviceOverrides += [
 			// Disable interwiki lookup, to avoid database access during parses
@@ -476,11 +487,14 @@ abstract class Installer {
 		// Disable i18n cache
 		$mwServices->getLocalisationCache()->disableBackend();
 
+		// Clear language cache so the old i18n cache doesn't sneak back in
+		Language::$mLangObjCache = [];
+
 		// Set a fake user.
 		// Note that this will reset the context's language,
 		// so set the user before setting the language.
 		$user = User::newFromId( 0 );
-		StubGlobalUser::setUser( $user );
+		$wgUser = $user;
 
 		RequestContext::getMain()->setUser( $user );
 
@@ -1009,6 +1023,87 @@ abstract class Installer {
 	}
 
 	/**
+	 * Environment check for preferred locale in shell
+	 * @return bool
+	 */
+	protected function envCheckShellLocale() {
+		$os = php_uname( 's' );
+		$supported = [ 'Linux', 'SunOS', 'HP-UX', 'Darwin' ]; # Tested these
+
+		if ( !in_array( $os, $supported ) ) {
+			return true;
+		}
+
+		if ( Shell::isDisabled() ) {
+			return true;
+		}
+
+		# Get a list of available locales.
+		$result = Shell::command( '/usr/bin/locale', '-a' )->execute();
+
+		if ( $result->getExitCode() != 0 ) {
+			return true;
+		}
+
+		$lines = $result->getStdout();
+		$lines = array_map( 'trim', explode( "\n", $lines ) );
+		$candidatesByLocale = [];
+		$candidatesByLang = [];
+		foreach ( $lines as $line ) {
+			if ( $line === '' ) {
+				continue;
+			}
+
+			if ( !preg_match( '/^([a-zA-Z]+)(_[a-zA-Z]+|)\.(utf8|UTF-8)(@[a-zA-Z_]*|)$/i', $line, $m ) ) {
+				continue;
+			}
+
+			list( , $lang, , , ) = $m;
+
+			$candidatesByLocale[$m[0]] = $m;
+			$candidatesByLang[$lang][] = $m;
+		}
+
+		# Try the current value of LANG.
+		if ( isset( $candidatesByLocale[getenv( 'LANG' )] ) ) {
+			$this->setVar( 'wgShellLocale', getenv( 'LANG' ) );
+
+			return true;
+		}
+
+		# Try the most common ones.
+		$commonLocales = [ 'C.UTF-8', 'en_US.UTF-8', 'en_US.utf8', 'de_DE.UTF-8', 'de_DE.utf8' ];
+		foreach ( $commonLocales as $commonLocale ) {
+			if ( isset( $candidatesByLocale[$commonLocale] ) ) {
+				$this->setVar( 'wgShellLocale', $commonLocale );
+
+				return true;
+			}
+		}
+
+		# Is there an available locale in the Wiki's language?
+		$wikiLang = $this->getVar( 'wgLanguageCode' );
+
+		if ( isset( $candidatesByLang[$wikiLang] ) ) {
+			$m = reset( $candidatesByLang[$wikiLang] );
+			$this->setVar( 'wgShellLocale', $m[0] );
+
+			return true;
+		}
+
+		# Are there any at all?
+		if ( count( $candidatesByLocale ) ) {
+			$m = reset( $candidatesByLocale );
+			$this->setVar( 'wgShellLocale', $m[0] );
+
+			return true;
+		}
+
+		# Give up.
+		return true;
+	}
+
+	/**
 	 * Environment check for the permissions of the uploads directory
 	 * @return bool
 	 */
@@ -1237,7 +1332,7 @@ abstract class Installer {
 			return Status::newGood( [] );
 		}
 
-		// @phan-suppress-next-line SecurityCheck-PathTraversal False positive
+		// @phan-suppress-next-line SecurityCheck-PathTraversal False positive T268920
 		$dh = opendir( $extDir );
 		$exts = [];
 		$status = new Status;
@@ -1313,7 +1408,6 @@ abstract class Installer {
 			$info += $jsonStatus->value;
 		}
 
-		// @phan-suppress-next-line SecurityCheckMulti
 		return Status::newGood( $info );
 	}
 
@@ -1491,7 +1585,6 @@ abstract class Installer {
 		 * but we're not opening that can of worms
 		 * @see https://phabricator.wikimedia.org/T28857
 		 */
-		// @phan-suppress-next-line SecurityCheck-PathTraversal
 		require "$IP/includes/DefaultSettings.php";
 
 		// phpcs:ignore MediaWiki.VariableAnalysis.UnusedGlobalVariables
@@ -1615,7 +1708,7 @@ abstract class Installer {
 	 * @param callable $startCB A callback array for the beginning of each step
 	 * @param callable $endCB A callback array for the end of each step
 	 *
-	 * @return Status[]
+	 * @return Status[] Array of Status objects
 	 */
 	public function performInstallation( $startCB, $endCB ) {
 		$installResults = [];
@@ -1718,10 +1811,9 @@ abstract class Installer {
 					$name, $status->getWikiText( null, null, $this->getVar( '_UserLang' ) ) );
 			}
 
-			$userGroupManager = MediaWikiServices::getInstance()->getUserGroupManager();
-			$userGroupManager->addUserToGroup( $user, 'sysop' );
-			$userGroupManager->addUserToGroup( $user, 'bureaucrat' );
-			$userGroupManager->addUserToGroup( $user, 'interface-admin' );
+			$user->addGroup( 'sysop' );
+			$user->addGroup( 'bureaucrat' );
+			$user->addGroup( 'interface-admin' );
 			if ( $this->getVar( '_AdminEmail' ) ) {
 				$user->setEmail( $this->getVar( '_AdminEmail' ) );
 			}
@@ -1742,53 +1834,32 @@ abstract class Installer {
 	 * @return Status
 	 */
 	private function subscribeToMediaWikiAnnounce() {
+		$params = [
+			'email' => $this->getVar( '_AdminEmail' ),
+			'language' => 'en',
+			'digest' => 0
+		];
+
+		// Mailman doesn't support as many languages as we do, so check to make
+		// sure their selected language is available
+		$myLang = $this->getVar( '_UserLang' );
+		if ( in_array( $myLang, $this->mediaWikiAnnounceLanguages ) ) {
+			$myLang = $myLang == 'pt-br' ? 'pt_BR' : $myLang; // rewrite to Mailman's pt_BR
+			$params['language'] = $myLang;
+		}
+
 		$status = Status::newGood();
-		$http = MediaWikiServices::getInstance()->getHttpRequestFactory();
-		if ( !$http->canMakeRequests() ) {
-			$status->warning( 'config-install-subscribe-fail',
-				wfMessage( 'config-install-subscribe-notpossible' ) );
-			return $status;
-		}
-
-		// Create subscription request
-		$params = [ 'email' => $this->getVar( '_AdminEmail' ) ];
-		$req = $http->create( self::MEDIAWIKI_ANNOUNCE_URL . 'anonymous_subscribe',
-			[ 'method' => 'POST', 'postData' => $params ], __METHOD__ );
-
-		// Add headers needed to pass Django's CSRF checks
-		$token = str_repeat( 'a', 64 );
-		$req->setHeader( 'Referer', self::MEDIAWIKI_ANNOUNCE_URL );
-		$req->setHeader( 'Cookie', "csrftoken=$token" );
-		$req->setHeader( 'X-CSRFToken', $token );
-
-		// Send subscription request
-		$reqStatus = $req->execute();
-		if ( !$reqStatus->isOK() ) {
-			$status->warning( 'config-install-subscribe-fail',
-				Status::wrap( $reqStatus )->getMessage() );
-			return $status;
-		}
-
-		// Was the request submitted successfully?
-		// The status message is displayed after a redirect, using Django's messages
-		// framework, so load the list summary page and look for the expected text.
-		// (Though parsing the cookie set by the framework may be possible, it isn't
-		// simple, since the format of the cookie has changed between versions.)
-		$checkReq = $http->create( self::MEDIAWIKI_ANNOUNCE_URL, [], __METHOD__ );
-		$checkReq->setCookieJar( $req->getCookieJar() );
-		if ( !$checkReq->execute()->isOK() ) {
-			$status->warning( 'config-install-subscribe-possiblefail' );
-			return $status;
-		}
-		$html = $checkReq->getContent();
-		if ( strpos( $html, 'Please check your inbox for further instructions' ) !== false ) {
-			// Success
-		} elseif ( strpos( $html, 'Member already subscribed' ) !== false ) {
-			$status->warning( 'config-install-subscribe-alreadysubscribed' );
-		} elseif ( strpos( $html, 'Subscription request already pending' ) !== false ) {
-			$status->warning( 'config-install-subscribe-alreadypending' );
+		if ( MWHttpRequest::canMakeRequests() ) {
+			$res = MWHttpRequest::factory(
+				$this->mediaWikiAnnounceUrl,
+				[ 'method' => 'POST', 'postData' => $params ],
+				__METHOD__
+			)->execute();
+			if ( !$res->isOK() ) {
+				$status->warning( 'config-install-subscribe-fail', $res->getMessage() );
+			}
 		} else {
-			$status->warning( 'config-install-subscribe-possiblefail' );
+			$status->warning( 'config-install-subscribe-notpossible' );
 		}
 		return $status;
 	}
@@ -1813,11 +1884,12 @@ abstract class Installer {
 				wfMessage( 'mainpagedocfooter' )->inContentLanguage()->text()
 			);
 
-			$status = $page->doUserEditContent(
+			$status = $page->doEditContent(
 				$content,
-				User::newSystemUser( 'MediaWiki default' ),
 				'',
-				EDIT_NEW
+				EDIT_NEW,
+				false,
+				User::newSystemUser( 'MediaWiki default' )
 			);
 		} catch ( Exception $e ) {
 			// using raw, because $wgShowExceptionDetails can not be set yet

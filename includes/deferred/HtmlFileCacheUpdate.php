@@ -18,8 +18,6 @@
  * @file
  */
 
-use MediaWiki\Cache\CacheKeyHelper;
-use MediaWiki\Page\PageIdentity;
 use Wikimedia\Assert\Assert;
 
 /**
@@ -29,14 +27,14 @@ use Wikimedia\Assert\Assert;
  * @since 1.35
  */
 class HtmlFileCacheUpdate implements DeferrableUpdate, MergeableUpdate {
-	/** @var PageIdentity[] List of pages */
-	private $pages;
+	/** @var string[] List of page prefixed DB keys */
+	private $prefixedDbKeys = [];
 
 	/**
-	 * @param PageIdentity[] $pages List of pages
+	 * @param string[] $prefixedDbKeys List of page prefixed DB keys
 	 */
-	private function __construct( array $pages ) {
-		$this->pages = $pages;
+	public function __construct( array $prefixedDbKeys ) {
+		$this->prefixedDbKeys = $prefixedDbKeys;
 	}
 
 	public function merge( MergeableUpdate $update ) {
@@ -44,39 +42,25 @@ class HtmlFileCacheUpdate implements DeferrableUpdate, MergeableUpdate {
 		Assert::parameterType( __CLASS__, $update, '$update' );
 		'@phan-var self $update';
 
-		$this->pages = array_merge( $this->pages, $update->pages );
+		$this->prefixedDbKeys = array_merge( $this->prefixedDbKeys, $update->prefixedDbKeys );
 	}
 
 	/**
-	 * @deprecated since 1.37 use newFromPages() instead
-	 * @param iterable<PageIdentity> $pages PageIdentity instances
-	 *
+	 * @param Traversable|Title[] $titles Array or iterator of Title instances
 	 * @return HtmlFileCacheUpdate
 	 */
-	public static function newFromTitles( $pages ) {
-		wfDeprecated( __METHOD__, '1.37' );
-		return self::newFromPages( $pages );
-	}
-
-	/**
-	 * @since 1.37
-	 * @param iterable<PageIdentity> $pages PageIdentity instances
-	 *
-	 * @return HtmlFileCacheUpdate
-	 */
-	public static function newFromPages( $pages ) {
-		$pagesByKey = [];
-		foreach ( $pages as $pg ) {
-			$key = CacheKeyHelper::getKeyForPage( $pg );
-			$pagesByKey[$key] = $pg;
+	public static function newFromTitles( $titles ) {
+		$prefixedDbKeys = [];
+		foreach ( $titles as $title ) {
+			$prefixedDbKeys[] = $title->getPrefixedDBkey();
 		}
 
-		return new self( $pagesByKey );
+		return new self( $prefixedDbKeys );
 	}
 
 	public function doUpdate() {
-		foreach ( $this->pages as $pg ) {
-			HTMLFileCache::clearFileCache( $pg );
+		foreach ( array_unique( $this->prefixedDbKeys ) as $prefixedDbKey ) {
+			HTMLFileCache::clearFileCache( $prefixedDbKey );
 		}
 	}
 }

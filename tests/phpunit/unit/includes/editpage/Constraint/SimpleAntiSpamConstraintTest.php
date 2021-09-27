@@ -20,7 +20,6 @@
 
 use MediaWiki\EditPage\Constraint\IEditConstraint;
 use MediaWiki\EditPage\Constraint\SimpleAntiSpamConstraint;
-use MediaWiki\User\UserIdentityValue;
 use Psr\Log\LogLevel;
 use Psr\Log\NullLogger;
 
@@ -36,7 +35,7 @@ class SimpleAntiSpamConstraintTest extends MediaWikiUnitTestCase {
 
 	public function testPass() {
 		$logger = new NullLogger();
-		$user = new UserIdentityValue( 5, 'UserNameGoesHere' );
+		$user = $this->createMock( User::class );
 		$title = $this->createMock( Title::class );
 
 		$constraint = new SimpleAntiSpamConstraint(
@@ -50,7 +49,10 @@ class SimpleAntiSpamConstraintTest extends MediaWikiUnitTestCase {
 
 	public function testFailure() {
 		$logger = new TestLogger( true );
-		$user = new UserIdentityValue( 5, 'UserNameGoesHere' );
+		$user = $this->createMock( User::class );
+		$user->expects( $this->once() )
+			->method( 'getName' )
+			->willReturn( 'UserNameGoesHere' );
 		$title = $this->createMock( Title::class );
 		$title->expects( $this->once() )
 			->method( 'getPrefixedText' )

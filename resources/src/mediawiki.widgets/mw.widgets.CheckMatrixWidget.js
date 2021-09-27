@@ -141,7 +141,7 @@
 		mw.widgets.CheckMatrixWidget.parent.prototype.setDisabled.call( this, isDisabled );
 
 		// setDisabled sometimes gets called before the widget is ready
-		if ( this.checkboxes ) {
+		if ( this.checkboxes && Object.keys( this.checkboxes ).length > 0 ) {
 			// Propagate to all checkboxes and update their disabled state
 			// eslint-disable-next-line no-jquery/no-each-util
 			$.each( this.checkboxes, function ( name, checkbox ) {

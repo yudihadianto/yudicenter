@@ -43,7 +43,6 @@ abstract class FileBackendStoreOpHandle {
 	 * Close all open file handles
 	 */
 	public function closeResources() {
-		// @phan-suppress-next-line PhanPluginUseReturnValueInternalKnown
 		array_map( 'fclose', $this->resourcesToClose );
 	}
 }

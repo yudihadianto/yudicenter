@@ -90,7 +90,7 @@ class UpdateSearchIndex extends Maintenance {
 
 		$wgDisableSearchUpdate = false;
 
-		$dbw = $this->getDB( DB_PRIMARY );
+		$dbw = $this->getDB( DB_MASTER );
 
 		$this->output( "Updating searchindex between $start and $end\n" );
 

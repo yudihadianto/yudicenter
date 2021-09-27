@@ -20,8 +20,7 @@
  */
 
 use MediaWiki\Preferences\MultiUsernameFilter;
-use MediaWiki\User\UserIdentity;
-use MediaWiki\User\UserIdentityLookup;
+use MediaWiki\User\UserFactory;
 use MediaWiki\User\UserOptionsManager;
 
 /**
@@ -34,7 +33,7 @@ class SpecialMute extends FormSpecialPage {
 
 	private const PAGE_NAME = 'Mute';
 
-	/** @var UserIdentity|null */
+	/** @var User|null */
 	private $target;
 
 	/** @var int */
@@ -46,23 +45,21 @@ class SpecialMute extends FormSpecialPage {
 	/** @var UserOptionsManager */
 	private $userOptionsManager;
 
-	/** @var UserIdentityLookup */
-	private $userIdentityLookup;
+	/** @var UserFactory */
+	private $userFactory;
 
 	/**
-	 * @param CentralIdLookup $centralIdLookup
 	 * @param UserOptionsManager $userOptionsManager
-	 * @param UserIdentityLookup $userIdentityLookup
+	 * @param UserFactory $userFactory
 	 */
 	public function __construct(
-		CentralIdLookup $centralIdLookup,
 		UserOptionsManager $userOptionsManager,
-		UserIdentityLookup $userIdentityLookup
+		UserFactory $userFactory
 	) {
 		parent::__construct( self::PAGE_NAME, '', false );
-		$this->centralIdLookup = $centralIdLookup;
+		$this->centralIdLookup = CentralIdLookup::factory();
 		$this->userOptionsManager = $userOptionsManager;
-		$this->userIdentityLookup = $userIdentityLookup;
+		$this->userFactory = $userFactory;
 	}
 
 	/**
@@ -137,9 +134,9 @@ class SpecialMute extends FormSpecialPage {
 	}
 
 	/**
-	 * @return UserIdentity|null
+	 * @return User|null $target
 	 */
-	private function getTarget(): ?UserIdentity {
+	public function getTarget(): ?User {
 		return $this->target;
 	}
 
@@ -184,10 +181,9 @@ class SpecialMute extends FormSpecialPage {
 	 * @inheritDoc
 	 */
 	protected function getForm() {
-		$target = $this->getTarget();
 		$form = parent::getForm();
 		$form->setId( 'mw-specialmute-form' );
-		$form->setHeaderText( $this->msg( 'specialmute-header', $target ? $target->getName() : '' )->parse() );
+		$form->setHeaderText( $this->msg( 'specialmute-header', $this->target )->parse() );
 		$form->setSubmitTextMsg( 'specialmute-submit' );
 		$form->setSubmitID( 'save' );
 
@@ -201,7 +197,7 @@ class SpecialMute extends FormSpecialPage {
 		$config = $this->getConfig();
 		$fields = [];
 		if (
-			$config->get( 'EnableUserEmailMuteList' ) &&
+			$config->get( 'EnableUserEmailBlacklist' ) &&
 			$config->get( 'EnableUserEmail' ) &&
 			$this->getUser()->getEmailAuthenticationTimestamp()
 		) {
@@ -215,8 +211,7 @@ class SpecialMute extends FormSpecialPage {
 			];
 		}
 
-		$legacyUser = $this->getTarget() ? User::newFromIdentity( $this->getTarget() ) : null;
-		$this->getHookRunner()->onSpecialMuteModifyFormFields( $legacyUser, $this->getUser(), $fields );
+		$this->getHookRunner()->onSpecialMuteModifyFormFields( $this->getTarget(), $this->getUser(), $fields );
 
 		if ( count( $fields ) == 0 ) {
 			throw new ErrorPageError( 'specialmute', 'specialmute-error-no-options' );
@@ -231,9 +226,9 @@ class SpecialMute extends FormSpecialPage {
 	private function loadTarget( $username ) {
 		$target = null;
 		if ( $username !== null ) {
-			$target = $this->userIdentityLookup->getUserIdentityByName( $username );
+			$target = $this->userFactory->newFromName( $username );
 		}
-		if ( !$target || !$target->isRegistered() ) {
+		if ( !$target || !$target->getId() ) {
 			throw new ErrorPageError( 'specialmute', 'specialmute-error-invalid-user' );
 		} else {
 			$this->target = $target;

@@ -145,7 +145,7 @@ class AjaxDispatcher {
 
 					// Make sure DB commit succeeds before sending a response
 					$lbFactory = MediaWikiServices::getInstance()->getDBLoadBalancerFactory();
-					$lbFactory->commitPrimaryChanges( __METHOD__ );
+					$lbFactory->commitMasterChanges( __METHOD__ );
 
 					$result->sendHeaders();
 					$result->printText();

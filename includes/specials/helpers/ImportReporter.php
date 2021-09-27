@@ -20,7 +20,6 @@
 
 use MediaWiki\HookContainer\ProtectedHookAccessorTrait;
 use MediaWiki\MediaWikiServices;
-use MediaWiki\Page\PageIdentity;
 
 /**
  * Reporting callback
@@ -29,10 +28,10 @@ use MediaWiki\Page\PageIdentity;
 class ImportReporter extends ContextSource {
 	use ProtectedHookAccessorTrait;
 
-	private $reason;
+	private $reason = false;
 	private $logTags = [];
-	private $mOriginalLogCallback;
-	private $mOriginalPageOutCallback;
+	private $mOriginalLogCallback = null;
+	private $mOriginalPageOutCallback = null;
 	private $mLogItemCount = 0;
 	private $mPageCount;
 	private $mIsUpload;
@@ -84,18 +83,18 @@ class ImportReporter extends ContextSource {
 	}
 
 	/**
-	 * @param ?PageIdentity $pageIdentity
+	 * @param Title $title
 	 * @param ForeignTitle $foreignTitle
 	 * @param int $revisionCount
 	 * @param int $successCount
 	 * @param array $pageInfo
 	 * @return void
 	 */
-	public function reportPage( ?PageIdentity $pageIdentity, $foreignTitle, $revisionCount,
+	public function reportPage( $title, $foreignTitle, $revisionCount,
 			$successCount, $pageInfo ) {
 		call_user_func_array( $this->mOriginalPageOutCallback, func_get_args() );
 
-		if ( $pageIdentity === null ) {
+		if ( $title === null ) {
 			# Invalid or non-importable title; a notice is already displayed
 			return;
 		}
@@ -107,7 +106,7 @@ class ImportReporter extends ContextSource {
 			// <bdi> prevents jumbling of the versions count
 			// in RTL wikis in case the page title is LTR
 			$this->getOutput()->addHTML(
-				"<li>" . $linkRenderer->makeLink( $pageIdentity ) . " " .
+				"<li>" . $linkRenderer->makeLink( $title ) . " " .
 					"<bdi>" .
 					$this->msg( 'import-revision-count' )->numParams( $successCount )->escaped() .
 					"</bdi>" .
@@ -138,11 +137,12 @@ class ImportReporter extends ContextSource {
 			}
 
 			$comment = CommentStoreComment::newUnsavedComment( $detail );
-			$dbw = wfGetDB( DB_PRIMARY );
+			$dbw = wfGetDB( DB_MASTER );
 			$revStore = $services->getRevisionStore();
+			$latest = $title->getLatestRevID();
 			$nullRevRecord = $revStore->newNullRevision(
 				$dbw,
-				$pageIdentity,
+				$title,
 				$comment,
 				true,
 				$this->getUser()
@@ -152,21 +152,33 @@ class ImportReporter extends ContextSource {
 			if ( $nullRevRecord !== null ) {
 				$inserted = $revStore->insertRevisionOn( $nullRevRecord, $dbw );
 				$nullRevId = $inserted->getId();
-				$parentRevId = $inserted->getParentId();
-				$page = $services->getWikiPageFactory()->newFromTitle( $pageIdentity );
+				$page = $services->getWikiPageFactory()->newFromTitle( $title );
 
 				// Update page record
 				$page->updateRevisionOn( $dbw, $inserted );
 
 				$fakeTags = [];
 				$this->getHookRunner()->onRevisionFromEditComplete(
-					$page, $inserted, $parentRevId, $this->getUser(), $fakeTags
+					$page, $inserted, $latest, $this->getUser(), $fakeTags
 				);
+
+				// Hook is hard deprecated since 1.35
+				if ( $this->getHookContainer()->isRegistered( 'NewRevisionFromEditComplete' ) ) {
+					// Only create Revision object if needed
+					$nullRevision = new Revision( $inserted );
+					$this->getHookRunner()->onNewRevisionFromEditComplete(
+						$page,
+						$nullRevision,
+						$latest,
+						$this->getUser(),
+						$fakeTags
+					);
+				}
 			}
 
 			// Create the import log entry
 			$logEntry = new ManualLogEntry( 'import', $action );
-			$logEntry->setTarget( TitleValue::castPageToLinkTarget( $pageIdentity ) );
+			$logEntry->setTarget( $title );
 			$logEntry->setComment( $this->reason );
 			$logEntry->setPerformer( $this->getUser() );
 			$logEntry->setParameters( $logParams );
@@ -178,7 +190,7 @@ class ImportReporter extends ContextSource {
 			$logid = $logEntry->insert();
 			$logEntry->publish( $logid );
 		} else {
-			$this->getOutput()->addHTML( "<li>" . $linkRenderer->makeKnownLink( $pageIdentity ) . " " .
+			$this->getOutput()->addHTML( "<li>" . $linkRenderer->makeKnownLink( $title ) . " " .
 				$this->msg( 'import-nonewrevisions' )->escaped() . "</li>\n" );
 		}
 	}

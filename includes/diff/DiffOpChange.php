@@ -37,8 +37,8 @@ class DiffOpChange extends DiffOp {
 	public $type = 'change';
 
 	/**
-	 * @param string[] $orig
-	 * @param string[] $closing
+	 * @param string[]|false $orig
+	 * @param string[]|false $closing
 	 */
 	public function __construct( $orig, $closing ) {
 		$this->orig = $orig;

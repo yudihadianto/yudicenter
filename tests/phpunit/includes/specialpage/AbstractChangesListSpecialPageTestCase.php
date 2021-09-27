@@ -15,7 +15,7 @@ abstract class AbstractChangesListSpecialPageTestCase extends MediaWikiIntegrati
 
 	protected $oldPatrollersGroup;
 
-	protected function setUp(): void {
+	protected function setUp() : void {
 		global $wgGroupPermissions;
 
 		parent::setUp();
@@ -33,7 +33,7 @@ abstract class AbstractChangesListSpecialPageTestCase extends MediaWikiIntegrati
 		];
 
 		# setup the ChangesListSpecialPage (or subclass) object
-		$this->changesListSpecialPage = $this->getPageAccessWrapper();
+		$this->changesListSpecialPage = $this->getPage();
 		$context = $this->changesListSpecialPage->getContext();
 		$context = new DerivativeContext( $context );
 		$context->setUser( $this->getTestUser( [ 'patrollers' ] )->getUser() );
@@ -41,12 +41,9 @@ abstract class AbstractChangesListSpecialPageTestCase extends MediaWikiIntegrati
 		$this->changesListSpecialPage->registerFilters();
 	}
 
-	/**
-	 * @return ChangesListSpecialPage
-	 */
-	abstract protected function getPageAccessWrapper();
+	abstract protected function getPage();
 
-	protected function tearDown(): void {
+	protected function tearDown() : void {
 		global $wgGroupPermissions;
 
 		if ( $this->oldPatrollersGroup !== null ) {
@@ -118,11 +115,7 @@ abstract class AbstractChangesListSpecialPageTestCase extends MediaWikiIntegrati
 
 		// Give users patrol permissions so we can test that.
 		$user = $this->getTestSysop()->getUser();
-		$this->getServiceContainer()->getUserOptionsManager()->setOption(
-			$user,
-			'rcenhancedfilters-disable',
-			$rcfilters ? 0 : 1
-		);
+		$user->setOption( 'rcenhancedfilters-disable', $rcfilters ? 0 : 1 );
 		$ctx = new RequestContext();
 		$ctx->setUser( $user );
 

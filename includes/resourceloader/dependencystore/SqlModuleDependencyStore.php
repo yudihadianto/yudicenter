@@ -69,14 +69,8 @@ class SqlModuleDependencyStore extends DependencyStore {
 	}
 
 	public function storeMulti( $type, array $dataByEntity, $ttl ) {
-		// Avoid opening a primary DB connection when it's not needed.
-		// ResourceLoader::saveModuleDependenciesInternal calls this method unconditionally
-		// with empty values most of the time.
-		if ( !$dataByEntity ) {
-			return;
-		}
 		try {
-			$dbw = $this->getPrimaryDB();
+			$dbw = $this->getMasterDb();
 
 			$depsBlobByEntity = $this->fetchDependencyBlobs( array_keys( $dataByEntity ), $dbw );
 
@@ -121,14 +115,8 @@ class SqlModuleDependencyStore extends DependencyStore {
 	}
 
 	public function remove( $type, $entities ) {
-		// Avoid opening a primary DB connection when it's not needed.
-		// ResourceLoader::saveModuleDependenciesInternal calls this method unconditionally
-		// with empty values most of the time.
-		if ( !$entities ) {
-			return;
-		}
 		try {
-			$dbw = $this->getPrimaryDB();
+			$dbw = $this->getMasterDb();
 
 			$disjunctionConds = [];
 			foreach ( (array)$entities as $entity ) {
@@ -205,9 +193,9 @@ class SqlModuleDependencyStore extends DependencyStore {
 	/**
 	 * @return DBConnRef
 	 */
-	private function getPrimaryDb() {
+	private function getMasterDb() {
 		return $this->lb
-			->getConnectionRef( DB_PRIMARY, [], false, ( $this->lb )::CONN_TRX_AUTOCOMMIT );
+			->getConnectionRef( DB_MASTER, [], false, ( $this->lb )::CONN_TRX_AUTOCOMMIT );
 	}
 
 	/**

@@ -11,7 +11,7 @@ use Wikimedia\TestingAccessWrapper;
  */
 class MessageCacheTest extends MediaWikiLangTestCase {
 
-	protected function setUp(): void {
+	protected function setUp() : void {
 		parent::setUp();
 		$this->configureLanguages();
 		MediaWikiServices::getInstance()->getMessageCache()->enable();
@@ -74,8 +74,11 @@ class MessageCacheTest extends MediaWikiLangTestCase {
 		$wikiPage = new WikiPage( $title );
 		$content = ContentHandler::makeContent( $content, $title );
 
-		$updater = $wikiPage->newPageUpdater( $this->getTestSysop()->getUser() )
-			->setContent( SlotRecord::MAIN, $content );
+		$updater = $wikiPage->newPageUpdater( $this->getTestSysop()->getUser() );
+		$updater->setContent(
+			SlotRecord::MAIN,
+			$content
+		);
 		$summary = CommentStoreComment::newUnsavedComment( "$lang translation test case" );
 		$inserted = $updater->saveRevision( $summary );
 
@@ -117,7 +120,7 @@ class MessageCacheTest extends MediaWikiLangTestCase {
 		$uckey = MediaWikiServices::getInstance()->getContentLanguage()->ucfirst( $message );
 		$oldText = $messageCache->get( $message ); // "Ausführen"
 
-		$dbw = wfGetDB( DB_PRIMARY );
+		$dbw = wfGetDB( DB_MASTER );
 		$dbw->startAtomic( __METHOD__ ); // simulate request and block deferred updates
 		$messageCache->replace( $uckey, 'Allez!' );
 		$this->assertEquals( 'Allez!',

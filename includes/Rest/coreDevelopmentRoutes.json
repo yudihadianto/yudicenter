@@ -42,7 +42,7 @@
 			"MainConfig",
 			"RevisionLookup",
 			"TitleFormatter",
-			"PageStore"
+			"TitleFactory"
 		],
 		"format": "source"
 	},
@@ -53,9 +53,10 @@
 			"MainConfig",
 			"RevisionLookup",
 			"TitleFormatter",
+			"TitleFactory",
 			"ParserCacheFactory",
-			"GlobalIdGenerator",
-			"PageStore"
+			"WikiPageFactory",
+			"GlobalIdGenerator"
 		],
 		"format": "html"
 	},
@@ -66,9 +67,10 @@
 			"MainConfig",
 			"RevisionLookup",
 			"TitleFormatter",
+			"TitleFactory",
 			"ParserCacheFactory",
-			"GlobalIdGenerator",
-			"PageStore"
+			"WikiPageFactory",
+			"GlobalIdGenerator"
 		],
 		"format": "with_html"
 	}

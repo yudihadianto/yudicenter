@@ -166,7 +166,7 @@ class LegacyLoggerTest extends MediaWikiIntegrationTestCase {
 			],
 		];
 
-		if ( class_exists( \Monolog\Logger::class ) ) {
+		if ( class_exists( '\Monolog\Logger' ) ) {
 			$tests[] = [
 				\Monolog\Logger::INFO,
 				$dest + [ 'level' => LogLevel::INFO ],

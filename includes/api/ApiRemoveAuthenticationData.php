@@ -22,6 +22,7 @@
 
 use MediaWiki\Auth\AuthenticationRequest;
 use MediaWiki\Auth\AuthManager;
+use MediaWiki\MediaWikiServices;
 
 /**
  * Remove authentication data from AuthManager
@@ -33,19 +34,7 @@ class ApiRemoveAuthenticationData extends ApiBase {
 	private $authAction;
 	private $operation;
 
-	/** @var AuthManager */
-	private $authManager;
-
-	/**
-	 * @param ApiMain $main
-	 * @param string $action
-	 * @param AuthManager $authManager
-	 */
-	public function __construct(
-		ApiMain $main,
-		$action,
-		AuthManager $authManager
-	) {
+	public function __construct( ApiMain $main, $action ) {
 		parent::__construct( $main, $action );
 
 		$this->authAction = $action === 'unlinkaccount'
@@ -54,8 +43,6 @@ class ApiRemoveAuthenticationData extends ApiBase {
 		$this->operation = $action === 'unlinkaccount'
 			? 'UnlinkAccount'
 			: 'RemoveCredentials';
-
-		$this->authManager = $authManager;
 	}
 
 	public function execute() {
@@ -64,18 +51,19 @@ class ApiRemoveAuthenticationData extends ApiBase {
 		}
 
 		$params = $this->extractRequestParams();
+		$manager = MediaWikiServices::getInstance()->getAuthManager();
 
 		// Check security-sensitive operation status
-		ApiAuthManagerHelper::newForModule( $this, $this->authManager )
+		ApiAuthManagerHelper::newForModule( $this, $manager )
 			->securitySensitiveOperation( $this->operation );
 
 		// Fetch the request. No need to load from the request, so don't use
 		// ApiAuthManagerHelper's method.
 		$remove = $this->authAction === AuthManager::ACTION_REMOVE
-			? array_fill_keys( $this->getConfig()->get( 'RemoveCredentialsBlacklist' ), true )
+			? array_flip( $this->getConfig()->get( 'RemoveCredentialsBlacklist' ) )
 			: [];
 		$reqs = array_filter(
-			$this->authManager->getAuthenticationRequests( $this->authAction, $this->getUser() ),
+			$manager->getAuthenticationRequests( $this->authAction, $this->getUser() ),
 			static function ( AuthenticationRequest $req ) use ( $params, $remove ) {
 				return $req->getUniqueId() === $params['request'] &&
 					!isset( $remove[get_class( $req )] );
@@ -87,12 +75,12 @@ class ApiRemoveAuthenticationData extends ApiBase {
 		$req = reset( $reqs );
 
 		// Perform the removal
-		$status = $this->authManager->allowsAuthenticationDataChange( $req, true );
+		$status = $manager->allowsAuthenticationDataChange( $req, true );
 		$this->getHookRunner()->onChangeAuthenticationDataAudit( $req, $status );
 		if ( !$status->isGood() ) {
 			$this->dieStatus( $status );
 		}
-		$this->authManager->changeAuthenticationData( $req );
+		$manager->changeAuthenticationData( $req );
 
 		$this->getResult()->addValue( null, $this->getModuleName(), [ 'status' => 'success' ] );
 	}

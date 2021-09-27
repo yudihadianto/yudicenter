@@ -23,13 +23,9 @@
 
 use MediaWiki\Logger\LoggerFactory;
 use MediaWiki\MediaWikiServices;
-use MediaWiki\Permissions\Authority;
 use MediaWiki\Revision\RevisionRecord;
 use MediaWiki\Revision\RevisionStore;
-use MediaWiki\Storage\BlobStore;
-use MediaWiki\User\UserIdentity;
-use MediaWiki\User\UserIdentityValue;
-use Wikimedia\Rdbms\Blob;
+use Wikimedia\AtEase\AtEase;
 use Wikimedia\Rdbms\Database;
 use Wikimedia\Rdbms\IDatabase;
 use Wikimedia\Rdbms\IResultWrapper;
@@ -61,21 +57,9 @@ use Wikimedia\Rdbms\IResultWrapper;
  * @ingroup FileAbstraction
  */
 class LocalFile extends File {
-	private const VERSION = 13; // cache version
+	private const VERSION = 12; // cache version
 
 	private const CACHE_FIELD_MAX_LEN = 1000;
-
-	/** @var string Metadata serialization: empty string. This is a compact non-legacy format. */
-	private const MDS_EMPTY = 'empty';
-
-	/** @var string Metadata serialization: some other string */
-	private const MDS_LEGACY = 'legacy';
-
-	/** @var string Metadata serialization: PHP serialize() */
-	private const MDS_PHP = 'php';
-
-	/** @var string Metadata serialization: JSON */
-	private const MDS_JSON = 'json';
 
 	/** @var bool Does the file exist on disk? (loadFromXxx) */
 	protected $fileExists;
@@ -98,27 +82,8 @@ class LocalFile extends File {
 	/** @var int Size in bytes (loadFromXxx) */
 	protected $size;
 
-	/** @var array Unserialized metadata */
-	protected $metadataArray = [];
-
-	/**
-	 * One of the MDS_* constants, giving the format of the metadata as stored
-	 * in the DB, or null if the data was not loaded from the DB.
-	 *
-	 * @var string|null
-	 */
-	protected $metadataSerializationFormat;
-
-	/** @var string[] Map of metadata item name to blob address */
-	protected $metadataBlobs = [];
-
-	/**
-	 * Map of metadata item name to blob address for items that exist but
-	 * have not yet been loaded into $this->metadataArray
-	 *
-	 * @var string[]
-	 */
-	protected $unloadedMetadataBlobs = [];
+	/** @var string Handler-specific metadata */
+	protected $metadata;
 
 	/** @var string SHA-1 base 36 content hash */
 	protected $sha1;
@@ -150,7 +115,7 @@ class LocalFile extends File {
 	/** @var string Upload timestamp */
 	private $timestamp;
 
-	/** @var UserIdentity|null Uploader */
+	/** @var User Uploader */
 	private $user;
 
 	/** @var string Description of current revision of the file */
@@ -165,7 +130,7 @@ class LocalFile extends File {
 	/** @var bool Whether the row was scheduled to upgrade on load */
 	private $upgrading;
 
-	/** @var int If >= 1 the image row is locked */
+	/** @var bool True if the image row is locked */
 	private $locked;
 
 	/** @var bool True if the image row is locked with a lock initiated transaction */
@@ -249,11 +214,6 @@ class LocalFile extends File {
 	/**
 	 * Return the tables, fields, and join conditions to be selected to create
 	 * a new localfile object.
-	 *
-	 * Since 1.34, img_user and img_user_text have not been present in the
-	 * database, but they continue to be available in query results as
-	 * aliases.
-	 *
 	 * @since 1.31
 	 * @stable to override
 	 *
@@ -266,11 +226,9 @@ class LocalFile extends File {
 	 */
 	public static function getQueryInfo( array $options = [] ) {
 		$commentQuery = MediaWikiServices::getInstance()->getCommentStore()->getJoin( 'img_description' );
+		$actorQuery = ActorMigration::newMigration()->getJoin( 'img_user' );
 		$ret = [
-			'tables' => [
-				'image',
-				'image_actor' => 'actor'
-			] + $commentQuery['tables'],
+			'tables' => [ 'image' ] + $commentQuery['tables'] + $actorQuery['tables'],
 			'fields' => [
 				'img_name',
 				'img_size',
@@ -283,13 +241,8 @@ class LocalFile extends File {
 				'img_minor_mime',
 				'img_timestamp',
 				'img_sha1',
-				'img_actor',
-				'img_user' => 'image_actor.actor_user',
-				'img_user_text' => 'image_actor.actor_name',
-			] + $commentQuery['fields'],
-			'joins' => [
-				'image_actor' => [ 'JOIN', 'actor_id=img_actor' ]
-			] + $commentQuery['joins'],
+			] + $commentQuery['fields'] + $actorQuery['fields'],
+			'joins' => $commentQuery['joins'] + $actorQuery['joins'],
 		];
 
 		if ( in_array( 'omit-nonlazy', $options, true ) ) {
@@ -297,8 +250,7 @@ class LocalFile extends File {
 			$ret['fields'] = [];
 		}
 		if ( !in_array( 'omit-lazy', $options, true ) ) {
-			// Note: Keep this in sync with self::getLazyCacheFields() and
-			// self::loadExtraFromDB()
+			// Note: Keep this in sync with self::getLazyCacheFields()
 			$ret['fields'][] = 'img_metadata';
 		}
 
@@ -315,6 +267,7 @@ class LocalFile extends File {
 	public function __construct( $title, $repo ) {
 		parent::__construct( $title, $repo );
 
+		$this->metadata = '';
 		$this->historyLine = 0;
 		$this->historyRes = null;
 		$this->dataLoaded = false;
@@ -381,32 +334,17 @@ class LocalFile extends File {
 						$cacheVal[$field] = $this->$field;
 					}
 				}
-				if ( $this->user ) {
-					$cacheVal['user'] = $this->user->getId();
-					$cacheVal['user_text'] = $this->user->getName();
-				}
-
-				// Don't cache metadata items stored as blobs, since they tend to be large
-				if ( $this->metadataBlobs ) {
-					$cacheVal['metadata'] = array_diff_key(
-						$this->metadataArray, $this->metadataBlobs );
-					// Save the blob addresses
-					$cacheVal['metadataBlobs'] = $this->metadataBlobs;
-				} else {
-					$cacheVal['metadata'] = $this->metadataArray;
-				}
+				$cacheVal['user'] = $this->user ? $this->user->getId() : 0;
+				$cacheVal['user_text'] = $this->user ? $this->user->getName() : '';
 
 				// Strip off excessive entries from the subset of fields that can become large.
-				// If the cache value gets too large and might not fit in the cache,
-				// causing repeat database queries for each access to the file.
+				// If the cache value gets to large it will not fit in memcached and nothing will
+				// get cached at all, causing master queries for any file access.
 				foreach ( $this->getLazyCacheFields( '' ) as $field ) {
 					if ( isset( $cacheVal[$field] )
-						&& strlen( serialize( $cacheVal[$field] ) ) > 100 * 1024
+						&& strlen( $cacheVal[$field] ) > 100 * 1024
 					) {
 						unset( $cacheVal[$field] ); // don't let the value get too big
-						if ( $field === 'metadata' ) {
-							unset( $cacheVal['metadataBlobs'] );
-						}
 					}
 				}
 
@@ -442,7 +380,7 @@ class LocalFile extends File {
 			return;
 		}
 
-		$this->repo->getPrimaryDB()->onTransactionPreCommitOrIdle(
+		$this->repo->getMasterDB()->onTransactionPreCommitOrIdle(
 			static function () use ( $key ) {
 				MediaWikiServices::getInstance()->getMainWANObjectCache()->delete( $key );
 			},
@@ -452,13 +390,9 @@ class LocalFile extends File {
 
 	/**
 	 * Load metadata from the file itself
-	 *
-	 * @internal
-	 * @param string|null $path The path or virtual URL to load from, or null
-	 * to use the previously stored file.
 	 */
-	public function loadFromFile( $path = null ) {
-		$props = $this->repo->getFileProps( $path ?? $this->getVirtualUrl() );
+	protected function loadFromFile() {
+		$props = $this->repo->getFileProps( $this->getVirtualUrl() );
 		$this->setProps( $props );
 	}
 
@@ -481,7 +415,7 @@ class LocalFile extends File {
 		// and self::loadFromCache() for the caching, and self::setProps() for
 		// populating the object from an array of data.
 		return [ 'size', 'width', 'height', 'bits', 'media_type',
-			'major_mime', 'minor_mime', 'timestamp', 'sha1', 'description' ];
+			'major_mime', 'minor_mime', 'metadata', 'timestamp', 'sha1', 'description' ];
 	}
 
 	/**
@@ -515,7 +449,7 @@ class LocalFile extends File {
 		$this->extraDataLoaded = true;
 
 		$dbr = ( $flags & self::READ_LATEST )
-			? $this->repo->getPrimaryDB()
+			? $this->repo->getMasterDB()
 			: $this->repo->getReplicaDB();
 
 		$fileQuery = static::getQueryInfo();
@@ -550,16 +484,14 @@ class LocalFile extends File {
 		# Unconditionally set loaded=true, we don't want the accessors constantly rechecking
 		$this->extraDataLoaded = true;
 
-		$db = $this->repo->getReplicaDB();
-		$fieldMap = $this->loadExtraFieldsWithTimestamp( $db, $fname );
+		$fieldMap = $this->loadExtraFieldsWithTimestamp( $this->repo->getReplicaDB(), $fname );
 		if ( !$fieldMap ) {
-			$db = $this->repo->getPrimaryDB();
-			$fieldMap = $this->loadExtraFieldsWithTimestamp( $db, $fname );
+			$fieldMap = $this->loadExtraFieldsWithTimestamp( $this->repo->getMasterDB(), $fname );
 		}
 
 		if ( $fieldMap ) {
-			if ( isset( $fieldMap['metadata'] ) ) {
-				$this->loadMetadataFromDbFieldValue( $db, $fieldMap['metadata'] );
+			foreach ( $fieldMap as $name => $value ) {
+				$this->$name = $value;
 			}
 		} else {
 			throw new MWException( "Could not find data for image '{$this->getName()}'." );
@@ -607,6 +539,10 @@ class LocalFile extends File {
 			}
 		}
 
+		if ( isset( $fieldMap['metadata'] ) ) {
+			$fieldMap['metadata'] = $this->repo->getReplicaDB()->decodeBlob( $fieldMap['metadata'] );
+		}
+
 		return $fieldMap;
 	}
 
@@ -634,87 +570,68 @@ class LocalFile extends File {
 	}
 
 	/**
+	 * Decode a row from the database (either object or array) to an array
+	 * with timestamps and MIME types decoded, and the field prefix removed.
+	 * @param stdClass $row
+	 * @param string $prefix
+	 * @throws MWException
+	 * @return array
+	 */
+	private function decodeRow( $row, $prefix = 'img_' ) {
+		$decoded = $this->unprefixRow( $row, $prefix );
+
+		$decoded['description'] = MediaWikiServices::getInstance()->getCommentStore()
+			->getComment( 'description', (object)$decoded )->text;
+
+		$decoded['user'] = User::newFromAnyId(
+			$decoded['user'] ?? null,
+			$decoded['user_text'] ?? null,
+			$decoded['actor'] ?? null
+		);
+		unset( $decoded['user_text'], $decoded['actor'] );
+
+		$decoded['timestamp'] = wfTimestamp( TS_MW, $decoded['timestamp'] );
+
+		$decoded['metadata'] = $this->repo->getReplicaDB()->decodeBlob( $decoded['metadata'] );
+
+		if ( empty( $decoded['major_mime'] ) ) {
+			$decoded['mime'] = 'unknown/unknown';
+		} else {
+			if ( !$decoded['minor_mime'] ) {
+				$decoded['minor_mime'] = 'unknown';
+			}
+			$decoded['mime'] = $decoded['major_mime'] . '/' . $decoded['minor_mime'];
+		}
+
+		// Trim zero padding from char/binary field
+		$decoded['sha1'] = rtrim( $decoded['sha1'], "\0" );
+
+		// Normalize some fields to integer type, per their database definition.
+		// Use unary + so that overflows will be upgraded to double instead of
+		// being trucated as with intval(). This is important to allow >2GB
+		// files on 32-bit systems.
+		foreach ( [ 'size', 'width', 'height', 'bits' ] as $field ) {
+			$decoded[$field] = +$decoded[$field];
+		}
+
+		return $decoded;
+	}
+
+	/**
 	 * Load file metadata from a DB result row
 	 * @stable to override
-	 *
-	 * Passing arbitrary fields in the row and expecting them to be translated
-	 * to property names on $this is deprecated since 1.37. Instead, override
-	 * loadFromRow(), and clone and unset the extra fields before passing them
-	 * to the parent.
-	 *
-	 * After the deprecation period has passed, extra fields will be ignored,
-	 * and the deprecation warning will be removed.
 	 *
 	 * @param stdClass $row
 	 * @param string $prefix
 	 */
 	public function loadFromRow( $row, $prefix = 'img_' ) {
 		$this->dataLoaded = true;
+		$this->extraDataLoaded = true;
 
-		$unprefixed = $this->unprefixRow( $row, $prefix );
+		$array = $this->decodeRow( $row, $prefix );
 
-		$this->name = $unprefixed['name'];
-		$this->media_type = $unprefixed['media_type'];
-
-		$this->description = MediaWikiServices::getInstance()->getCommentStore()
-			->getComment( "{$prefix}description", $row )->text;
-
-		$this->user = User::newFromAnyId(
-			$unprefixed['user'] ?? null,
-			$unprefixed['user_text'] ?? null,
-			$unprefixed['actor'] ?? null
-		);
-
-		$this->timestamp = wfTimestamp( TS_MW, $unprefixed['timestamp'] );
-
-		$this->loadMetadataFromDbFieldValue(
-			$this->repo->getReplicaDB(), $unprefixed['metadata'] );
-
-		if ( empty( $unprefixed['major_mime'] ) ) {
-			$this->major_mime = 'unknown';
-			$this->minor_mime = 'unknown';
-			$this->mime = 'unknown/unknown';
-		} else {
-			if ( !$unprefixed['minor_mime'] ) {
-				$unprefixed['minor_mime'] = 'unknown';
-			}
-			$this->major_mime = $unprefixed['major_mime'];
-			$this->minor_mime = $unprefixed['minor_mime'];
-			$this->mime = $unprefixed['major_mime'] . '/' . $unprefixed['minor_mime'];
-		}
-
-		// Trim zero padding from char/binary field
-		$this->sha1 = rtrim( $unprefixed['sha1'], "\0" );
-
-		// Normalize some fields to integer type, per their database definition.
-		// Use unary + so that overflows will be upgraded to double instead of
-		// being trucated as with intval(). This is important to allow > 2 GiB
-		// files on 32-bit systems.
-		$this->size = +$unprefixed['size'];
-		$this->width = +$unprefixed['width'];
-		$this->height = +$unprefixed['height'];
-		$this->bits = +$unprefixed['bits'];
-
-		// Check for extra fields (deprecated since MW 1.37)
-		$extraFields = array_diff(
-			array_keys( $unprefixed ),
-			[
-				'name', 'media_type', 'description_text', 'description_data',
-				'description_cid', 'user', 'user_text', 'actor', 'timestamp',
-				'metadata', 'major_mime', 'minor_mime', 'sha1', 'size', 'width',
-				'height', 'bits'
-			]
-		);
-		if ( $extraFields ) {
-			wfDeprecatedMsg(
-				'Passing extra fields (' .
-				implode( ', ', $extraFields )
-				. ') to ' . __METHOD__ . ' was deprecated in MediaWiki 1.37. ' .
-				'Property assignment will be removed in a later version.',
-				'1.37' );
-			foreach ( $extraFields as $field ) {
-				$this->$field = $unprefixed[$field];
-			}
+		foreach ( $array as $name => $value ) {
+			$this->$name = $value;
 		}
 
 		$this->fileExists = true;
@@ -742,51 +659,36 @@ class LocalFile extends File {
 
 	/**
 	 * Upgrade a row if it needs it
-	 * @internal
 	 */
-	public function maybeUpgradeRow() {
+	protected function maybeUpgradeRow() {
+		global $wgUpdateCompatibleMetadata;
+
 		if ( wfReadOnly() || $this->upgrading ) {
 			return;
 		}
 
 		$upgrade = false;
-		$reserialize = false;
 		if ( $this->media_type === null || $this->mime == 'image/svg' ) {
 			$upgrade = true;
 		} else {
 			$handler = $this->getHandler();
 			if ( $handler ) {
-				$validity = $handler->isFileMetadataValid( $this );
+				$validity = $handler->isMetadataValid( $this, $this->getMetadata() );
 				if ( $validity === MediaHandler::METADATA_BAD ) {
 					$upgrade = true;
-				} elseif ( $validity === MediaHandler::METADATA_COMPATIBLE
-					&& $this->repo->isMetadataUpdateEnabled()
-				) {
-					$upgrade = true;
-				} elseif ( $this->repo->isJsonMetadataEnabled()
-					&& $this->repo->isMetadataReserializeEnabled()
-				) {
-					if ( $this->repo->isSplitMetadataEnabled() && $this->isMetadataOversize() ) {
-						$reserialize = true;
-					} elseif ( $this->metadataSerializationFormat !== self::MDS_EMPTY &&
-						$this->metadataSerializationFormat !== self::MDS_JSON ) {
-						$reserialize = true;
-					}
+				} elseif ( $validity === MediaHandler::METADATA_COMPATIBLE ) {
+					$upgrade = $wgUpdateCompatibleMetadata;
 				}
 			}
 		}
 
-		if ( $upgrade || $reserialize ) {
+		if ( $upgrade ) {
 			$this->upgrading = true;
 			// Defer updates unless in auto-commit CLI mode
-			DeferredUpdates::addCallableUpdate( function () use ( $upgrade ) {
+			DeferredUpdates::addCallableUpdate( function () {
 				$this->upgrading = false; // avoid duplicate updates
 				try {
-					if ( $upgrade ) {
-						$this->upgradeRow();
-					} else {
-						$this->reserializeMetadata();
-					}
+					$this->upgradeRow();
 				} catch ( LocalFileLockError $e ) {
 					// let the other process handle it (or do it next time)
 				}
@@ -818,7 +720,7 @@ class LocalFile extends File {
 			return;
 		}
 
-		$dbw = $this->repo->getPrimaryDB();
+		$dbw = $this->repo->getMasterDB();
 		list( $major, $minor ) = self::splitMime( $this->mime );
 
 		if ( wfReadOnly() ) {
@@ -837,7 +739,7 @@ class LocalFile extends File {
 				'img_media_type' => $this->media_type,
 				'img_major_mime' => $major,
 				'img_minor_mime' => $minor,
-				'img_metadata' => $this->getMetadataForDb( $dbw ),
+				'img_metadata' => $dbw->encodeBlob( $this->metadata ),
 				'img_sha1' => $this->sha1,
 			],
 			[ 'img_name' => $this->getName() ],
@@ -848,27 +750,6 @@ class LocalFile extends File {
 
 		$this->unlock();
 		$this->upgraded = true; // avoid rework/retries
-	}
-
-	/**
-	 * Write the metadata back to the database with the current serialization
-	 * format.
-	 */
-	protected function reserializeMetadata() {
-		if ( wfReadOnly() ) {
-			return;
-		}
-		$dbw = $this->repo->getPrimaryDB();
-		$dbw->update(
-			'image',
-			[ 'img_metadata' => $this->getMetadataForDb( $dbw ) ],
-			[
-				'img_name' => $this->name,
-				'img_timestamp' => $dbw->timestamp( $this->timestamp ),
-			],
-			__METHOD__
-		);
-		$this->upgraded = true;
 	}
 
 	/**
@@ -893,12 +774,12 @@ class LocalFile extends File {
 			}
 		}
 
-		// Only our own cache sets these properties, so they both should be present.
-		if ( isset( $info['user'] ) &&
-			isset( $info['user_text'] ) &&
-			$info['user_text'] !== ''
-		) {
-			$this->user = new UserIdentityValue( $info['user'], $info['user_text'] );
+		if ( isset( $info['user'] ) || isset( $info['user_text'] ) || isset( $info['actor'] ) ) {
+			$this->user = User::newFromAnyId(
+				$info['user'] ?? null,
+				$info['user_text'] ?? null,
+				$info['actor'] ?? null
+			);
 		}
 
 		// Fix up mime fields
@@ -907,30 +788,6 @@ class LocalFile extends File {
 		} elseif ( isset( $info['mime'] ) ) {
 			$this->mime = $info['mime'];
 			list( $this->major_mime, $this->minor_mime ) = self::splitMime( $this->mime );
-		}
-
-		if ( isset( $info['metadata'] ) ) {
-			if ( is_string( $info['metadata'] ) ) {
-				$this->loadMetadataFromString( $info['metadata'] );
-			} elseif ( is_array( $info['metadata'] ) ) {
-				$this->metadataArray = $info['metadata'];
-				if ( isset( $info['metadataBlobs'] ) ) {
-					$this->metadataBlobs = $info['metadataBlobs'];
-					$this->unloadedMetadataBlobs = array_diff_key(
-						$this->metadataBlobs,
-						$this->metadataArray
-					);
-				} else {
-					$this->metadataBlobs = [];
-					$this->unloadedMetadataBlobs = [];
-				}
-			} else {
-				$logger = LoggerFactory::getInstance( 'LocalFile' );
-				$logger->warning( __METHOD__ . ' given invalid metadata of type ' .
-					gettype( $info['metadata'] ) );
-				$this->metadataArray = [];
-			}
-			$this->extraDataLoaded = true;
 		}
 	}
 
@@ -1025,6 +882,40 @@ class LocalFile extends File {
 	}
 
 	/**
+	 * Returns user who uploaded the file
+	 * @stable to override
+	 *
+	 * @param string $type 'text', 'id', or 'object'
+	 * @return int|string|User
+	 * @since 1.31 Added 'object'
+	 */
+	public function getUser( $type = 'text' ) {
+		$this->load();
+
+		if ( !$this->user ) {
+			// If the file does not exist, $this->user will be null, see T221812.
+			// Note: 'Unknown user' this is a reserved user name.
+			if ( $type === 'object' ) {
+				return User::newFromName( 'Unknown user', false );
+			} elseif ( $type === 'text' ) {
+				return 'Unknown user';
+			} elseif ( $type === 'id' ) {
+				return 0;
+			}
+		} else {
+			if ( $type === 'object' ) {
+				return $this->user;
+			} elseif ( $type === 'text' ) {
+				return $this->user->getName();
+			} elseif ( $type === 'id' ) {
+				return $this->user->getId();
+			}
+		}
+
+		throw new MWException( "Unknown type '$type'." );
+	}
+
+	/**
 	 * Get short description URL for a file based on the page ID.
 	 * @stable to override
 	 *
@@ -1048,278 +939,13 @@ class LocalFile extends File {
 	}
 
 	/**
-	 * Get handler-specific metadata as a serialized string
-	 *
-	 * @deprecated since 1.37 use getMetadataArray() or getMetadataItem()
+	 * Get handler-specific metadata
+	 * @stable to override
 	 * @return string
 	 */
 	public function getMetadata() {
-		$data = $this->getMetadataArray();
-		if ( !$data ) {
-			return '';
-		} elseif ( array_keys( $data ) === [ '_error' ] ) {
-			// Legacy error encoding
-			return $data['_error'];
-		} else {
-			return serialize( $this->getMetadataArray() );
-		}
-	}
-
-	/**
-	 * Get unserialized handler-specific metadata
-	 *
-	 * @since 1.37
-	 * @return array
-	 */
-	public function getMetadataArray(): array {
-		$this->load( self::LOAD_ALL );
-		if ( $this->unloadedMetadataBlobs ) {
-			return $this->getMetadataItems(
-				array_unique( array_merge(
-					array_keys( $this->metadataArray ),
-					array_keys( $this->unloadedMetadataBlobs )
-				) )
-			);
-		}
-		return $this->metadataArray;
-	}
-
-	public function getMetadataItems( array $itemNames ): array {
-		$this->load( self::LOAD_ALL );
-		$result = [];
-		$addresses = [];
-		foreach ( $itemNames as $itemName ) {
-			if ( array_key_exists( $itemName, $this->metadataArray ) ) {
-				$result[$itemName] = $this->metadataArray[$itemName];
-			} elseif ( isset( $this->unloadedMetadataBlobs[$itemName] ) ) {
-				$addresses[$itemName] = $this->unloadedMetadataBlobs[$itemName];
-			}
-		}
-		if ( $addresses ) {
-			$blobStore = $this->repo->getBlobStore();
-			if ( !$blobStore ) {
-				LoggerFactory::getInstance( 'LocalFile' )->warning(
-					"Unable to load metadata: repo has no blob store" );
-				return $result;
-			}
-			$status = $blobStore->getBlobBatch( $addresses );
-			if ( !$status->isGood() ) {
-				$msg = Status::wrap( $status )->getWikiText(
-					false, false, 'en' );
-				LoggerFactory::getInstance( 'LocalFile' )->warning(
-					"Error loading metadata from BlobStore: $msg" );
-			}
-			foreach ( $addresses as $itemName => $address ) {
-				unset( $this->unloadedMetadataBlobs[$itemName] );
-				$json = $status->getValue()[$address] ?? null;
-				if ( $json !== null ) {
-					$value = $this->jsonDecode( $json );
-					$result[$itemName] = $value;
-					$this->metadataArray[$itemName] = $value;
-				}
-			}
-		}
-		return $result;
-	}
-
-	/**
-	 * Do JSON encoding with local flags. Throw an exception if the data cannot be
-	 * serialized.
-	 *
-	 * @throws MWException
-	 * @param mixed $data
-	 * @return string
-	 */
-	private function jsonEncode( $data ): string {
-		$s = json_encode( $data,
-			JSON_INVALID_UTF8_IGNORE |
-			JSON_UNESCAPED_SLASHES |
-			JSON_UNESCAPED_UNICODE );
-		if ( $s === false ) {
-			throw new MWException( __METHOD__ . ': metadata is not JSON-serializable ' .
-				'(type = ' . $this->getMimeType() . ')' );
-		}
-		return $s;
-	}
-
-	/**
-	 * Do JSON decoding with local flags.
-	 *
-	 * This doesn't use JsonCodec because JsonCodec can construct objects,
-	 * which we don't want.
-	 *
-	 * Does not throw. Returns false on failure.
-	 *
-	 * @param string $s
-	 * @return mixed The decoded value, or false on failure
-	 */
-	private function jsonDecode( string $s ) {
-		// phpcs:ignore Generic.PHP.NoSilencedErrors.Discouraged
-		return @json_decode( $s, true, 512, JSON_INVALID_UTF8_IGNORE );
-	}
-
-	/**
-	 * Serialize the metadata array for insertion into img_metadata, oi_metadata
-	 * or fa_metadata.
-	 *
-	 * If metadata splitting is enabled, this may write blobs to the database,
-	 * returning their addresses.
-	 *
-	 * @internal
-	 * @param IDatabase $db
-	 * @return string|Blob
-	 */
-	public function getMetadataForDb( IDatabase $db ) {
-		$this->load( self::LOAD_ALL );
-		if ( !$this->metadataArray && !$this->metadataBlobs ) {
-			$s = '';
-		} elseif ( $this->repo->isJsonMetadataEnabled() ) {
-			$s = $this->getJsonMetadata();
-		} else {
-			$s = serialize( $this->getMetadataArray() );
-		}
-		if ( !is_string( $s ) ) {
-			throw new MWException( 'Could not serialize image metadata value for DB' );
-		}
-		return $db->encodeBlob( $s );
-	}
-
-	/**
-	 * Get metadata in JSON format ready for DB insertion, optionally splitting
-	 * items out to BlobStore.
-	 *
-	 * @return string
-	 */
-	private function getJsonMetadata() {
-		// Directly store data that is not already in BlobStore
-		$envelope = [
-			'data' => array_diff_key( $this->metadataArray, $this->metadataBlobs )
-		];
-
-		// Also store the blob addresses
-		if ( $this->metadataBlobs ) {
-			$envelope['blobs'] = $this->metadataBlobs;
-		}
-
-		// Try encoding
-		$s = $this->jsonEncode( $envelope );
-
-		// Decide whether to try splitting the metadata.
-		// Return early if it's not going to happen.
-		if ( !$this->repo->isSplitMetadataEnabled()
-			|| !$this->getHandler()
-			|| !$this->getHandler()->useSplitMetadata()
-		) {
-			return $s;
-		}
-		$threshold = $this->repo->getSplitMetadataThreshold();
-		if ( !$threshold || strlen( $s ) <= $threshold ) {
-			return $s;
-		}
-		$blobStore = $this->repo->getBlobStore();
-		if ( !$blobStore ) {
-			return $s;
-		}
-
-		// The data as a whole is above the item threshold. Look for
-		// large items that can be split out.
-		$blobAddresses = [];
-		foreach ( $envelope['data'] as $name => $value ) {
-			$encoded = $this->jsonEncode( $value );
-			if ( strlen( $encoded ) > $threshold ) {
-				$blobAddresses[$name] = $blobStore->storeBlob(
-					$encoded,
-					[ BlobStore::IMAGE_HINT => $this->getName() ]
-				);
-			}
-		}
-		// Remove any items that were split out
-		$envelope['data'] = array_diff_key( $envelope['data'], $blobAddresses );
-		$envelope['blobs'] = $blobAddresses;
-		$s = $this->jsonEncode( $envelope );
-
-		// Repeated calls to this function should not keep inserting more blobs
-		$this->metadataBlobs += $blobAddresses;
-
-		return $s;
-	}
-
-	/**
-	 * Determine whether the loaded metadata may be a candidate for splitting, by measuring its
-	 * serialized size. Helper for maybeUpgradeRow().
-	 *
-	 * @return bool
-	 */
-	private function isMetadataOversize() {
-		if ( !$this->repo->isSplitMetadataEnabled() ) {
-			return false;
-		}
-		$threshold = $this->repo->getSplitMetadataThreshold();
-		$directItems = array_diff_key( $this->metadataArray, $this->metadataBlobs );
-		foreach ( $directItems as $value ) {
-			if ( strlen( $this->jsonEncode( $value ) ) > $threshold ) {
-				return true;
-			}
-		}
-		return false;
-	}
-
-	/**
-	 * Unserialize a metadata blob which came from the database and store it
-	 * in $this.
-	 *
-	 * @since 1.37
-	 * @param IDatabase $db
-	 * @param string|Blob $metadataBlob
-	 */
-	protected function loadMetadataFromDbFieldValue( IDatabase $db, $metadataBlob ) {
-		$this->loadMetadataFromString( $db->decodeBlob( $metadataBlob ) );
-	}
-
-	/**
-	 * Unserialize a metadata string which came from some non-DB source, or is
-	 * the return value of IDatabase::decodeBlob().
-	 *
-	 * @since 1.37
-	 * @param string $metadataString
-	 */
-	protected function loadMetadataFromString( $metadataString ) {
-		$this->extraDataLoaded = true;
-		$this->metadataArray = [];
-		$this->metadataBlobs = [];
-		$this->unloadedMetadataBlobs = [];
-		$metadataString = (string)$metadataString;
-		if ( $metadataString === '' ) {
-			$this->metadataSerializationFormat = self::MDS_EMPTY;
-			return;
-		}
-		if ( $metadataString[0] === '{' ) {
-			$envelope = $this->jsonDecode( $metadataString );
-			if ( !$envelope ) {
-				// Legacy error encoding
-				$this->metadataArray = [ '_error' => $metadataString ];
-				$this->metadataSerializationFormat = self::MDS_LEGACY;
-			} else {
-				$this->metadataSerializationFormat = self::MDS_JSON;
-				if ( isset( $envelope['data'] ) ) {
-					$this->metadataArray = $envelope['data'];
-				}
-				if ( isset( $envelope['blobs'] ) ) {
-					$this->metadataBlobs = $this->unloadedMetadataBlobs = $envelope['blobs'];
-				}
-			}
-		} else {
-			// phpcs:ignore Generic.PHP.NoSilencedErrors.Discouraged
-			$data = @unserialize( $metadataString );
-			if ( !is_array( $data ) ) {
-				// Legacy error encoding
-				$data = [ '_error' => $metadataString ];
-				$this->metadataSerializationFormat = self::MDS_LEGACY;
-			} else {
-				$this->metadataSerializationFormat = self::MDS_PHP;
-			}
-			$this->metadataArray = $data;
-		}
+		$this->load( self::LOAD_ALL ); // large metadata is loaded in another step
+		return $this->metadata;
 	}
 
 	/**
@@ -1535,17 +1161,7 @@ class LocalFile extends File {
 		rsort( $sizes );
 
 		foreach ( $sizes as $size ) {
-			if ( $this->isMultipage() ) {
-				for ( $page = 1; $page <= $this->pageCount(); $page++ ) {
-					$jobs[] = new ThumbnailRenderJob(
-						$this->getTitle(),
-						[ 'transformParams' => [
-							'width' => $size,
-							'page' => $page,
-						] ]
-					);
-				}
-			} elseif ( $this->isVectorized() || $this->getWidth() > $size ) {
+			if ( $this->isVectorized() || $this->getWidth() > $size ) {
 				$jobs[] = new ThumbnailRenderJob(
 					$this->getTitle(),
 					[ 'transformParams' => [ 'width' => $size ] ]
@@ -1744,9 +1360,9 @@ class LocalFile extends File {
 	 *   info is already known
 	 * @param string|bool $timestamp Timestamp for img_timestamp, or false to use the
 	 *   current time
-	 * @param Authority|null $uploader object or null to use the context authority
+	 * @param User|null $user User object or null to use the context user
 	 * @param string[] $tags Change tags to add to the log entry and page revision.
-	 *   (This doesn't check $uploader's permissions.)
+	 *   (This doesn't check $user's permissions.)
 	 * @param bool $createNullRevision Set to false to avoid creation of a null revision on file
 	 *   upload, see T193621
 	 * @param bool $revert If this file upload is a revert
@@ -1754,7 +1370,7 @@ class LocalFile extends File {
 	 *     archive name, or an empty string if it was a new file.
 	 */
 	public function upload( $src, $comment, $pageText, $flags = 0, $props = false,
-		$timestamp = false, Authority $uploader = null, $tags = [],
+		$timestamp = false, $user = null, $tags = [],
 		$createNullRevision = true, $revert = false
 	) {
 		if ( $this->getRepo()->getReadOnlyReason() !== false ) {
@@ -1780,19 +1396,13 @@ class LocalFile extends File {
 		$options = [];
 		$handler = MediaHandler::getHandler( $props['mime'] );
 		if ( $handler ) {
-			if ( is_string( $props['metadata'] ) ) {
-				// This supports callers directly fabricating a metadata
-				// property using serialize(). Normally the metadata property
-				// comes from MWFileProps, in which case it won't be a string.
-				// phpcs:ignore Generic.PHP.NoSilencedErrors.Discouraged
-				$metadata = @unserialize( $props['metadata'] );
-			} else {
-				$metadata = $props['metadata'];
+			$metadata = AtEase::quietCall( 'unserialize', $props['metadata'] );
+
+			if ( !is_array( $metadata ) ) {
+				$metadata = [];
 			}
 
-			if ( is_array( $metadata ) ) {
-				$options['headers'] = $handler->getContentHeaders( $metadata );
-			}
+			$options['headers'] = $handler->getContentHeaders( $metadata );
 		} else {
 			$options['headers'] = [];
 		}
@@ -1812,16 +1422,16 @@ class LocalFile extends File {
 			// updated and we must therefore update the DB too.
 			$oldver = $status->value;
 
-			if ( $uploader === null ) {
-				// Uploader argument is optional, fall back to the context authority
-				$uploader = RequestContext::getMain()->getAuthority();
+			if ( $user === null ) {
+				// User argument is optional, fall back to the context user
+				$user = RequestContext::getMain()->getUser();
 			}
 
 			$uploadStatus = $this->recordUpload3(
 				$oldver,
 				$comment,
 				$pageText,
-				$uploader,
+				$user,
 				$props,
 				$timestamp,
 				$tags,
@@ -1843,13 +1453,44 @@ class LocalFile extends File {
 	}
 
 	/**
+	 * Record a file upload in the upload log and the image table
+	 * @deprecated since 1.35 (hard deprecated since 1.36)
+	 * @param string $oldver
+	 * @param string $comment
+	 * @param string $pageText
+	 * @param bool|array $props
+	 * @param string|bool $timestamp
+	 * @param null|User $user
+	 * @param string[] $tags
+	 * @param bool $createNullRevision Set to false to avoid creation of a null revision on file
+	 *   upload, see T193621
+	 * @param bool $revert If this file upload is a revert
+	 * @return Status
+	 */
+	public function recordUpload2(
+		$oldver, $comment, $pageText, $props = false, $timestamp = false, $user = null, $tags = [],
+		$createNullRevision = true, $revert = false
+	) {
+		wfDeprecated( __METHOD__, '1.35' );
+		if ( $user === null ) {
+			global $wgUser;
+			$user = $wgUser;
+		}
+		return $this->recordUpload3(
+			$oldver, $comment, $pageText,
+			$user, $props, $timestamp, $tags,
+			$createNullRevision, $revert
+		);
+	}
+
+	/**
 	 * Record a file upload in the upload log and the image table (version 3)
 	 * @since 1.35
 	 * @stable to override
 	 * @param string $oldver
 	 * @param string $comment
 	 * @param string $pageText
-	 * @param Authority $performer
+	 * @param User $user
 	 * @param bool|array $props
 	 * @param string|bool $timestamp
 	 * @param string[] $tags
@@ -1862,14 +1503,14 @@ class LocalFile extends File {
 		string $oldver,
 		string $comment,
 		string $pageText,
-		Authority $performer,
+		User $user,
 		$props = false,
 		$timestamp = false,
 		$tags = [],
 		bool $createNullRevision = true,
 		bool $revert = false
-	): Status {
-		$dbw = $this->repo->getPrimaryDB();
+	) : Status {
+		$dbw = $this->repo->getMasterDB();
 
 		# Imports or such might force a certain timestamp; otherwise we generate
 		# it and can fudge it slightly to keep (name,timestamp) unique on re-upload.
@@ -1896,8 +1537,8 @@ class LocalFile extends File {
 
 		$dbw->startAtomic( __METHOD__ );
 
-		$actorId = $actorNormalizaton->acquireActorId( $performer->getUser(), $dbw );
-		$this->user = $performer->getUser();
+		$actorId = $actorNormalizaton->acquireActorId( $user, $dbw );
+		$this->user = $user;
 
 		# Test to see if the row exists using INSERT IGNORE
 		# This avoids race conditions by locking the row until the commit, and also
@@ -1916,7 +1557,7 @@ class LocalFile extends File {
 				'img_major_mime' => $this->major_mime,
 				'img_minor_mime' => $this->minor_mime,
 				'img_timestamp' => $timestamp,
-				'img_metadata' => $this->getMetadataForDb( $dbw ),
+				'img_metadata' => $dbw->encodeBlob( $this->metadata ),
 				'img_sha1' => $this->sha1
 			] + $commentFields + $actorFields,
 			__METHOD__,
@@ -1991,7 +1632,7 @@ class LocalFile extends File {
 					'img_major_mime' => $this->major_mime,
 					'img_minor_mime' => $this->minor_mime,
 					'img_timestamp' => $timestamp,
-					'img_metadata' => $this->getMetadataForDb( $dbw ),
+					'img_metadata' => $dbw->encodeBlob( $this->metadata ),
 					'img_sha1' => $this->sha1
 				] + $commentFields + $actorFields,
 				[ 'img_name' => $this->getName() ],
@@ -2005,9 +1646,9 @@ class LocalFile extends File {
 		$wikiPage->setFile( $this );
 
 		// Determine log action. If reupload is done by reverting, use a special log_action.
-		if ( $revert ) {
+		if ( $revert === true ) {
 			$logAction = 'revert';
-		} elseif ( $reupload ) {
+		} elseif ( $reupload === true ) {
 			$logAction = 'overwrite';
 		} else {
 			$logAction = 'upload';
@@ -2015,7 +1656,7 @@ class LocalFile extends File {
 		// Add the log entry...
 		$logEntry = new ManualLogEntry( 'upload', $logAction );
 		$logEntry->setTimestamp( $this->timestamp );
-		$logEntry->setPerformer( $performer->getUser() );
+		$logEntry->setPerformer( $user );
 		$logEntry->setComment( $comment );
 		$logEntry->setTarget( $descTitle );
 		// Allow people using the api to associate log entries with the upload.
@@ -2035,7 +1676,7 @@ class LocalFile extends File {
 		$logId = $logEntry->insert();
 
 		if ( $descTitle->exists() ) {
-			if ( $createNullRevision ) {
+			if ( $createNullRevision !== false ) {
 				$revStore = MediaWikiServices::getInstance()->getRevisionStore();
 				// Use own context to get the action text in content language
 				$formatter = LogFormatter::newFromEntry( $logEntry );
@@ -2047,7 +1688,7 @@ class LocalFile extends File {
 					$descTitle,
 					$summary,
 					false,
-					$performer->getUser()
+					$user
 				);
 
 				if ( $nullRevRecord ) {
@@ -2057,9 +1698,22 @@ class LocalFile extends File {
 						$wikiPage,
 						$inserted,
 						$inserted->getParentId(),
-						$performer->getUser(),
+						$user,
 						$tags
 					);
+
+					// Hook is hard deprecated since 1.35
+					if ( $this->getHookContainer()->isRegistered( 'NewRevisionFromEditComplete' ) ) {
+						// Only create the Revision object if needed
+						$nullRevision = new Revision( $inserted );
+						$this->getHookRunner()->onNewRevisionFromEditComplete(
+							$wikiPage,
+							$nullRevision,
+							$inserted->getParentId(),
+							$user,
+							$tags
+						);
+					}
 
 					$wikiPage->updateRevisionOn( $dbw, $inserted );
 					// Associate null revision id
@@ -2087,7 +1741,7 @@ class LocalFile extends File {
 			__METHOD__,
 			/** @suppress PhanTypeArraySuspiciousNullable False positives with $this->status->value */
 			function () use (
-				$reupload, $wikiPage, $newPageContent, $comment, $performer,
+				$reupload, $wikiPage, $newPageContent, $comment, $user,
 				$logEntry, $logId, $descId, $tags, $fname
 			) {
 				# Update memcache after the commit
@@ -2097,12 +1751,13 @@ class LocalFile extends File {
 				if ( $newPageContent ) {
 					# New file page; create the description page.
 					# There's already a log entry, so don't make a second RC entry
-					# CDN and file cache for the description page are purged by doUserEditContent.
-					$status = $wikiPage->doUserEditContent(
+					# CDN and file cache for the description page are purged by doEditContent.
+					$status = $wikiPage->doEditContent(
 						$newPageContent,
-						$performer,
 						$comment,
-						EDIT_NEW | EDIT_SUPPRESS_RC
+						EDIT_NEW | EDIT_SUPPRESS_RC,
+						false,
+						$user
 					);
 
 					if ( isset( $status->value['revision-record'] ) ) {
@@ -2112,7 +1767,7 @@ class LocalFile extends File {
 						$logEntry->setAssociatedRevId( $revRecord->getId() );
 					}
 					// This relies on the resetArticleID() call in WikiPage::insertOn(),
-					// which is triggered on $descTitle by doUserEditContent() above.
+					// which is triggered on $descTitle by doEditContent() above.
 					if ( isset( $status->value['revision-record'] ) ) {
 						/** @var RevisionRecord $revRecord */
 						$revRecord = $status->value['revision-record'];
@@ -2137,13 +1792,13 @@ class LocalFile extends File {
 					# Also log page, in case where we just created it above
 					$update['log_page'] = $updateLogPage;
 				}
-				$this->getRepo()->getPrimaryDB()->update(
+				$this->getRepo()->getMasterDB()->update(
 					'logging',
 					$update,
 					[ 'log_id' => $logId ],
 					$fname
 				);
-				$this->getRepo()->getPrimaryDB()->insert(
+				$this->getRepo()->getMasterDB()->insert(
 					'log_search',
 					[
 						'ls_field' => 'associated_rev_id',
@@ -2175,13 +1830,11 @@ class LocalFile extends File {
 					$hcu->purgeUrls( $this->getUrl(), $hcu::PURGE_INTENT_TXROUND_REFLECTED );
 				} else {
 					# Update backlink pages pointing to this title if created
-					$blcFactory = MediaWikiServices::getInstance()->getBacklinkCacheFactory();
 					LinksUpdate::queueRecursiveJobsForTable(
 						$this->getTitle(),
 						'imagelinks',
 						'upload-image',
-						$performer->getUser()->getName(),
-						$blcFactory->getBacklinkCache( $this->getTitle() )
+						$user->getName()
 					);
 				}
 
@@ -2193,7 +1846,7 @@ class LocalFile extends File {
 		$cacheUpdateJob = HTMLCacheUpdateJob::newForBacklinks(
 			$this->getTitle(),
 			'imagelinks',
-			[ 'causeAction' => 'file-upload', 'causeAgent' => $performer->getUser()->getName() ]
+			[ 'causeAction' => 'file-upload', 'causeAgent' => $user->getName() ]
 		);
 
 		// NOTE: We are probably still in the transaction started by the call to lock() in
@@ -2202,7 +1855,7 @@ class LocalFile extends File {
 		//       Also, we should generally not schedule any Jobs or the DeferredUpdates that
 		//       assume the update is complete until after the transaction has been committed and
 		//       we are sure that the upload was indeed successful.
-		$dbw->onTransactionCommitOrIdle( static function () use ( $reupload, $purgeUpdate, $cacheUpdateJob ) {
+		$dbw->onTransactionCommitOrIdle( function () use ( $reupload, $purgeUpdate, $cacheUpdateJob ) {
 			DeferredUpdates::addUpdate( $purgeUpdate, DeferredUpdates::PRESEND );
 
 			if ( !$reupload ) {
@@ -2211,7 +1864,7 @@ class LocalFile extends File {
 			}
 
 			JobQueueGroup::singleton()->lazyPush( $cacheUpdateJob );
-		}, __METHOD__ );
+		} );
 
 		return Status::newGood();
 	}
@@ -2341,7 +1994,7 @@ class LocalFile extends File {
 		$newTitleFile = $localRepo->newFile( $target );
 		DeferredUpdates::addUpdate(
 			new AutoCommitUpdate(
-				$this->getRepo()->getPrimaryDB(),
+				$this->getRepo()->getMasterDB(),
 				__METHOD__,
 				static function () use ( $oldTitleFile, $newTitleFile, $archiveNames ) {
 					$oldTitleFile->purgeEverything();
@@ -2379,11 +2032,11 @@ class LocalFile extends File {
 	 * @stable to override
 	 *
 	 * @param string $reason
-	 * @param UserIdentity $user
+	 * @param User $user
 	 * @param bool $suppress
 	 * @return Status
 	 */
-	public function deleteFile( $reason, UserIdentity $user, $suppress = false ) {
+	public function deleteFile( $reason, User $user, $suppress = false ) {
 		if ( $this->getRepo()->getReadOnlyReason() !== false ) {
 			return $this->readOnlyFatalStatus();
 		}
@@ -2404,7 +2057,7 @@ class LocalFile extends File {
 		// To avoid slow purges in the transaction, move them outside...
 		DeferredUpdates::addUpdate(
 			new AutoCommitUpdate(
-				$this->getRepo()->getPrimaryDB(),
+				$this->getRepo()->getMasterDB(),
 				__METHOD__,
 				function () use ( $archiveNames ) {
 					$this->purgeEverything();
@@ -2441,12 +2094,12 @@ class LocalFile extends File {
 	 *
 	 * @param string $archiveName
 	 * @param string $reason
-	 * @param UserIdentity $user
+	 * @param User $user
 	 * @param bool $suppress
 	 * @throws MWException Exception on database or file store failure
 	 * @return Status
 	 */
-	public function deleteOldFile( $archiveName, $reason, UserIdentity $user, $suppress = false ) {
+	public function deleteOldFile( $archiveName, $reason, User $user, $suppress = false ) {
 		if ( $this->getRepo()->getReadOnlyReason() !== false ) {
 			return $this->readOnlyFatalStatus();
 		}
@@ -2564,34 +2217,18 @@ class LocalFile extends File {
 	}
 
 	/**
-	 * @since 1.37
 	 * @stable to override
 	 * @param int $audience
-	 * @param Authority|null $performer
-	 * @return UserIdentity|null
-	 */
-	public function getUploader( int $audience = self::FOR_PUBLIC, Authority $performer = null ): ?UserIdentity {
-		$this->load();
-		if ( $audience === self::FOR_PUBLIC && $this->isDeleted( self::DELETED_USER ) ) {
-			return null;
-		} elseif ( $audience === self::FOR_THIS_USER && !$this->userCan( self::DELETED_USER, $performer ) ) {
-			return null;
-		} else {
-			return $this->user;
-		}
-	}
-
-	/**
-	 * @stable to override
-	 * @param int $audience
-	 * @param Authority|null $performer
+	 * @param User|null $user
 	 * @return string
 	 */
-	public function getDescription( $audience = self::FOR_PUBLIC, Authority $performer = null ) {
+	public function getDescription( $audience = self::FOR_PUBLIC, User $user = null ) {
 		$this->load();
 		if ( $audience == self::FOR_PUBLIC && $this->isDeleted( self::DELETED_COMMENT ) ) {
 			return '';
-		} elseif ( $audience == self::FOR_THIS_USER && !$this->userCan( self::DELETED_COMMENT, $performer ) ) {
+		} elseif ( $audience == self::FOR_THIS_USER
+			&& !$this->userCan( self::DELETED_COMMENT, $user )
+		) {
 			return '';
 		} else {
 			return $this->description;
@@ -2634,7 +2271,7 @@ class LocalFile extends File {
 
 	/**
 	 * @stable to override
-	 * @return string|false
+	 * @return string
 	 */
 	public function getSha1() {
 		$this->load();
@@ -2644,7 +2281,7 @@ class LocalFile extends File {
 
 			$this->sha1 = $this->repo->getFileSha1( $this->getPath() );
 			if ( !wfReadOnly() && strval( $this->sha1 ) != '' ) {
-				$dbw = $this->repo->getPrimaryDB();
+				$dbw = $this->repo->getMasterDB();
 				$dbw->update( 'image',
 					[ 'img_sha1' => $this->sha1 ],
 					[ 'img_name' => $this->getName() ],
@@ -2666,7 +2303,7 @@ class LocalFile extends File {
 
 		// If extra data (metadata) was not loaded then it must have been large
 		return $this->extraDataLoaded
-			&& strlen( serialize( $this->metadataArray ) ) <= self::CACHE_FIELD_MAX_LEN;
+			&& strlen( serialize( $this->metadata ) ) <= self::CACHE_FIELD_MAX_LEN;
 	}
 
 	/**
@@ -2702,7 +2339,7 @@ class LocalFile extends File {
 		if ( !$this->locked ) {
 			$logger = LoggerFactory::getInstance( 'LocalFile' );
 
-			$dbw = $this->repo->getPrimaryDB();
+			$dbw = $this->repo->getMasterDB();
 			$makesTransaction = !$dbw->trxLevel();
 			$dbw->startAtomic( self::ATOMIC_SECTION_LOCK );
 			// T56736: use simple lock to handle when the file does not exist.
@@ -2747,7 +2384,7 @@ class LocalFile extends File {
 		if ( $this->locked ) {
 			--$this->locked;
 			if ( !$this->locked ) {
-				$dbw = $this->repo->getPrimaryDB();
+				$dbw = $this->repo->getMasterDB();
 				$dbw->endAtomic( self::ATOMIC_SECTION_LOCK );
 				$this->lockedOwnTrx = false;
 			}

@@ -46,7 +46,7 @@ class DeleteOrphanedRevisions extends Maintenance {
 
 		$report = $this->hasOption( 'report' );
 
-		$dbw = $this->getDB( DB_PRIMARY );
+		$dbw = $this->getDB( DB_MASTER );
 		$this->beginTransaction( $dbw, __METHOD__ );
 		list( $page, $revision ) = $dbw->tableNamesN( 'page', 'revision' );
 
@@ -67,7 +67,7 @@ class DeleteOrphanedRevisions extends Maintenance {
 		# Nothing to do?
 		if ( $report || $count == 0 ) {
 			$this->commitTransaction( $dbw, __METHOD__ );
-			return;
+			exit( 0 );
 		}
 
 		# Delete each revision
@@ -85,9 +85,9 @@ class DeleteOrphanedRevisions extends Maintenance {
 	 * Do this inside a transaction
 	 *
 	 * @param int[] $id Array of revision id values
-	 * @param IDatabase $dbw Primary DB handle
+	 * @param IDatabase &$dbw Master DB handle
 	 */
-	private function deleteRevs( array $id, $dbw ) {
+	private function deleteRevs( array $id, &$dbw ) {
 		$dbw->delete( 'revision', [ 'rev_id' => $id ], __METHOD__ );
 
 		// Delete from ip_changes should a record exist.

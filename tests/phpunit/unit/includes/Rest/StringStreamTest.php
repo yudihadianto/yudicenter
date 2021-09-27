@@ -41,12 +41,12 @@ class StringStreamTest extends \MediaWikiUnitTestCase {
 
 	public function testTell() {
 		$ss = new StringStream;
-		$this->assertSame( 0, $ss->tell() );
+		$this->assertSame( $ss->tell(), 0 );
 		$ss->write( "abc" );
-		$this->assertSame( 3, $ss->tell() );
+		$this->assertSame( $ss->tell(), 3 );
 		$ss->seek( 0 );
 		$ss->read( 1 );
-		$this->assertSame( 1, $ss->tell() );
+		$this->assertSame( $ss->tell(), 1 );
 	}
 
 	public function testEof() {

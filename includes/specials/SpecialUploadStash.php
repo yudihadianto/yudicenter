@@ -55,7 +55,7 @@ class SpecialUploadStash extends UnlistedSpecialPage {
 	 * This service is really for thumbnails and other such previews while
 	 * uploading.
 	 */
-	private const MAX_SERVE_BYTES = 1048576; // 1 MiB
+	private const MAX_SERVE_BYTES = 1048576; // 1MB
 
 	/**
 	 * @param RepoGroup $repoGroup

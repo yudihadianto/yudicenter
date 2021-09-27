@@ -23,7 +23,6 @@ use MediaWiki\Interwiki\InterwikiLookup;
 use MediaWiki\MediaWikiServices;
 use MediaWiki\Page\PageIdentity;
 use MediaWiki\Page\PageIdentityValue;
-use MediaWiki\Tests\Unit\DummyServicesTrait;
 
 /**
  * @covers MediaWikiTitleCodec
@@ -33,9 +32,8 @@ use MediaWiki\Tests\Unit\DummyServicesTrait;
  *        ^--- needed because of global state in
  */
 class MediaWikiTitleCodecTest extends MediaWikiIntegrationTestCase {
-	use DummyServicesTrait;
 
-	protected function setUp(): void {
+	protected function setUp() : void {
 		parent::setUp();
 
 		$this->setMwGlobals( [
@@ -60,7 +58,8 @@ class MediaWikiTitleCodecTest extends MediaWikiIntegrationTestCase {
 			->disableOriginalConstructor()
 			->getMock();
 
-		$genderCache->method( 'getGenderOf' )
+		$genderCache->expects( $this->any() )
+			->method( 'getGenderOf' )
 			->will( $this->returnCallback( static function ( $userName ) {
 				return preg_match( '/^[^- _]+a( |_|$)/u', $userName ) ? 'female' : 'male';
 			} ) );
@@ -69,36 +68,75 @@ class MediaWikiTitleCodecTest extends MediaWikiIntegrationTestCase {
 	}
 
 	/**
-	 * Returns a InterwikiLookup where the only valid interwikis are 'localtestiw' and 'remotetestiw'.
-	 * Only `isValidInterwiki` should actually be needed.
+	 * Returns a mock InterwikiLookup that only has an isValidInterwiki() method, which recognizes
+	 * 'localtestiw' and 'remotetestiw'. All other methods throw.
 	 *
 	 * @return InterwikiLookup
 	 */
-	private function getInterwikiLookup(): InterwikiLookup {
-		// DummyServicesTrait::getDummyInterwikiLookup
-		return $this->getDummyInterwikiLookup( [ 'localtestiw', 'remotetestiw' ] );
+	private function getInterwikiLookup() : InterwikiLookup {
+		$iwLookup = $this->createMock( InterwikiLookup::class );
+
+		$iwLookup->expects( $this->any() )
+			->method( 'isValidInterwiki' )
+			->will( $this->returnCallback( static function ( $prefix ) {
+				return $prefix === 'localtestiw' || $prefix === 'remotetestiw';
+			} ) );
+
+		$iwLookup->expects( $this->never() )
+			->method( $this->callback( static function ( $name ) {
+				return $name !== 'isValidInterwiki';
+			} ) );
+
+		return $iwLookup;
 	}
 
 	/**
-	 * Returns a NamespaceInfo where the only namespaces that exist are NS_SPECIAL, NS_MAIN, NS_TALK,
-	 * NS_USER, and NS_USER_TALK. As per the real NamespaceInfo, NS_USER and NS_USER_TALK have
-	 * gender distinctions. All namespaces are capitalized.
+	 * Returns a mock NamespaceInfo that has only the following methods:
+	 *
+	 *  * exists()
+	 *  * getCanonicalName()
+	 *  * hasGenderDistinction()
+	 *  * isCapitalized()
+	 *
+	 * All other methods throw. The only namespaces that exist are NS_SPECIAL, NS_MAIN, NS_TALK,
+	 * NS_USER, and NS_USER_TALK. NS_USER and NS_USER_TALK have gender distinctions. All namespaces
+	 * are capitalized.
 	 *
 	 * @return NamespaceInfo
 	 */
-	private function getNamespaceInfo(): NamespaceInfo {
-		// DummyServicesTrait::getDummyNamespaceInfo with the relevant overrides (the
-		// namespaces that exist, and the capitalization)
-		return $this->getDummyNamespaceInfo( [
-			'CanonicalNamespaceNames' => [
-				NS_SPECIAL => 'Special',
-				NS_MAIN => '',
-				NS_TALK => 'Talk',
-				NS_USER => 'User',
-				NS_USER_TALK => 'User_talk',
-			],
-			'CapitalLinks' => true,
-		] );
+	private function getNamespaceInfo() : NamespaceInfo {
+		$canonicalNamespaces = [
+			NS_SPECIAL => 'Special',
+			NS_MAIN => '',
+			NS_TALK => 'Talk',
+			NS_USER => 'User',
+			NS_USER_TALK => 'User_talk',
+		];
+
+		$nsInfo = $this->createMock( NamespaceInfo::class );
+
+		$nsInfo->method( 'exists' )
+			->will( $this->returnCallback( static function ( $ns ) use ( $canonicalNamespaces ) {
+				return isset( $canonicalNamespaces[$ns] );
+			} ) );
+
+		$nsInfo->method( 'getCanonicalName' )
+			->will( $this->returnCallback( static function ( $ns ) use ( $canonicalNamespaces ) {
+				return $canonicalNamespaces[$ns] ?? false;
+			} ) );
+
+		$nsInfo->method( 'hasGenderDistinction' )
+			->will( $this->returnCallback( static function ( $ns ) {
+				return $ns === NS_USER || $ns === NS_USER_TALK;
+			} ) );
+
+		$nsInfo->method( 'isCapitalized' )->willReturn( true );
+
+		$nsInfo->expects( $this->never() )->method( $this->anythingBut(
+			'exists', 'getCanonicalName', 'hasGenderDistinction', 'isCapitalized'
+		) );
+
+		return $nsInfo;
 	}
 
 	protected function makeCodec( $lang ) {
@@ -591,21 +629,21 @@ class MediaWikiTitleCodecTest extends MediaWikiIntegrationTestCase {
 				new TitleValue( NS_MAIN, 'Test', '', 'remotetestiw' ),
 				NS_MAIN, 'remotetestiw:Test'
 			],
-			// Interwiki prefixes are not case sensitive
+			// XXX Are these correct? Interwiki prefixes are case-sensitive?
 			'Passed local interwiki with different case' => [
-				new TitleValue( NS_MAIN, 'Test' ),
+				new TitleValue( NS_MAIN, 'LocalTestIW:Test' ),
 				NS_MAIN, 'Test', '', 'LocalTestIW'
 			],
 			'Embedded local interwiki with different case' => [
-				new TitleValue( NS_MAIN, 'Test' ),
+				new TitleValue( NS_MAIN, 'LocalTestIW:Test' ),
 				NS_MAIN, 'LocalTestIW:Test'
 			],
 			'Passed remote interwiki with different case' => [
-				new TitleValue( NS_MAIN, 'Test', '', 'remotetestiw' ),
+				new TitleValue( NS_MAIN, 'RemoteTestIW:Test' ),
 				NS_MAIN, 'Test', '', 'RemoteTestIW'
 			],
 			'Embedded remote interwiki with different case' => [
-				new TitleValue( NS_MAIN, 'Test', '', 'remotetestiw' ),
+				new TitleValue( NS_MAIN, 'RemoteTestIW:Test' ),
 				NS_MAIN, 'RemoteTestIW:Test'
 			],
 			'Passed local interwiki with lowercase page name' => [

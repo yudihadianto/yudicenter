@@ -22,6 +22,7 @@
 
 use MediaWiki\Auth\AuthenticationResponse;
 use MediaWiki\Auth\AuthManager;
+use MediaWiki\MediaWikiServices;
 
 /**
  * Link an account with AuthManager
@@ -30,21 +31,8 @@ use MediaWiki\Auth\AuthManager;
  */
 class ApiLinkAccount extends ApiBase {
 
-	/** @var AuthManager */
-	private $authManager;
-
-	/**
-	 * @param ApiMain $main
-	 * @param string $action
-	 * @param AuthManager $authManager
-	 */
-	public function __construct(
-		ApiMain $main,
-		$action,
-		AuthManager $authManager
-	) {
+	public function __construct( ApiMain $main, $action ) {
 		parent::__construct( $main, $action, 'link' );
-		$this->authManager = $authManager;
 	}
 
 	public function getFinalDescription() {
@@ -80,13 +68,14 @@ class ApiLinkAccount extends ApiBase {
 			}
 		}
 
-		$helper = new ApiAuthManagerHelper( $this, $this->authManager );
+		$manager = MediaWikiServices::getInstance()->getAuthManager();
+		$helper = new ApiAuthManagerHelper( $this, $manager );
 
 		// Check security-sensitive operation status
 		$helper->securitySensitiveOperation( 'LinkAccounts' );
 
 		// Make sure it's possible to link accounts
-		if ( !$this->authManager->canLinkAccounts() ) {
+		if ( !$manager->canLinkAccounts() ) {
 			$this->getResult()->addValue( null, 'linkaccount', $helper->formatAuthenticationResponse(
 				AuthenticationResponse::newFail( $this->msg( 'userlogin-cannot-' . AuthManager::ACTION_LINK ) )
 			) );
@@ -96,10 +85,10 @@ class ApiLinkAccount extends ApiBase {
 		// Perform the link step
 		if ( $params['continue'] ) {
 			$reqs = $helper->loadAuthenticationRequests( AuthManager::ACTION_LINK_CONTINUE );
-			$res = $this->authManager->continueAccountLink( $reqs );
+			$res = $manager->continueAccountLink( $reqs );
 		} else {
 			$reqs = $helper->loadAuthenticationRequests( AuthManager::ACTION_LINK );
-			$res = $this->authManager->beginAccountLink( $this->getUser(), $reqs, $params['returnurl'] );
+			$res = $manager->beginAccountLink( $this->getUser(), $reqs, $params['returnurl'] );
 		}
 
 		$this->getResult()->addValue( null, 'linkaccount',

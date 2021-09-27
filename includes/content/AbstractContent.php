@@ -27,8 +27,6 @@
  */
 
 use MediaWiki\Content\IContentHandlerFactory;
-use MediaWiki\Content\Transform\PreloadTransformParamsValue;
-use MediaWiki\Content\Transform\PreSaveTransformParamsValue;
 use MediaWiki\MediaWikiServices;
 
 /**
@@ -265,6 +263,46 @@ abstract class AbstractContent implements Content {
 	}
 
 	/**
+	 * Returns a list of DataUpdate objects for recording information about this
+	 * Content in some secondary data store.
+	 *
+	 * This default implementation returns a LinksUpdate object and calls the
+	 * SecondaryDataUpdates hook.
+	 *
+	 * Subclasses may override this to determine the secondary data updates more
+	 * efficiently, preferably without the need to generate a parser output object.
+	 * They should however make sure to call SecondaryDataUpdates to give extensions
+	 * a chance to inject additional updates.
+	 *
+	 * @stable to override
+	 * @since 1.21
+	 *
+	 * @param Title $title
+	 * @param Content|null $old
+	 * @param bool $recursive
+	 * @param ParserOutput|null $parserOutput
+	 *
+	 * @return DataUpdate[]
+	 *
+	 * @see Content::getSecondaryDataUpdates()
+	 */
+	public function getSecondaryDataUpdates( Title $title, Content $old = null,
+		$recursive = true, ParserOutput $parserOutput = null
+	) {
+		if ( $parserOutput === null ) {
+			$parserOutput = $this->getParserOutput( $title, null, null, false );
+		}
+
+		$updates = [
+			new LinksUpdate( $title, $parserOutput, $recursive )
+		];
+
+		Hooks::runner()->onSecondaryDataUpdates( $title, $old, $recursive, $parserOutput, $updates );
+
+		return $updates;
+	}
+
+	/**
 	 * @since 1.21
 	 *
 	 * @return Title[]|null
@@ -388,10 +426,8 @@ abstract class AbstractContent implements Content {
 	}
 
 	/**
+	 * @stable to override
 	 * @since 1.21
-	 * @deprecated since 1.37. Hard-deprecated since 1.37.
-	 * Use ContentTransformer::preSaveTransform instead.
-	 * Extensions defining a content model should override ContentHandler::preSaveTransform.
 	 *
 	 * @param Title $title
 	 * @param User $user
@@ -401,12 +437,7 @@ abstract class AbstractContent implements Content {
 	 * @see Content::preSaveTransform
 	 */
 	public function preSaveTransform( Title $title, User $user, ParserOptions $popts ) {
-		wfDeprecated( __METHOD__, '1.37' );
-		$pstParams = new PreSaveTransformParamsValue( $title, $user, $popts );
-		return $this->getContentHandler()->preSaveTransform(
-			$this,
-			$pstParams
-		);
+		return $this;
 	}
 
 	/**
@@ -423,9 +454,9 @@ abstract class AbstractContent implements Content {
 	}
 
 	/**
+	 * @stable to override
 	 * @since 1.21
-	 * @deprecated since 1.37. Hard-deprecated since 1.37. Use ContentTransformer::preloadTransform instead.
-	 * Extensions defining a content model should override ContentHandler::preloadTransform.
+	 *
 	 * @param Title $title
 	 * @param ParserOptions $popts
 	 * @param array $params
@@ -434,12 +465,7 @@ abstract class AbstractContent implements Content {
 	 * @see Content::preloadTransform
 	 */
 	public function preloadTransform( Title $title, ParserOptions $popts, $params = [] ) {
-		wfDeprecated( __METHOD__, '1.37' );
-		$pltParams = new PreloadTransformParamsValue( $title, $popts, $params );
-		return $this->getContentHandler()->preloadTransform(
-			$this,
-			$pltParams
-		);
+		return $this;
 	}
 
 	/**
@@ -460,6 +486,23 @@ abstract class AbstractContent implements Content {
 		} else {
 			return Status::newFatal( "invalid-content-data" );
 		}
+	}
+
+	/**
+	 * @stable to override
+	 * @since 1.21
+	 *
+	 * @param WikiPage $page
+	 * @param ParserOutput|null $parserOutput
+	 *
+	 * @return DeferrableUpdate[]
+	 *
+	 * @see Content::getDeletionUpdates
+	 */
+	public function getDeletionUpdates( WikiPage $page, ParserOutput $parserOutput = null ) {
+		return [
+			new LinksDeletionUpdate( $page ),
+		];
 	}
 
 	/**
@@ -535,30 +578,24 @@ abstract class AbstractContent implements Content {
 			$options = ParserOptions::newCanonical( 'canonical' );
 		}
 
-		$output = new ParserOutput();
-		$options->registerWatcher( [ $output, 'recordOption' ] );
+		$po = new ParserOutput();
+		$options->registerWatcher( [ $po, 'recordOption' ] );
 
 		if ( Hooks::runner()->onContentGetParserOutput(
-			$this, $title, $revId, $options, $generateHtml, $output )
+			$this, $title, $revId, $options, $generateHtml, $po )
 		) {
 			// Save and restore the old value, just in case something is reusing
 			// the ParserOptions object in some weird way.
 			$oldRedir = $options->getRedirectTarget();
 			$options->setRedirectTarget( $this->getRedirectTarget() );
-			$this->fillParserOutput( $title, $revId, $options, $generateHtml, $output );
-			MediaWikiServices::getInstance()->get( '_ParserObserver' )->notifyParse(
-				$title,
-				$revId,
-				$options,
-				$output
-			);
+			$this->fillParserOutput( $title, $revId, $options, $generateHtml, $po );
 			$options->setRedirectTarget( $oldRedir );
 		}
 
-		Hooks::runner()->onContentAlterParserOutput( $this, $title, $output );
+		Hooks::runner()->onContentAlterParserOutput( $this, $title, $po );
 		$options->registerWatcher( null );
 
-		return $output;
+		return $po;
 	}
 
 	/**

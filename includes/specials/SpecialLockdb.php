@@ -56,6 +56,7 @@ class SpecialLockdb extends FormSpecialPage {
 			'Reason' => [
 				'type' => 'textarea',
 				'rows' => 4,
+				'vertical-label' => true,
 				'label-message' => 'enterlockreason',
 			],
 			'Confirm' => [

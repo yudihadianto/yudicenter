@@ -1,5 +1,7 @@
 <?php
 
+use MediaWiki\MediaWikiServices;
+
 /**
  * Test class for Import methods.
  *
@@ -18,9 +20,12 @@ class ImportTest extends MediaWikiLangTestCase {
 	 */
 	public function testUnknownXMLTags( $xml, $text, $title ) {
 		$source = new ImportStringSource( $xml );
-		$services = $this->getServiceContainer();
+		$services = MediaWikiServices::getInstance();
 
-		$importer = $services->getWikiImporterFactory()->getWikiImporter( $source );
+		$importer = new WikiImporter(
+			$source,
+			$services->getMainConfig()
+		);
 
 		$importer->doImport();
 		$title = Title::newFromText( $title );
@@ -87,9 +92,10 @@ EOF
 			}
 		};
 
-		$importer = $this->getServiceContainer()
-			->getWikiImporterFactory()
-			->getWikiImporter( $source );
+		$importer = new WikiImporter(
+			$source,
+			MediaWikiServices::getInstance()->getMainConfig()
+		);
 		$importer->setPageOutCallback( $callback );
 		$importer->doImport();
 
@@ -169,9 +175,10 @@ EOF
 			$importNamespaces = $siteinfo['_namespaces'];
 		};
 
-		$importer = $this->getServiceContainer()
-			->getWikiImporterFactory()
-			->getWikiImporter( $source );
+		$importer = new WikiImporter(
+			$source,
+			MediaWikiServices::getInstance()->getMainConfig()
+		);
 		$importer->setSiteInfoCallback( $callback );
 		$importer->doImport();
 
@@ -282,14 +289,12 @@ EOF
 		);
 		// phpcs:enable
 
-		$services = $this->getServiceContainer();
-		$importer = $services->getWikiImporterFactory()->getWikiImporter( $source );
-
+		$importer = new WikiImporter( $source, MediaWikiServices::getInstance()->getMainConfig() );
 		$importer->setUsernamePrefix( 'Xxx', $assign );
 		$importer->doImport();
 
-		$db = wfGetDB( DB_PRIMARY );
-		$revQuery = $services->getRevisionStore()->getQueryInfo();
+		$db = wfGetDB( DB_MASTER );
+		$revQuery = MediaWikiServices::getInstance()->getRevisionStore()->getQueryInfo();
 
 		$row = $db->selectRow(
 			$revQuery['tables'],

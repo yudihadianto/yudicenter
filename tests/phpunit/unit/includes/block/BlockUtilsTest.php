@@ -3,10 +3,8 @@
 use MediaWiki\Block\AbstractBlock;
 use MediaWiki\Block\BlockUtils;
 use MediaWiki\Config\ServiceOptions;
-use MediaWiki\Tests\Unit\DummyServicesTrait;
+use MediaWiki\User\UserFactory;
 use MediaWiki\User\UserIdentity;
-use MediaWiki\User\UserIdentityLookup;
-use MediaWiki\User\UserIdentityValue;
 use Wikimedia\TestingAccessWrapper;
 
 /**
@@ -15,17 +13,10 @@ use Wikimedia\TestingAccessWrapper;
  * @author DannyS712
  */
 class BlockUtilsTest extends MediaWikiUnitTestCase {
-	use DummyServicesTrait;
 
-	/**
-	 * @param array $options
-	 * @param UserIdentityLookup|null $userIdentityLookup
-	 *
-	 * @return BlockUtils
-	 */
 	private function getUtils(
 		array $options = [],
-		UserIdentityLookup $userIdentityLookup = null
+		UserFactory $userFactory = null
 	) {
 		$baseOptions = [
 			'BlockCIDRLimit' => [
@@ -39,14 +30,13 @@ class BlockUtilsTest extends MediaWikiUnitTestCase {
 			$config
 		);
 
-		if ( $userIdentityLookup === null ) {
-			$userIdentityLookup = $this->createMock( UserIdentityLookup::class );
+		if ( $userFactory === null ) {
+			$userFactory = $this->createMock( UserFactory::class );
 		}
 
 		$utils = new BlockUtils(
 			$serviceOptions,
-			$userIdentityLookup,
-			$this->getDummyUserNameUtils()
+			$userFactory
 		);
 		$wrapper = TestingAccessWrapper::newFromObject( $utils );
 		return $wrapper;
@@ -61,11 +51,23 @@ class BlockUtilsTest extends MediaWikiUnitTestCase {
 		// Code path: providing a UserIdentity
 		// - target name is a valid IP, TYPE_IP
 		// - target name is not a valid IP, TYPE_USER
-		$userIdentity = new UserIdentityValue( $type === AbstractBlock::TYPE_IP ? 0 : 1, $name );
+		$userIdentity = $this->createMock( UserIdentity::class );
+		$userIdentity->method( 'getName' )
+			->willReturn( $name );
+		$userObject = $this->createMock( User::class );
 
+		$userFactory = $this->createMock( UserFactory::class );
+		$userFactory->expects( $this->once() )
+			->method( 'newFromUserIdentity' )
+			->with(
+				$this->equalTo( $userIdentity )
+			)
+			->willReturn( $userObject );
+
+		$blockUtils = $this->getUtils( [], $userFactory );
 		$this->assertSame(
-			[ $userIdentity, $type ],
-			$this->getUtils()->parseBlockTarget( $userIdentity )
+			[ $userObject, $type ],
+			$blockUtils->parseBlockTarget( $userIdentity )
 		);
 	}
 
@@ -89,14 +91,24 @@ class BlockUtilsTest extends MediaWikiUnitTestCase {
 		// Code path: providing a string
 		// - valid IP string
 		$ip = '1.2.3.4';
-		$userIdentity = UserIdentityValue::newAnonymous( $ip );
+		$user = $this->createMock( User::class );
+		$userFactory = $this->createMock( UserFactory::class );
+		$userFactory->expects( $this->once() )
+			->method( 'newFromName' )
+			->with(
+				$this->equalTo( $ip ),
+				$this->equalTo( UserFactory::RIGOR_NONE )
+			)
+			->willReturn( $user );
 
-		$blockUtils = $this->getUtils();
-		list( $target, $type ) = $blockUtils->parseBlockTarget( $ip );
-		$this->assertTrue( $userIdentity->equals( $target ) );
-		$this->assertSame( $type, AbstractBlock::TYPE_IP );
+		$blockUtils = $this->getUtils( [], $userFactory );
+		$this->assertSame(
+			[ $user, AbstractBlock::TYPE_IP ],
+			$blockUtils->parseBlockTarget( $ip )
+		);
 
 		// - valid IP range
+		// UserFactory isn't used for this, so no need to create a new BlockUtils
 		$ipRange = '127.111.113.151/24';
 		$sanitizedRange = '127.111.113.0/24';
 		$this->assertSame(
@@ -109,14 +121,14 @@ class BlockUtilsTest extends MediaWikiUnitTestCase {
 	 * @dataProvider provideTestParseBlockTargetNonIpString
 	 * @param string $inputTarget
 	 * @param string $baseName if it was a subpage
-	 * @param ?UserIdentity $userIdentityLookupResult
-	 * @param UserIdentity|string|null $outputTarget
+	 * @param ?User $userFactoryResult
+	 * @param User|string|null $outputTarget
 	 * @param ?int $targetType
 	 */
 	public function testParseBlockTargetNonIpString(
 		string $inputTarget,
 		string $baseName,
-		?UserIdentity $userIdentityLookupResult,
+		?User $userFactoryResult,
 		$outputTarget,
 		?int $targetType
 	) {
@@ -126,15 +138,14 @@ class BlockUtilsTest extends MediaWikiUnitTestCase {
 		// - not an IP string, UserFactory::newFromName returns null,
 		//     string does not begin with #
 		// Also include the case for subpage handling
-		$userIdentityLookup = $this->createMock( UserIdentityLookup::class );
-		$userIdentityLookup
-			->method( 'getUserIdentityByName' )
-			->with( $baseName )
-			->willReturn( $userIdentityLookupResult );
-		$blockUtils = $this->getUtils(
-			[],
-			$userIdentityLookup
-		);
+		$userFactory = $this->createMock( UserFactory::class );
+		$userFactory->expects( $this->once() )
+			->method( 'newFromName' )
+			->with(
+				$this->equalTo( $baseName )
+			)
+			->willReturn( $userFactoryResult );
+		$blockUtils = $this->getUtils( [], $userFactory );
 		$this->assertSame(
 			[ $outputTarget, $targetType ],
 			$blockUtils->parseBlockTarget( $inputTarget )
@@ -142,12 +153,12 @@ class BlockUtilsTest extends MediaWikiUnitTestCase {
 	}
 
 	public function provideTestParseBlockTargetNonIpString() {
-		$userIdentity = $this->createMock( UserIdentity::class );
+		$userObject = $this->createMock( User::class );
 		yield 'Name returns a valid user' => [
 			'DannyS712',
 			'DannyS712',
-			$userIdentity,
-			$userIdentity,
+			$userObject,
+			$userObject,
 			AbstractBlock::TYPE_USER
 		];
 
@@ -160,8 +171,8 @@ class BlockUtilsTest extends MediaWikiUnitTestCase {
 		];
 
 		yield 'Invalid user name, with subpage' => [
-			'SomeInvalid#UserName/WithASubpage',
-			'SomeInvalid#UserName',
+			'SomeInvalidUserName/WithASubpage',
+			'SomeInvalidUserName',
 			null,
 			null,
 			null

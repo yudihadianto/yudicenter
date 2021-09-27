@@ -21,24 +21,21 @@
 
 /**
  * @ingroup Parser
- *
- * @property int $eqpos
- * @property int $commentEnd
- * @property int $visualEnd
  * @property string[] $out
  */
 // phpcs:ignore Squiz.Classes.ValidClassName.NotCamelCaps
-class PPDPart_Hash {
+class PPDPart_Hash extends PPDPart {
+
 	/**
-	 * @var string[] Output accumulator
+	 * @param string $out
 	 */
-	public $out;
-
 	public function __construct( $out = '' ) {
-		$this->out = [];
-
 		if ( $out !== '' ) {
-			$this->out[] = $out;
+			$accum = [ $out ];
+		} else {
+			$accum = [];
 		}
+		// @phan-suppress-next-line PhanTypeMismatchArgumentProbablyReal
+		parent::__construct( $accum );
 	}
 }

@@ -36,7 +36,7 @@ use Psr\Http\Message\StreamInterface;
  * An interface similar to PSR-7's ResponseInterface, the primary difference
  * being that it is mutable.
  *
- * @stable to implement
+ * @stable for implementing
  */
 interface ResponseInterface {
 	// ResponseInterface

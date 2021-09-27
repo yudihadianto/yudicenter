@@ -8,6 +8,8 @@ use Wikimedia\Rdbms\LBFactory;
  */
 class ExternalStoreFactoryTest extends MediaWikiIntegrationTestCase {
 
+	use MediaWikiCoversValidator;
+
 	public function testExternalStoreFactory_noStores1() {
 		$factory = new ExternalStoreFactory( [], [], 'test-id' );
 		$this->expectException( ExternalStoreException::class );
@@ -78,10 +80,10 @@ class ExternalStoreFactoryTest extends MediaWikiIntegrationTestCase {
 
 		$lb = $this->getMockBuilder( \Wikimedia\Rdbms\LoadBalancer::class )
 			->disableOriginalConstructor()->getMock();
-		$lb->method( 'getReadOnlyReason' )->willReturn( 'Locked' );
+		$lb->expects( $this->any() )->method( 'getReadOnlyReason' )->willReturn( 'Locked' );
 		$lbFactory = $this->getMockBuilder( LBFactory::class )
 			->disableOriginalConstructor()->getMock();
-		$lbFactory->method( 'getExternalLB' )->willReturn( $lb );
+		$lbFactory->expects( $this->any() )->method( 'getExternalLB' )->willReturn( $lb );
 
 		$this->setService( 'DBLoadBalancerFactory', $lbFactory );
 

@@ -1,12 +1,10 @@
 {
 	"@metadata": {
 		"authors": [
-			"Makuba",
-			"Renan"
+			"Makuba"
 		]
 	},
 	"ooui-outline-control-move-down": "Mover element a infra",
 	"ooui-outline-control-move-up": "Mover element a supra",
-	"ooui-toolbar-more": "Plu",
-	"ooui-field-help": "Auxilie"
+	"ooui-toolbar-more": "Plu"
 }

@@ -1199,7 +1199,7 @@ abstract class FileBackendStore extends FileBackend {
 	 * An exception is thrown if an unsupported operation is requested.
 	 *
 	 * @param array[] $ops Same format as doOperations()
-	 * @return FileOp[]
+	 * @return FileOp[] List of FileOp objects
 	 * @throws FileBackendError
 	 */
 	final public function getOperationsInternal( array $ops ) {

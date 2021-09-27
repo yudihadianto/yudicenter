@@ -23,8 +23,6 @@
  * @since 1.19
  */
 
-use MediaWiki\Logger\LoggerFactory;
-use MediaWiki\MediaWikiServices;
 use MediaWiki\User\UserIdentity;
 use Wikimedia\Rdbms\IDatabase;
 
@@ -43,40 +41,26 @@ class DatabaseLogEntry extends LogEntryBase {
 	 * log entries. Array contains the following keys:
 	 * tables, fields, conds, options and join_conds
 	 *
-	 * Since 1.34, log_user and log_user_text have not been present in the
-	 * database, but they continue to be available in query results as
-	 * aliases.
-	 *
 	 * @return array
 	 */
 	public static function getSelectQueryData() {
 		$commentQuery = CommentStore::getStore()->getJoin( 'log_comment' );
+		$actorQuery = ActorMigration::newMigration()->getJoin( 'log_user' );
 
 		$tables = array_merge(
-			[
-				'logging',
-				'logging_actor' => 'actor',
-				'user'
-			],
-			$commentQuery['tables']
+			[ 'logging' ], $commentQuery['tables'], $actorQuery['tables'], [ 'user' ]
 		);
 		$fields = [
 			'log_id', 'log_type', 'log_action', 'log_timestamp',
 			'log_namespace', 'log_title', // unused log_page
 			'log_params', 'log_deleted',
-			'user_id',
-			'user_name',
-			'user_editcount',
-			'log_actor',
-			'log_user' => 'logging_actor.actor_user',
-			'log_user_text' => 'logging_actor.actor_name'
-		] + $commentQuery['fields'];
+			'user_id', 'user_name', 'user_editcount',
+		] + $commentQuery['fields'] + $actorQuery['fields'];
 
 		$joins = [
-			'logging_actor' => [ 'JOIN', 'actor_id=log_actor' ],
 			// IPs don't have an entry in user table
-			'user' => [ 'LEFT JOIN', 'user_id=logging_actor.actor_user' ],
-		] + $commentQuery['joins'];
+			'user' => [ 'LEFT JOIN', 'user_id=' . $actorQuery['fields']['log_user'] ],
+		] + $commentQuery['joins'] + $actorQuery['joins'];
 
 		return [
 			'tables' => $tables,
@@ -130,7 +114,7 @@ class DatabaseLogEntry extends LogEntryBase {
 	/** @var stdClass Database result row. */
 	protected $row;
 
-	/** @var UserIdentity */
+	/** @var User */
 	protected $performer;
 
 	/** @var array Parameters for log entry */
@@ -152,7 +136,7 @@ class DatabaseLogEntry extends LogEntryBase {
 	 * @return int
 	 */
 	public function getId() {
-		return (int)( $this->row->log_id ?? 0 );
+		return (int)$this->row->log_id;
 	}
 
 	/**
@@ -207,26 +191,36 @@ class DatabaseLogEntry extends LogEntryBase {
 		return $this->revId;
 	}
 
-	public function getPerformerIdentity(): UserIdentity {
+	protected function getPerformerUser(): User {
 		if ( !$this->performer ) {
-			$actorStore = MediaWikiServices::getInstance()->getActorStore();
-			try {
-				$this->performer = $actorStore->newActorFromRowFields(
-					$this->row->user_id ?? 0,
-					$this->row->log_user_text ?? null,
-					$this->row->log_actor ?? null
-				);
-			} catch ( InvalidArgumentException $e ) {
-				LoggerFactory::getInstance( 'logentry' )->warning(
-					'Failed to instantiate log entry performer', [
-						'exception' => $e,
-						'log_id' => $this->getId()
-					]
-				);
-				$this->performer = $actorStore->getUnknownActor();
+			$actorId = isset( $this->row->log_actor ) ? (int)$this->row->log_actor : 0;
+			$userId = (int)$this->row->log_user;
+			if ( $userId !== 0 || $actorId !== 0 ) {
+				// logged-in users
+				if ( isset( $this->row->user_name ) ) {
+					$this->performer = User::newFromRow( $this->row );
+				} elseif ( $actorId !== 0 ) {
+					$this->performer = User::newFromActorId( $actorId );
+				} else {
+					$this->performer = User::newFromId( $userId );
+				}
+			} else {
+				// IP users
+				$userText = $this->row->log_user_text;
+				$this->performer = User::newFromName( $userText, false );
 			}
 		}
+
 		return $this->performer;
+	}
+
+	public function getPerformer() {
+		wfDeprecated( __METHOD__, '1.36' );
+		return $this->getPerformerUser();
+	}
+
+	public function getPerformerIdentity(): UserIdentity {
+		return $this->getPerformerUser();
 	}
 
 	public function getTarget() {

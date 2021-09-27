@@ -23,8 +23,6 @@
  * @ingroup Content
  */
 
-use MediaWiki\Content\Transform\PreSaveTransformParams;
-
 /**
  * Base content handler implementation for flat text contents.
  *
@@ -162,29 +160,4 @@ class TextContentHandler extends ContentHandler {
 		return $fields;
 	}
 
-	public function preSaveTransform(
-		Content $content,
-		PreSaveTransformParams $pstParams
-	): Content {
-		$shouldCallDeprecatedMethod = $this->shouldCallDeprecatedContentTransformMethod(
-			$content,
-			$pstParams
-		);
-
-		if ( $shouldCallDeprecatedMethod ) {
-			return $this->callDeprecatedContentPST(
-				$content,
-				$pstParams
-			);
-		}
-
-		'@phan-var TextContent $content';
-
-		$text = $content->getText();
-
-		$pst = TextContent::normalizeLineEndings( $text );
-
-		$contentClass = $this->getContentClass();
-		return ( $text === $pst ) ? $content : new $contentClass( $pst, $content->getModel() );
-	}
 }

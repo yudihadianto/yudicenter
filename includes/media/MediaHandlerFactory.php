@@ -21,8 +21,6 @@
  * @ingroup Media
  */
 
-use Psr\Log\LoggerInterface;
-
 /**
  * Class to construct MediaHandler objects
  *
@@ -49,14 +47,11 @@ class MediaHandlerFactory {
 		'image/vnd.djvu' => DjVuHandler::class, // official
 		'image/x.djvu' => DjVuHandler::class, // compat
 		'image/x-djvu' => DjVuHandler::class, // compat
-		'image/jp2' => Jpeg2000Handler::class,
-		'image/jpx' => Jpeg2000Handler::class,
 	];
 
-	/** @var LoggerInterface */
-	private $logger;
-
-	/** @var array */
+	/**
+	 * @var array
+	 */
 	private $registry;
 
 	/**
@@ -66,15 +61,7 @@ class MediaHandlerFactory {
 	 */
 	private $handlers;
 
-	/**
-	 * @param LoggerInterface $logger
-	 * @param array $registry
-	 */
-	public function __construct(
-		LoggerInterface $logger,
-		array $registry
-	) {
-		$this->logger = $logger;
+	public function __construct( array $registry ) {
 		$this->registry = $registry + self::CORE_HANDLERS;
 	}
 
@@ -96,17 +83,11 @@ class MediaHandlerFactory {
 			/** @var MediaHandler $handler */
 			$handler = new $class;
 			if ( !$handler->isEnabled() ) {
-				$this->logger->debug(
-					'{class} is not enabled.',
-					[ 'class' => $class ]
-				);
+				wfDebug( __METHOD__ . ": $class is not enabled" );
 				$handler = false;
 			}
 		} else {
-			$this->logger->debug(
-				'no handler found for {type}.',
-				[ 'type' => $type ]
-			);
+			wfDebug( __METHOD__ . ": no handler found for $type." );
 			$handler = false;
 		}
 

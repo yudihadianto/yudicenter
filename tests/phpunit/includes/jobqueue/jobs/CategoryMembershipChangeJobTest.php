@@ -20,7 +20,7 @@ class CategoryMembershipChangeJobTest extends MediaWikiIntegrationTestCase {
 	 */
 	private $title;
 
-	protected function setUp(): void {
+	protected function setUp() : void {
 		parent::setUp();
 		$this->setMwGlobals( 'wgRCWatchCategoryMembership', true );
 		$this->setContentLang( 'qqx' );
@@ -32,6 +32,13 @@ class CategoryMembershipChangeJobTest extends MediaWikiIntegrationTestCase {
 		$this->title = $insertResult['title'];
 	}
 
+	private function runJobs() {
+		JobQueueGroup::destroySingletons();
+		$jobs = new RunJobs;
+		$jobs->loadParamsAndArgs( null, [ 'quiet' => true ], null );
+		$jobs->execute();
+	}
+
 	/**
 	 * @param string $text new page text
 	 *
@@ -39,9 +46,8 @@ class CategoryMembershipChangeJobTest extends MediaWikiIntegrationTestCase {
 	 */
 	private function editPageText( $text ) {
 		$page = WikiPage::factory( $this->title );
-		$editResult = $page->doUserEditContent(
+		$editResult = $page->doEditContent(
 			ContentHandler::makeContent( $text, $this->title ),
-			$this->getTestSysop()->getUser(),
 			__METHOD__
 		);
 		/** @var RevisionRecord $revisionRecord */

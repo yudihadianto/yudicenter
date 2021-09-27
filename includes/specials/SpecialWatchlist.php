@@ -36,7 +36,11 @@ use Wikimedia\Rdbms\IResultWrapper;
 class SpecialWatchlist extends ChangesListSpecialPage {
 	protected static $savedQueriesPreferenceName = 'rcfilters-wl-saved-queries';
 	protected static $daysPreferenceName = 'watchlistdays';
+	protected static $limitPreferenceName = 'wllimit';
 	protected static $collapsedPreferenceName = 'rcfilters-wl-collapsed';
+
+	/** @var float|int */
+	private $maxDays;
 
 	/** @var WatchedItemStoreInterface */
 	private $watchedItemStore;
@@ -49,6 +53,9 @@ class SpecialWatchlist extends ChangesListSpecialPage {
 
 	/** @var UserOptionsLookup */
 	private $userOptionsLookup;
+
+	/** @var bool Watchlist Expiry flag */
+	private $isWatchlistExpiryEnabled;
 
 	/**
 	 * @param WatchedItemStoreInterface $watchedItemStore
@@ -68,6 +75,8 @@ class SpecialWatchlist extends ChangesListSpecialPage {
 		$this->watchlistManager = $watchlistManager;
 		$this->loadBalancer = $loadBalancer;
 		$this->userOptionsLookup = $userOptionsLookup;
+		$this->maxDays = $this->getConfig()->get( 'RCMaxAge' ) / ( 3600 * 24 );
+		$this->isWatchlistExpiryEnabled = $this->getConfig()->get( 'WatchlistExpiry' );
 	}
 
 	public function doesWrites() {
@@ -183,11 +192,11 @@ class SpecialWatchlist extends ChangesListSpecialPage {
 					'isReplacedInStructuredUi' => true,
 					'activeValue' => false,
 					'default' => $this->userOptionsLookup->getBoolOption( $this->getUser(), 'extendwatchlist' ),
-					'queryCallable' => function ( string $specialClassName, IContextSource $ctx,
-						IDatabase $dbr, &$tables, &$fields, &$conds, &$query_options, &$join_conds
-					) {
+					'queryCallable' => function ( $specialClassName, $ctx, $dbr, &$tables,
+							&$fields, &$conds, &$query_options, &$join_conds ) {
 						$nonRevisionTypes = [ RC_LOG ];
-						$this->getHookRunner()->onSpecialWatchlistGetNonRevisionTypes( $nonRevisionTypes );
+						$this->getHookRunner()->onSpecialWatchlistGetNonRevisionTypes(
+							$nonRevisionTypes );
 						if ( $nonRevisionTypes ) {
 							$conds[] = $dbr->makeList(
 								[
@@ -221,7 +230,7 @@ class SpecialWatchlist extends ChangesListSpecialPage {
 					'label' => 'rcfilters-filter-watchlistactivity-unseen-label',
 					'description' => 'rcfilters-filter-watchlistactivity-unseen-description',
 					'cssClassSuffix' => 'watchedunseen',
-					'isRowApplicableCallable' => function ( IContextSource $ctx, RecentChange $rc ) {
+					'isRowApplicableCallable' => function ( $ctx, RecentChange $rc ) {
 						return !$this->isChangeEffectivelySeen( $rc );
 					},
 				],
@@ -230,15 +239,15 @@ class SpecialWatchlist extends ChangesListSpecialPage {
 					'label' => 'rcfilters-filter-watchlistactivity-seen-label',
 					'description' => 'rcfilters-filter-watchlistactivity-seen-description',
 					'cssClassSuffix' => 'watchedseen',
-					'isRowApplicableCallable' => function ( IContextSource $ctx, RecentChange $rc ) {
+					'isRowApplicableCallable' => function ( $ctx, RecentChange $rc ) {
 						return $this->isChangeEffectivelySeen( $rc );
 					}
 				],
 			],
 			'default' => ChangesListStringOptionsFilterGroup::NONE,
 			'queryCallable' => static function (
-				string $specialPageClassName,
-				IContextSource $context,
+				$specialPageClassName,
+				$context,
 				IDatabase $dbr,
 				&$tables,
 				&$fields,
@@ -345,7 +354,7 @@ class SpecialWatchlist extends ChangesListSpecialPage {
 			}
 		}
 
-		if ( $this->getRequest()->getRawVal( 'action' ) == 'submit' ) {
+		if ( $this->getRequest()->getVal( 'action' ) == 'submit' ) {
 			$allBooleansFalse = [];
 
 			// If the user submitted the form, start with a baseline of "all
@@ -379,7 +388,7 @@ class SpecialWatchlist extends ChangesListSpecialPage {
 		$user = $this->getUser();
 
 		$rcQuery = RecentChange::getQueryInfo();
-		$tables = array_merge( $rcQuery['tables'], $tables, [ 'watchlist' ] );
+		$tables = array_merge( $tables, $rcQuery['tables'], [ 'watchlist' ] );
 		$fields = array_merge( $rcQuery['fields'], $fields );
 
 		$join_conds = array_merge(
@@ -397,7 +406,7 @@ class SpecialWatchlist extends ChangesListSpecialPage {
 			$join_conds
 		);
 
-		if ( $this->getConfig()->get( 'WatchlistExpiry' ) ) {
+		if ( $this->isWatchlistExpiryEnabled ) {
 			$tables[] = 'watchlist_expiry';
 			$fields[] = 'we_expiry';
 			$join_conds['watchlist_expiry'] = [ 'LEFT JOIN', 'wl_id = we_item' ];
@@ -535,7 +544,7 @@ class SpecialWatchlist extends ChangesListSpecialPage {
 					$unwatchTooltipMessage = 'tooltip-ca-unwatch';
 					$diffInDays = null;
 					// Check if the watchlist expiry flag is enabled to show new tooltip message
-					if ( $this->getConfig()->get( 'WatchlistExpiry' ) ) {
+					if ( $this->isWatchlistExpiryEnabled ) {
 						$watchedItem = $this->watchedItemStore->getWatchedItem( $this->getUser(), $rc->getTitle() );
 						if ( $watchedItem instanceof WatchedItem && $watchedItem->getExpiry() !== null ) {
 							$diffInDays = $watchedItem->getExpiryInDays();
@@ -788,9 +797,8 @@ class SpecialWatchlist extends ChangesListSpecialPage {
 
 	private function cutoffselector( $options ) {
 		$selected = (float)$options['days'];
-		$maxDays = $this->getConfig()->get( 'RCMaxAge' ) / ( 3600 * 24 );
 		if ( $selected <= 0 ) {
-			$selected = $maxDays;
+			$selected = $this->maxDays;
 		}
 
 		$selectedHours = round( $selected * 24 );
@@ -804,7 +812,7 @@ class SpecialWatchlist extends ChangesListSpecialPage {
 			72,
 			168,
 			24 * (float)$this->userOptionsLookup->getOption( $this->getUser(), 'watchlistdays', 0 ),
-			24 * $maxDays,
+			24 * $this->maxDays,
 			$selectedHours
 		] ) );
 		asort( $hours );
@@ -926,12 +934,5 @@ class SpecialWatchlist extends ChangesListSpecialPage {
 			$this->getUser(),
 			$rc->getTitle()
 		);
-	}
-
-	/**
-	 * @return string
-	 */
-	protected function getLimitPreferenceName(): string {
-		return 'wllimit';
 	}
 }

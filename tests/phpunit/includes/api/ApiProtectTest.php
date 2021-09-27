@@ -44,9 +44,6 @@ class ApiProtectTest extends ApiTestCase {
 		$this->assertArrayHasKey( 'protect', $apiResult );
 		$this->assertSame( $name, $apiResult['protect']['title'] );
 		$this->assertTrue( $title->isProtected( 'edit' ) );
-		$this->assertTrue( $this->getServiceContainer()->getWatchlistManager()->isTempWatched(
-			$this->getTestSysop()->getUser(),
-			$title
-		) );
+		$this->assertTrue( $this->getTestSysop()->getUser()->isTempWatched( $title ) );
 	}
 }

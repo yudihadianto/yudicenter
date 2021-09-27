@@ -64,9 +64,8 @@ class DumpAsserter {
 
 			if ( $this->xml->nodeType == XMLReader::END_ELEMENT ) {
 				$depth--;
-				if ( $depth < 0 && !$allowAscend ) {
-					return false;
-				}
+				if ( $depth < 0 && !$allowAscend )
+				return false;
 			}
 
 			if ( !$this->xml->read() ) {

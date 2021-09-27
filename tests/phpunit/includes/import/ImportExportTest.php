@@ -29,9 +29,7 @@ class ImportExportTest extends MediaWikiLangTestCase {
 	 * @return WikiExporter
 	 */
 	private function getExporter( string $schemaVersion ) {
-		$exporter = $this->getServiceContainer()
-			->getWikiExporterFactory()
-			->getWikiExporter( $this->db, WikiExporter::FULL );
+		$exporter = new WikiExporter( $this->db, WikiExporter::FULL );
 		$exporter->setSchemaVersion( $schemaVersion );
 		return $exporter;
 	}
@@ -45,20 +43,7 @@ class ImportExportTest extends MediaWikiLangTestCase {
 		$config = new HashConfig( [
 			'CommandLineMode' => true,
 		] );
-		$services = $this->getServiceContainer();
-		$importer = new WikiImporter(
-			$source,
-			$config,
-			$services->getHookContainer(),
-			$services->getContentLanguage(),
-			$services->getNamespaceInfo(),
-			$services->getTitleFactory(),
-			$services->getWikiPageFactory(),
-			$services->getWikiRevisionUploadImporter(),
-			$services->getPermissionManager(),
-			$services->getContentHandlerFactory(),
-			$services->getSlotRoleRegistry()
-		);
+		$importer = new WikiImporter( $source, $config );
 		return $importer;
 	}
 

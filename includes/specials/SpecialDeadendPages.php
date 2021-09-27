@@ -84,6 +84,7 @@ class SpecialDeadendPages extends PageQueryPage {
 			'fields' => [
 				'namespace' => 'page_namespace',
 				'title' => 'page_title',
+				'value' => 'page_title'
 			],
 			'conds' => [
 				'pl_from IS NULL',

@@ -27,8 +27,6 @@ use MediaWiki\Cache\LinkBatchFactory;
 use MediaWiki\HookContainer\HookContainer;
 use MediaWiki\HookContainer\HookRunner;
 use MediaWiki\User\UserGroupManager;
-use MediaWiki\User\UserIdentity;
-use MediaWiki\User\UserIdentityValue;
 use Wikimedia\Rdbms\ILoadBalancer;
 
 /**
@@ -238,8 +236,7 @@ class UsersPager extends AlphabeticPager {
 		$lang = $this->getLanguage();
 
 		$groups = '';
-		$userIdentity = new UserIdentityValue( intval( $row->user_id ), $userName );
-		$ugms = $this->getGroupMemberships( $userIdentity );
+		$ugms = self::getGroupMemberships( intval( $row->user_id ), $this->userGroupCache );
 
 		if ( !$this->including && count( $ugms ) > 0 ) {
 			$list = [];
@@ -465,14 +462,16 @@ class UsersPager extends AlphabeticPager {
 	 * Get an associative array containing groups the specified user belongs to,
 	 * and the relevant UserGroupMembership objects
 	 *
-	 * @param UserIdentity $user
+	 * @param int $uid User id
+	 * @param array[]|null $cache
 	 * @return UserGroupMembership[] (group name => UserGroupMembership object)
 	 */
-	protected function getGroupMemberships( $user ) {
-		if ( $this->userGroupCache === null ) {
-			return $this->userGroupManager->getUserGroupMemberships( $user );
+	protected static function getGroupMemberships( $uid, $cache = null ) {
+		if ( $cache === null ) {
+			$user = User::newFromId( $uid );
+			return $user->getGroupMemberships();
 		} else {
-			return $this->userGroupCache[$user->getId()] ?? [];
+			return $cache[$uid] ?? [];
 		}
 	}
 

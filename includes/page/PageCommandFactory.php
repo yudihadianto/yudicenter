@@ -22,34 +22,21 @@
 
 namespace MediaWiki\Page;
 
-use ActorMigration;
-use BagOStuff;
-use CommentStore;
-use Config;
 use ContentModelChange;
-use JobQueueGroup;
-use MediaWiki\Cache\BacklinkCacheFactory;
-use MediaWiki\Collation\CollationFactory;
 use MediaWiki\Config\ServiceOptions;
 use MediaWiki\Content\IContentHandlerFactory;
 use MediaWiki\EditPage\SpamChecker;
 use MediaWiki\HookContainer\HookContainer;
 use MediaWiki\Permissions\Authority;
 use MediaWiki\Revision\RevisionStore;
-use MediaWiki\User\ActorNormalization;
-use MediaWiki\User\UserEditTracker;
 use MediaWiki\User\UserFactory;
-use MediaWiki\User\UserIdentity;
 use MergeHistory;
 use MovePage;
 use NamespaceInfo;
-use ReadOnlyMode;
 use RepoGroup;
 use Title;
-use TitleFactory;
-use TitleFormatter;
 use WatchedItemStoreInterface;
-use Wikimedia\Rdbms\LBFactory;
+use Wikimedia\Rdbms\ILoadBalancer;
 use WikiPage;
 
 /**
@@ -57,19 +44,12 @@ use WikiPage;
  *
  * @since 1.35
  */
-class PageCommandFactory implements
-	ContentModelChangeFactory,
-	DeletePageFactory,
-	MergeHistoryFactory,
-	MovePageFactory,
-	RollbackPageFactory
-{
+class PageCommandFactory implements ContentModelChangeFactory, MergeHistoryFactory, MovePageFactory {
+	/** @var ServiceOptions */
+	private $options;
 
-	/** @var Config */
-	private $config;
-
-	/** @var LBFactory */
-	private $lbFactory;
+	/** @var ILoadBalancer */
+	private $loadBalancer;
 
 	/** @var NamespaceInfo */
 	private $namespaceInfo;
@@ -80,9 +60,6 @@ class PageCommandFactory implements
 	/** @var RepoGroup */
 	private $repoGroup;
 
-	/** @var ReadOnlyMode */
-	private $readOnlyMode;
-
 	/** @var IContentHandlerFactory */
 	private $contentHandlerFactory;
 
@@ -91,9 +68,6 @@ class PageCommandFactory implements
 
 	/** @var SpamChecker */
 	private $spamChecker;
-
-	/** @var TitleFormatter */
-	private $titleFormatter;
 
 	/** @var HookContainer */
 	private $hookContainer;
@@ -104,89 +78,40 @@ class PageCommandFactory implements
 	/** @var UserFactory */
 	private $userFactory;
 
-	/** @var ActorMigration */
-	private $actorMigration;
-
-	/** @var ActorNormalization */
-	private $actorNormalization;
-
-	/** @var TitleFactory */
-	private $titleFactory;
-
-	/** @var UserEditTracker */
-	private $userEditTracker;
-
-	/** @var CollationFactory */
-	private $collationFactory;
-
-	/** @var JobQueueGroup */
-	private $jobQueueGroup;
-
-	/** @var CommentStore */
-	private $commentStore;
-
-	/** @var BagOStuff */
-	private $dbReplicatedCache;
-
-	/** @var string */
-	private $localWikiID;
-
-	/** @var string */
-	private $webRequestID;
-
-	/** @var BacklinkCacheFactory */
-	private $backlinkCacheFactory;
+	/**
+	 * @internal For use by ServiceWiring
+	 */
+	public const CONSTRUCTOR_OPTIONS = [
+		'CategoryCollation',
+		'MaximumMovedPages',
+	];
 
 	public function __construct(
-		Config $config,
-		LBFactory $lbFactory,
+		ServiceOptions $options,
+		ILoadBalancer $loadBalancer,
 		NamespaceInfo $namespaceInfo,
 		WatchedItemStoreInterface $watchedItemStore,
 		RepoGroup $repoGroup,
-		ReadOnlyMode $readOnlyMode,
 		IContentHandlerFactory $contentHandlerFactory,
 		RevisionStore $revisionStore,
 		SpamChecker $spamChecker,
-		TitleFormatter $titleFormatter,
 		HookContainer $hookContainer,
 		WikiPageFactory $wikiPageFactory,
-		UserFactory $userFactory,
-		ActorMigration $actorMigration,
-		ActorNormalization $actorNormalization,
-		TitleFactory $titleFactory,
-		UserEditTracker $userEditTracker,
-		CollationFactory $collationFactory,
-		JobQueueGroup $jobQueueGroup,
-		CommentStore $commentStore,
-		BagOStuff $dbReplicatedCache,
-		string $localWikiID,
-		string $webRequestID,
-		BacklinkCacheFactory $backlinkCacheFactory
+		UserFactory $userFactory
 	) {
-		$this->config = $config;
-		$this->lbFactory = $lbFactory;
+		$options->assertRequiredOptions( self::CONSTRUCTOR_OPTIONS );
+
+		$this->options = $options;
+		$this->loadBalancer = $loadBalancer;
 		$this->namespaceInfo = $namespaceInfo;
 		$this->watchedItemStore = $watchedItemStore;
 		$this->repoGroup = $repoGroup;
-		$this->readOnlyMode = $readOnlyMode;
 		$this->contentHandlerFactory = $contentHandlerFactory;
 		$this->revisionStore = $revisionStore;
 		$this->spamChecker = $spamChecker;
-		$this->titleFormatter = $titleFormatter;
 		$this->hookContainer = $hookContainer;
 		$this->wikiPageFactory = $wikiPageFactory;
 		$this->userFactory = $userFactory;
-		$this->actorMigration = $actorMigration;
-		$this->actorNormalization = $actorNormalization;
-		$this->titleFactory = $titleFactory;
-		$this->userEditTracker = $userEditTracker;
-		$this->collationFactory = $collationFactory;
-		$this->jobQueueGroup = $jobQueueGroup;
-		$this->commentStore = $commentStore;
-		$this->dbReplicatedCache = $dbReplicatedCache;
-		$this->localWikiID = $localWikiID;
-		$this->webRequestID = $webRequestID;
-		$this->backlinkCacheFactory = $backlinkCacheFactory;
 	}
 
 	/**
@@ -199,7 +124,7 @@ class PageCommandFactory implements
 		Authority $performer,
 		WikiPage $wikipage,
 		string $newContentModel
-	): ContentModelChange {
+	) : ContentModelChange {
 		return new ContentModelChange(
 			$this->contentHandlerFactory,
 			$this->hookContainer,
@@ -212,51 +137,32 @@ class PageCommandFactory implements
 	}
 
 	/**
-	 * @inheritDoc
-	 */
-	public function newDeletePage( ProperPageIdentity $page, Authority $deleter ): DeletePage {
-		return new DeletePage(
-			$this->hookContainer,
-			$this->revisionStore,
-			$this->lbFactory,
-			$this->jobQueueGroup,
-			$this->commentStore,
-			new ServiceOptions( DeletePage::CONSTRUCTOR_OPTIONS, $this->config ),
-			$this->dbReplicatedCache,
-			$this->localWikiID,
-			$this->webRequestID,
-			$this->wikiPageFactory,
-			$this->userFactory,
-			$page,
-			$deleter,
-			$this->backlinkCacheFactory
-		);
-	}
-
-	/**
-	 * @param PageIdentity $source
-	 * @param PageIdentity $destination
+	 * @param Title $source
+	 * @param Title $destination
 	 * @param string|null $timestamp
 	 * @return MergeHistory
 	 */
 	public function newMergeHistory(
-		PageIdentity $source,
-		PageIdentity $destination,
+		Title $source,
+		Title $destination,
 		string $timestamp = null
-	): MergeHistory {
+	) : MergeHistory {
+		if ( $timestamp === null ) {
+			// For compatibility with MergeHistory constructor until it can be changed
+			$timestamp = false;
+		}
 		return new MergeHistory(
 			$source,
 			$destination,
 			$timestamp,
-			$this->lbFactory->getMainLB(),
+			$this->loadBalancer,
 			$this->contentHandlerFactory,
 			$this->revisionStore,
 			$this->watchedItemStore,
 			$this->spamChecker,
 			$this->hookContainer,
 			$this->wikiPageFactory,
-			$this->titleFormatter,
-			$this->titleFactory
+			$this->userFactory
 		);
 	}
 
@@ -265,12 +171,12 @@ class PageCommandFactory implements
 	 * @param Title $to
 	 * @return MovePage
 	 */
-	public function newMovePage( Title $from, Title $to ): MovePage {
+	public function newMovePage( Title $from, Title $to ) : MovePage {
 		return new MovePage(
 			$from,
 			$to,
-			new ServiceOptions( MovePage::CONSTRUCTOR_OPTIONS, $this->config ),
-			$this->lbFactory->getMainLB(),
+			$this->options,
+			$this->loadBalancer,
 			$this->namespaceInfo,
 			$this->watchedItemStore,
 			$this->repoGroup,
@@ -279,40 +185,7 @@ class PageCommandFactory implements
 			$this->spamChecker,
 			$this->hookContainer,
 			$this->wikiPageFactory,
-			$this->userFactory,
-			$this->userEditTracker,
-			$this,
-			$this->collationFactory
-		);
-	}
-
-	/**
-	 * Create a new command instance for page rollback.
-	 *
-	 * @param PageIdentity $page
-	 * @param Authority $performer
-	 * @param UserIdentity $byUser
-	 * @return RollbackPage
-	 */
-	public function newRollbackPage(
-		PageIdentity $page,
-		Authority $performer,
-		UserIdentity $byUser
-	): RollbackPage {
-		return new RollbackPage(
-			new ServiceOptions( RollbackPage::CONSTRUCTOR_OPTIONS, $this->config ),
-			$this->lbFactory->getMainLB(),
-			$this->userFactory,
-			$this->readOnlyMode,
-			$this->revisionStore,
-			$this->titleFormatter,
-			$this->hookContainer,
-			$this->wikiPageFactory,
-			$this->actorMigration,
-			$this->actorNormalization,
-			$page,
-			$performer,
-			$byUser
+			$this->userFactory
 		);
 	}
 }

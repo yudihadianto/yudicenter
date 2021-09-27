@@ -18,8 +18,6 @@
  * @file
  */
 
-use MediaWiki\Page\PageReference;
-
 /**
  * HTML file cache invalidation all the pages linking to a given title
  *
@@ -27,21 +25,21 @@ use MediaWiki\Page\PageReference;
  * @deprecated Since 1.34; Enqueue jobs from HTMLCacheUpdateJob::newForBacklinks instead
  */
 class HTMLCacheUpdate extends DataUpdate {
-	/** @var PageReference */
-	private $pageTo;
+	/** @var Title */
+	private $title;
 	/** @var string */
 	private $table;
 
 	/**
-	 * @param PageReference $pageTo
+	 * @param Title $titleTo
 	 * @param string $table
 	 * @param string $causeAction Triggering action
 	 * @param string $causeAgent Triggering user
 	 */
 	public function __construct(
-		PageReference $pageTo, $table, $causeAction = 'unknown', $causeAgent = 'unknown'
+		Title $titleTo, $table, $causeAction = 'unknown', $causeAgent = 'unknown'
 	) {
-		$this->pageTo = $pageTo;
+		$this->title = $titleTo;
 		$this->table = $table;
 		$this->causeAction = $causeAction;
 		$this->causeAgent = $causeAgent;
@@ -49,7 +47,7 @@ class HTMLCacheUpdate extends DataUpdate {
 
 	public function doUpdate() {
 		$job = HTMLCacheUpdateJob::newForBacklinks(
-			$this->pageTo,
+			$this->title,
 			$this->table,
 			[ 'causeAction' => $this->getCauseAction(), 'causeAgent' => $this->getCauseAgent() ]
 		);

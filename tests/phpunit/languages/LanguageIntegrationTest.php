@@ -6,6 +6,7 @@ use MediaWiki\Languages\LanguageConverterFactory;
 use MediaWiki\Languages\LanguageFallback;
 use MediaWiki\Languages\LanguageNameUtils;
 use MediaWiki\MediaWikiServices;
+use Wikimedia\TestingAccessWrapper;
 
 /**
  * @group Language
@@ -27,7 +28,7 @@ class LanguageIntegrationTest extends LanguageClassesTestCase {
 		);
 	}
 
-	protected function setUp(): void {
+	protected function setUp() : void {
 		global $wgHooks;
 
 		parent::setUp();
@@ -1128,7 +1129,7 @@ class LanguageIntegrationTest extends LanguageClassesTestCase {
 			[
 				1024 ** 7,
 				"1 ZB",
-				"1 zettabyte"
+				"1 zetabyte"
 			],
 			[
 				1024 ** 8,
@@ -1196,7 +1197,7 @@ class LanguageIntegrationTest extends LanguageClassesTestCase {
 			[
 				10 ** 21,
 				"1 Zbps",
-				"1 zettabit per second"
+				"1 zetabit per second"
 			],
 			[
 				10 ** 24,
@@ -1844,6 +1845,23 @@ class LanguageIntegrationTest extends LanguageClassesTestCase {
 	}
 
 	/**
+	 * @covers Language::clearCaches
+	 */
+	public function testClearCaches() {
+		$this->hideDeprecated( 'Language::clearCaches' );
+
+		$languageClass = TestingAccessWrapper::newFromClass( Language::class );
+
+		// Populate $mLangObjCache
+		$lang = Language::factory( 'en' );
+		$this->assertNotCount( 0, Language::$mLangObjCache );
+
+		Language::clearCaches();
+
+		$this->assertSame( [], Language::$mLangObjCache );
+	}
+
+	/**
 	 * @dataProvider provideGetParentLanguage
 	 * @covers Language::getParentLanguage
 	 */
@@ -1895,7 +1913,7 @@ class LanguageIntegrationTest extends LanguageClassesTestCase {
 				] ),
 				$this->createHookContainer()
 			] )
-			->onlyMethods( [ 'getMessagesFileName' ] )
+			->setMethods( [ 'getMessagesFileName' ] )
 			->getMock();
 		$langNameUtils->method( 'getMessagesFileName' )->will(
 			$this->returnCallback( static function ( $code ) {
@@ -2048,7 +2066,7 @@ class LanguageIntegrationTest extends LanguageClassesTestCase {
 	 * @covers Language::isKnownLanguageTag
 	 */
 	public function testIsKnownLanguageTag_cldr() {
-		if ( !class_exists( LanguageNames::class ) ) {
+		if ( !class_exists( 'LanguageNames' ) ) {
 			$this->markTestSkipped( 'The LanguageNames class is not available. '
 				. 'The CLDR extension is probably not installed.' );
 		}

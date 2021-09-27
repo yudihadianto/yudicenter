@@ -60,6 +60,8 @@ class MWDocGen extends Maintenance {
 	private $excludePatterns;
 	/** @var bool */
 	private $doDot;
+	/** @var bool */
+	private $doMan;
 
 	/**
 	 * Prepare Maintenance class

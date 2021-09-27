@@ -30,12 +30,10 @@ use MediaWiki\Config\ServiceOptions;
 use MediaWiki\HookContainer\HookContainer;
 use MediaWiki\HookContainer\HookRunner;
 use MediaWiki\Linker\LinkRenderer;
-use MediaWiki\Page\PageReference;
 use Profiler;
 use RequestContext;
 use SpecialPage;
 use Title;
-use TitleFactory;
 use User;
 use Wikimedia\ObjectFactory;
 
@@ -143,6 +141,7 @@ class SpecialPageFactory {
 				'LinkBatchFactory',
 				'DBLoadBalancer',
 				'CommentStore',
+				'ActorMigration',
 				'UserCache',
 			]
 		],
@@ -312,6 +311,7 @@ class SpecialPageFactory {
 		'CreateAccount' => [
 			'class' => \SpecialCreateAccount::class,
 			'services' => [
+				'PermissionManager',
 				'AuthManager',
 			]
 		],
@@ -357,9 +357,6 @@ class SpecialPageFactory {
 				'BlockUserFactory',
 				'UserNameUtils',
 				'UserNamePrefixSearch',
-				'BlockActionInfo',
-				'TitleFormatter',
-				'NamespaceInfo'
 			]
 		],
 		'Unblock' => [
@@ -377,9 +374,9 @@ class SpecialPageFactory {
 				'LinkBatchFactory',
 				'BlockRestrictionStore',
 				'DBLoadBalancer',
+				'ActorMigration',
 				'CommentStore',
 				'BlockUtils',
-				'BlockActionInfo',
 			],
 		],
 		'AutoblockList' => [
@@ -388,9 +385,9 @@ class SpecialPageFactory {
 				'LinkBatchFactory',
 				'BlockRestrictionStore',
 				'DBLoadBalancer',
+				'ActorMigration',
 				'CommentStore',
-				'BlockUtils',
-				'BlockActionInfo',
+				'BlockUtils'
 			],
 		],
 		'ChangePassword' => [
@@ -401,7 +398,6 @@ class SpecialPageFactory {
 			'services' => [
 				'PasswordFactory',
 				'AuthManager',
-				'CentralIdLookup',
 			]
 		],
 		'PasswordReset' => [
@@ -416,9 +412,9 @@ class SpecialPageFactory {
 				'PermissionManager',
 				'DBLoadBalancer',
 				'CommentStore',
+				'ActorMigration',
 				'RevisionFactory',
 				'NamespaceInfo',
-				'UserFactory',
 				'UserNameUtils',
 				'UserNamePrefixSearch',
 			]
@@ -445,7 +441,6 @@ class SpecialPageFactory {
 				'UserNameUtils',
 				'UserNamePrefixSearch',
 				'UserOptionsLookup',
-				'UserFactory',
 			]
 		],
 		'Listgrouprights' => [
@@ -479,7 +474,6 @@ class SpecialPageFactory {
 				'UserGroupManagerFactory',
 				'UserNameUtils',
 				'UserNamePrefixSearch',
-				'UserFactory',
 			]
 		],
 		'EditWatchlist' => [
@@ -491,11 +485,13 @@ class SpecialPageFactory {
 				'LinkBatchFactory',
 				'NamespaceInfo',
 				'WikiPageFactory',
-				'WatchlistManager',
 			]
 		],
 		'PasswordPolicies' => [
-			'class' => \SpecialPasswordPolicies::class
+			'class' => \SpecialPasswordPolicies::class,
+			'services' => [
+				'NamespaceInfo'
+			]
 		],
 
 		// Recent changes and logs
@@ -503,9 +499,11 @@ class SpecialPageFactory {
 			'class' => \SpecialNewFiles::class,
 			'services' => [
 				'MimeAnalyzer',
-				'GroupPermissionsLookup',
+				'PermissionManager',
+				'ActorMigration',
 				'DBLoadBalancer',
-				'LinkBatchFactory',
+				'UserCache',
+				'UserFactory',
 			]
 		],
 		'Log' => [
@@ -514,7 +512,6 @@ class SpecialPageFactory {
 				'LinkBatchFactory',
 				'DBLoadBalancer',
 				'ActorNormalization',
-				'UserIdentityLookup',
 			]
 		],
 		'Watchlist' => [
@@ -532,11 +529,13 @@ class SpecialPageFactory {
 				'LinkBatchFactory',
 				'CommentStore',
 				'ContentHandlerFactory',
-				'GroupPermissionsLookup',
+				'PermissionManager',
 				'DBLoadBalancer',
 				'RevisionLookup',
 				'NamespaceInfo',
+				'ActorMigration',
 				'UserOptionsLookup',
+				'UserFactory',
 			]
 		],
 		'Recentchanges' => [
@@ -569,6 +568,7 @@ class SpecialPageFactory {
 				'RepoGroup',
 				'DBLoadBalancer',
 				'CommentStore',
+				'ActorMigration',
 				'UserNameUtils',
 				'UserNamePrefixSearch',
 				'UserCache',
@@ -599,6 +599,7 @@ class SpecialPageFactory {
 				'LinkBatchFactory',
 				'RepoGroup',
 				'SearchEngineFactory',
+				'DBLoadBalancer',
 				'LanguageConverterFactory',
 			]
 		],
@@ -630,7 +631,10 @@ class SpecialPageFactory {
 			'class' => \SpecialApiSandbox::class,
 		],
 		'Statistics' => [
-			'class' => \SpecialStatistics::class
+			'class' => \SpecialStatistics::class,
+			'services' => [
+				'NamespaceInfo',
+			]
 		],
 		'Allmessages' => [
 			'class' => \SpecialAllMessages::class,
@@ -661,7 +665,7 @@ class SpecialPageFactory {
 			]
 		],
 		'Randompage' => [
-			'class' => \SpecialRandomPage::class,
+			'class' => \RandomPage::class,
 			'services' => [
 				'DBLoadBalancer',
 				'NamespaceInfo',
@@ -674,14 +678,14 @@ class SpecialPageFactory {
 			]
 		],
 		'Randomredirect' => [
-			'class' => \SpecialRandomRedirect::class,
+			'class' => \SpecialRandomredirect::class,
 			'services' => [
 				'DBLoadBalancer',
 				'NamespaceInfo',
 			]
 		],
 		'Randomrootpage' => [
-			'class' => \SpecialRandomRootPage::class,
+			'class' => \SpecialRandomrootpage::class,
 			'services' => [
 				'DBLoadBalancer',
 				'NamespaceInfo',
@@ -760,14 +764,12 @@ class SpecialPageFactory {
 			'class' => \SpecialExport::class,
 			'services' => [
 				'DBLoadBalancer',
-				'WikiExporterFactory',
 			]
 		],
 		'Import' => [
 			'class' => \SpecialImport::class,
 			'services' => [
 				'PermissionManager',
-				'WikiImporterFactory',
 			]
 		],
 		'Undelete' => [
@@ -873,7 +875,6 @@ class SpecialPageFactory {
 				'RepoGroup',
 				'WikiPageFactory',
 				'SearchEngineFactory',
-				'WatchlistManager',
 			]
 		],
 		'Mycontributions' => [
@@ -977,29 +978,21 @@ class SpecialPageFactory {
 	];
 
 	/**
-	 * @var TitleFactory
-	 */
-	private $titleFactory;
-
-	/**
 	 * @param ServiceOptions $options
 	 * @param Language $contLang
 	 * @param ObjectFactory $objectFactory
-	 * @param TitleFactory $titleFactory
 	 * @param HookContainer $hookContainer
 	 */
 	public function __construct(
 		ServiceOptions $options,
 		Language $contLang,
 		ObjectFactory $objectFactory,
-		TitleFactory $titleFactory,
 		HookContainer $hookContainer
 	) {
 		$options->assertRequiredOptions( self::CONSTRUCTOR_OPTIONS );
 		$this->options = $options;
 		$this->contLang = $contLang;
 		$this->objectFactory = $objectFactory;
-		$this->titleFactory = $titleFactory;
 		$this->hookContainer = $hookContainer;
 		$this->hookRunner = new HookRunner( $hookContainer );
 	}
@@ -1010,7 +1003,7 @@ class SpecialPageFactory {
 	 *
 	 * @return string[]
 	 */
-	public function getNames(): array {
+	public function getNames() : array {
 		return array_keys( $this->getPageList() );
 	}
 
@@ -1019,7 +1012,7 @@ class SpecialPageFactory {
 	 *
 	 * @return array
 	 */
-	private function getPageList(): array {
+	private function getPageList() : array {
 		if ( !is_array( $this->list ) ) {
 			$this->list = self::CORE_LIST;
 
@@ -1073,9 +1066,8 @@ class SpecialPageFactory {
 				$this->list['Mute'] = [
 					'class' => \SpecialMute::class,
 					'services' => [
-						'CentralIdLookup',
 						'UserOptionsManager',
-						'UserIdentityLookup',
+						'UserFactory',
 					]
 				];
 			}
@@ -1109,7 +1101,7 @@ class SpecialPageFactory {
 	 * All registered special pages are guaranteed to map to themselves.
 	 * @return array
 	 */
-	private function getAliasList(): array {
+	private function getAliasList() : array {
 		if ( $this->aliases === null ) {
 			$aliases = $this->contLang->getSpecialPageAliases();
 			$pageList = $this->getPageList();
@@ -1250,9 +1242,9 @@ class SpecialPageFactory {
 	 * that the current user has the required permissions for.
 	 *
 	 * @param User $user User object to check permissions provided
-	 * @return SpecialPage[]
+	 * @return array ( string => Specialpage )
 	 */
-	public function getUsablePages( User $user ): array {
+	public function getUsablePages( User $user ) : array {
 		$pages = [];
 		foreach ( $this->getPageList() as $name => $rec ) {
 			$page = $this->getPage( $name );
@@ -1272,13 +1264,39 @@ class SpecialPageFactory {
 	/**
 	 * Get listed special pages available to everyone by default.
 	 *
-	 * @return SpecialPage[]
+	 * @return array ( string => Specialpage )
 	 */
-	public function getRegularPages(): array {
+	public function getRegularPages() : array {
 		$pages = [];
 		foreach ( $this->getPageList() as $name => $rec ) {
 			$page = $this->getPage( $name );
 			if ( $page && $page->isListed() && !$page->isRestricted() ) {
+				$pages[$name] = $page;
+			}
+		}
+
+		return $pages;
+	}
+
+	/**
+	 * Get listed special pages generally restricted, but available to the current user.
+	 *
+	 * @deprecated since 1.36 Use getUsablePages() instead and exclude any public
+	 *  entries with `!$page->isRestricted()`
+	 * @param User $user User object to use
+	 * @return array ( string => Specialpage )
+	 */
+	public function getRestrictedPages( User $user ) : array {
+		wfDeprecated( __METHOD__, '1.36' );
+
+		$pages = [];
+		foreach ( $this->getPageList() as $name => $rec ) {
+			$page = $this->getPage( $name );
+			if ( $page
+				&& $page->isListed()
+				&& $page->isRestricted()
+				&& $page->userCanExecute( $user )
+			) {
 				$pages[$name] = $page;
 			}
 		}
@@ -1294,21 +1312,18 @@ class SpecialPageFactory {
 	 * Returns a title object if the page is redirected, false if there was no such special
 	 * page, and true if it was successful.
 	 *
-	 * @param PageReference|string $path
-	 * @param IContextSource $context
+	 * @param Title &$title
+	 * @param IContextSource &$context
 	 * @param bool $including Bool output is being captured for use in {{special:whatever}}
 	 * @param LinkRenderer|null $linkRenderer (since 1.28)
 	 *
 	 * @return bool|Title
 	 */
-	public function executePath( $path, IContextSource $context, $including = false,
+	public function executePath( Title &$title, IContextSource &$context, $including = false,
 		LinkRenderer $linkRenderer = null
 	) {
-		if ( $path instanceof PageReference ) {
-			$path = $path->getDBkey();
-		}
-
-		$bits = explode( '/', $path, 2 );
+		// @todo FIXME: Redirects broken due to this call
+		$bits = explode( '/', $title->getDBkey(), 2 );
 		$name = $bits[0];
 		$par = $bits[1] ?? null; // T4087
 
@@ -1383,15 +1398,14 @@ class SpecialPageFactory {
 	 * variables so that the special page will get the context it'd expect on a
 	 * normal request, and then restores them to their previous values after.
 	 *
-	 * @param PageReference $page
+	 * @param Title $title
 	 * @param IContextSource $context
 	 * @param LinkRenderer|null $linkRenderer (since 1.28)
 	 * @return string HTML fragment
 	 */
 	public function capturePath(
-		PageReference $page, IContextSource $context, LinkRenderer $linkRenderer = null
+		Title $title, IContextSource $context, LinkRenderer $linkRenderer = null
 	) {
-		// phpcs:ignore MediaWiki.Usage.DeprecatedGlobalVariables.Deprecated$wgUser
 		global $wgTitle, $wgOut, $wgRequest, $wgUser, $wgLang;
 		$main = RequestContext::getMain();
 
@@ -1414,9 +1428,6 @@ class SpecialPageFactory {
 			$ctx['wikipage'] = $main->getWikiPage();
 		}
 
-		// just needed for $wgTitle and RequestContext::setTitle
-		$title = $this->titleFactory->castFromPageReference( $page );
-
 		// Override
 		$wgTitle = $title;
 		$wgOut = $context->getOutput();
@@ -1430,7 +1441,7 @@ class SpecialPageFactory {
 		$main->setLanguage( $context->getLanguage() );
 
 		// The useful part
-		$ret = $this->executePath( $page, $context, true, $linkRenderer );
+		$ret = $this->executePath( $title, $context, true, $linkRenderer );
 
 		// Restore old globals and context
 		$wgTitle = $glob['title'];

@@ -20,6 +20,8 @@
  * @file
  */
 
+use MediaWiki\MediaWikiServices;
+
 /**
  * A query module to list duplicates of the given file(s)
  *
@@ -27,21 +29,12 @@
  */
 class ApiQueryDuplicateFiles extends ApiQueryGeneratorBase {
 
-	/** @var RepoGroup */
-	private $repoGroup;
-
 	/**
 	 * @param ApiQuery $query
 	 * @param string $moduleName
-	 * @param RepoGroup $repoGroup
 	 */
-	public function __construct(
-		ApiQuery $query,
-		$moduleName,
-		RepoGroup $repoGroup
-	) {
+	public function __construct( ApiQuery $query, $moduleName ) {
 		parent::__construct( $query, $moduleName, 'df' );
-		$this->repoGroup = $repoGroup;
 	}
 
 	public function execute() {
@@ -88,10 +81,11 @@ class ApiQueryDuplicateFiles extends ApiQueryGeneratorBase {
 		}
 
 		$filesToFind = array_keys( $images );
+		$repoGroup = MediaWikiServices::getInstance()->getRepoGroup();
 		if ( $params['localonly'] ) {
-			$files = $this->repoGroup->getLocalRepo()->findFiles( $filesToFind );
+			$files = $repoGroup->getLocalRepo()->findFiles( $filesToFind );
 		} else {
-			$files = $this->repoGroup->findFiles( $filesToFind );
+			$files = $repoGroup->findFiles( $filesToFind );
 		}
 
 		$fit = true;
@@ -108,9 +102,9 @@ class ApiQueryDuplicateFiles extends ApiQueryGeneratorBase {
 		// [ hash => [ dup1, dup2 ], hash1 => ... ]
 		$filesToFindBySha1s = array_unique( array_values( $sha1s ) );
 		if ( $params['localonly'] ) {
-			$filesBySha1s = $this->repoGroup->getLocalRepo()->findBySha1s( $filesToFindBySha1s );
+			$filesBySha1s = $repoGroup->getLocalRepo()->findBySha1s( $filesToFindBySha1s );
 		} else {
-			$filesBySha1s = $this->repoGroup->findBySha1s( $filesToFindBySha1s );
+			$filesBySha1s = $repoGroup->findBySha1s( $filesToFindBySha1s );
 		}
 
 		// iterate over $images to handle continue param correct
@@ -145,13 +139,10 @@ class ApiQueryDuplicateFiles extends ApiQueryGeneratorBase {
 				} else {
 					$r = [
 						'name' => $dupName,
+						'user' => $dupFile->getUser( 'text' ),
 						'timestamp' => wfTimestamp( TS_ISO_8601, $dupFile->getTimestamp() ),
 						'shared' => !$dupFile->isLocal(),
 					];
-					$uploader = $dupFile->getUploader( File::FOR_PUBLIC );
-					if ( $uploader ) {
-						$r['user'] = $uploader->getName();
-					}
 					$fit = $this->addPageSubItem( $pageId, $r );
 					if ( !$fit ) {
 						$this->setContinueEnumParameter( 'continue', $image . '|' . $dupName );

@@ -24,13 +24,13 @@ use CannotCreateActorException;
 use DBAccessObjectUtils;
 use ExternalUserNames;
 use InvalidArgumentException;
+use MapCacheLRU;
 use MediaWiki\DAO\WikiAwareEntity;
 use Psr\Log\LoggerInterface;
 use stdClass;
 use User;
 use Wikimedia\Assert\Assert;
 use Wikimedia\IPUtils;
-use Wikimedia\Rdbms\DBQueryError;
 use Wikimedia\Rdbms\IDatabase;
 use Wikimedia\Rdbms\ILoadBalancer;
 
@@ -44,7 +44,7 @@ class ActorStore implements UserIdentityLookup, ActorNormalization {
 
 	public const UNKNOWN_USER_NAME = 'Unknown user';
 
-	private const LOCAL_CACHE_SIZE = 100;
+	private const LOCAL_CACHE_SIZE = 5;
 
 	/** @var ILoadBalancer */
 	private $loadBalancer;
@@ -58,8 +58,14 @@ class ActorStore implements UserIdentityLookup, ActorNormalization {
 	/** @var string|false */
 	private $wikiId;
 
-	/** @var ActorCache */
-	private $cache;
+	/** @var MapCacheLRU int actor ID => [ UserIdentity, int actor ID ] */
+	private $actorsByActorId;
+
+	/** @var MapCacheLRU int user ID => [ UserIdentity, int actor ID ] */
+	private $actorsByUserId;
+
+	/** @var MapCacheLRU string user name => [ UserIdentity, int actor ID ] */
+	private $actorsByName;
 
 	/**
 	 * @param ILoadBalancer $loadBalancer
@@ -81,7 +87,9 @@ class ActorStore implements UserIdentityLookup, ActorNormalization {
 		$this->logger = $logger;
 		$this->wikiId = $wikiId;
 
-		$this->cache = new ActorCache( self::LOCAL_CACHE_SIZE );
+		$this->actorsByActorId = new MapCacheLRU( self::LOCAL_CACHE_SIZE );
+		$this->actorsByUserId = new MapCacheLRU( self::LOCAL_CACHE_SIZE );
+		$this->actorsByName = new MapCacheLRU( self::LOCAL_CACHE_SIZE );
 	}
 
 	/**
@@ -121,7 +129,7 @@ class ActorStore implements UserIdentityLookup, ActorNormalization {
 		}
 
 		$actor = new UserIdentityValue( $userId, $row->actor_name, $this->wikiId );
-		$this->cache->add( $actorId, $actor );
+		$this->addUserIdentityToCache( $actorId, $actor );
 		return $actor;
 	}
 
@@ -147,7 +155,7 @@ class ActorStore implements UserIdentityLookup, ActorNormalization {
 		// from ActorMigration aliases to proper join with the actor table,
 		// we should use ::newActorFromRow more, and eventually deprecate this method.
 		$userId = $userId === null ? 0 : (int)$userId;
-		$name = $name ?? '';
+		$name = $name === null ? '' : $name;
 		if ( $actorId === null ) {
 			throw new InvalidArgumentException( "Actor ID is null for {$name} and {$userId}" );
 		}
@@ -177,24 +185,34 @@ class ActorStore implements UserIdentityLookup, ActorNormalization {
 			$this->wikiId
 		);
 
-		$this->cache->add( $actorId, $actor );
+		$this->addUserIdentityToCache( $actorId, $actor );
 		return $actor;
 	}
 
 	/**
+	 * @param int $actorId
 	 * @param UserIdentity $actor
-	 * @internal for use in User object only
 	 */
-	public function deleteUserIdentityFromCache( UserIdentity $actor ) {
-		$this->cache->remove( $actor );
+	private function addUserIdentityToCache( int $actorId, UserIdentity $actor ) {
+		$this->actorsByActorId->set( $actorId, [ $actor, $actorId ] );
+		$userId = $actor->getId( $this->wikiId );
+		if ( $userId ) {
+			$this->actorsByUserId->set( $userId, [ $actor, $actorId ] );
+		}
+		$this->actorsByName->set( $actor->getName(), [ $actor, $actorId ] );
 	}
 
 	/**
-	 * @internal only exists until User::resetIdByNameCache is removed.
-	 * Wipe-out the in-process caches.
+	 * @param int $actorId
+	 * @param UserIdentity $actor
 	 */
-	public function clearCaches() {
-		$this->cache->clear();
+	private function deleteUserIdentityFromCache( int $actorId, UserIdentity $actor ) {
+		$this->actorsByActorId->clear( $actorId );
+		$userId = $actor->getId( $this->wikiId );
+		if ( $userId ) {
+			$this->actorsByUserId->clear( $userId );
+		}
+		$this->actorsByName->clear( $actor->getName() );
 	}
 
 	/**
@@ -212,18 +230,26 @@ class ActorStore implements UserIdentityLookup, ActorNormalization {
 			return null;
 		}
 
-		return $this->cache->getActor( ActorCache::KEY_ACTOR_ID, $actorId ) ??
-			$this->newSelectQueryBuilder( $db )
-				->caller( __METHOD__ )
-				->conds( [ 'actor_id' => $actorId ] )
-				->fetchUserIdentity() ??
-			// The actor ID mostly comes from DB, so if we can't find an actor by ID,
-			// it's most likely due to lagged replica and not cause it doesn't actually exist.
-			// Probably we just inserted it? Try primary database.
-			$this->newSelectQueryBuilder( self::READ_LATEST )
+		$cachedValue = $this->actorsByActorId->get( $actorId );
+		if ( $cachedValue ) {
+			return $cachedValue[0];
+		}
+
+		$actor = $this->newSelectQueryBuilder( $db )
+			->caller( __METHOD__ )
+			->conds( [ 'actor_id' => $actorId ] )
+			->fetchUserIdentity();
+
+		// The actor ID mostly comes from DB, so if we can't find an actor by ID,
+		// it's most likely due to lagged replica and not cause it doesn't actually exist.
+		// Probably we just inserted it? Try master.
+		if ( !$actor ) {
+			$actor = $this->newSelectQueryBuilderForQueryFlags( self::READ_LATEST )
 				->caller( __METHOD__ )
 				->conds( [ 'actor_id' => $actorId ] )
 				->fetchUserIdentity();
+		}
+		return $actor;
 	}
 
 	/**
@@ -232,18 +258,29 @@ class ActorStore implements UserIdentityLookup, ActorNormalization {
 	 * @param string $name
 	 * @param int $queryFlags one of IDBAccessObject constants
 	 * @return UserIdentity|null
+	 * @throws InvalidArgumentException if non-normalizable actor name is passed.
 	 */
 	public function getUserIdentityByName( string $name, int $queryFlags = self::READ_NORMAL ): ?UserIdentity {
-		$normalizedName = $this->normalizeUserName( $name );
-		if ( $normalizedName === null ) {
-			return null;
+		if ( $name === '' ) {
+			throw new InvalidArgumentException( 'Empty string passed as actor name' );
 		}
 
-		return $this->cache->getActor( ActorCache::KEY_USER_NAME, $normalizedName ) ??
-			$this->newSelectQueryBuilder( $queryFlags )
-				->caller( __METHOD__ )
-				->whereUserNames( $normalizedName )
-				->fetchUserIdentity();
+		$normalizedName = $this->normalizeUserName( $name );
+		if ( $normalizedName === null ) {
+			throw new InvalidArgumentException(
+				"Unable to normalize the provided actor name {$name}"
+			);
+		}
+
+		$cachedValue = $this->actorsByName->get( $normalizedName );
+		if ( $cachedValue ) {
+			return $cachedValue[0];
+		}
+
+		return $this->newSelectQueryBuilderForQueryFlags( $queryFlags )
+			->caller( __METHOD__ )
+			->userNames( $normalizedName )
+			->fetchUserIdentity();
 	}
 
 	/**
@@ -258,11 +295,15 @@ class ActorStore implements UserIdentityLookup, ActorNormalization {
 			return null;
 		}
 
-		return $this->cache->getActor( ActorCache::KEY_USER_ID, $userId ) ??
-			$this->newSelectQueryBuilder( $queryFlags )
-				->caller( __METHOD__ )
-				->whereUserIds( $userId )
-				->fetchUserIdentity();
+		$cachedValue = $this->actorsByUserId->get( $userId );
+		if ( $cachedValue ) {
+			return $cachedValue[0];
+		}
+
+		return $this->newSelectQueryBuilderForQueryFlags( $queryFlags )
+			->caller( __METHOD__ )
+			->userIds( $userId )
+			->fetchUserIdentity();
 	}
 
 	/**
@@ -272,14 +313,10 @@ class ActorStore implements UserIdentityLookup, ActorNormalization {
 	 *
 	 * @param UserIdentity $user
 	 * @param int $id
-	 * @param bool $assigned - whether a new actor ID was just assigned.
 	 */
-	private function attachActorId( UserIdentity $user, int $id, bool $assigned ) {
+	private function attachActorId( UserIdentity $user, int $id ) {
 		if ( $user instanceof User ) {
 			$user->setActorId( $id );
-			if ( $assigned ) {
-				$user->invalidateCache();
-			}
 		}
 	}
 
@@ -310,7 +347,6 @@ class ActorStore implements UserIdentityLookup, ActorNormalization {
 		// on a non-local DB connection. We need to first deprecate this
 		// possibility and then throw on mismatching User object - T273972
 		// $user->assertWiki( $this->wikiId );
-		$this->deprecateInvalidCrossWikiParam( $user );
 
 		// TODO: In the future we would be able to assume UserIdentity name is ok
 		// and will be able to skip normalization here - T273933
@@ -341,12 +377,15 @@ class ActorStore implements UserIdentityLookup, ActorNormalization {
 	 * @return int|null
 	 */
 	public function findActorIdByName( $name, IDatabase $db ): ?int {
-		$name = $this->normalizeUserName( $name );
+		// NOTE: $name may be user-supplied, need full normalization
+		$name = $this->normalizeUserName( $name, UserNameUtils::RIGOR_VALID );
 		if ( $name === null ) {
 			return null;
 		}
 
-		return $this->findActorIdInternal( $name, $db );
+		$id = $this->findActorIdInternal( $name, $db );
+
+		return $id;
 	}
 
 	/**
@@ -368,9 +407,9 @@ class ActorStore implements UserIdentityLookup, ActorNormalization {
 		// User always thinks it's local, so we could end up fetching the ID
 		// from the wrong database.
 
-		$cachedValue = $this->cache->getActorId( ActorCache::KEY_USER_NAME, $name );
+		$cachedValue = $this->actorsByName->get( $name );
 		if ( $cachedValue ) {
-			return $cachedValue;
+			return $cachedValue[1];
 		}
 
 		$row = $db->selectRow(
@@ -384,35 +423,73 @@ class ActorStore implements UserIdentityLookup, ActorNormalization {
 		if ( !$row || !$row->actor_id ) {
 			return null;
 		}
+
+		$id = (int)$row->actor_id;
+
 		// to cache row
 		$this->newActorFromRow( $row );
 
-		return (int)$row->actor_id;
+		return $id;
 	}
 
 	/**
-	 * Attempt to assign an actor ID to the given $user. If it is already assigned,
-	 * return the existing ID.
+	 * Attempt to assign an actor ID to the given $user
+	 * If it is already assigned, return the existing ID.
 	 *
 	 * @note If called within a transaction, the returned ID might become invalid
 	 * if the transaction is rolled back, so it should not be passed outside of the
 	 * transaction context.
 	 *
 	 * @param UserIdentity $user
-	 * @param IDatabase $dbw The database connection to acquire the ID from.
+	 * @param IDatabase|null $dbw The database connection to acquire the ID from.
 	 *        The database must correspond to ActorStore's wiki ID.
-	 * @return int actor ID greater then 0
+	 *        If not given, an appropriate database connection will acquired from the
+	 *        LoadBalancer provided to the constructor.
+	 *        Not providing a database connection triggers a deprecation warning!
+	 *        In the future, this parameter will be required.
+	 * @return int greater then 0
 	 * @throws CannotCreateActorException if no actor ID has been assigned to this $user
 	 */
-	public function acquireActorId( UserIdentity $user, IDatabase $dbw ): int {
-		$this->checkDatabaseDomain( $dbw );
-		[ $userId, $userName ] = $this->validateActorForInsertion( $user );
+	public function acquireActorId( UserIdentity $user, IDatabase $dbw = null ): int {
+		if ( $dbw ) {
+			$this->checkDatabaseDomain( $dbw );
+		} else {
+			// TODO: Remove after fixing it in all extensions and seeing it live for one train.
+			//       Does not need full deprecation since this method is new in 1.36.
+			wfDeprecatedMsg(
+				'Calling acquireActorId() without the $dbw parameter is deprecated',
+				'1.36'
+			);
+			[ $dbw, ] = $this->getDBConnectionRefForQueryFlags( self::READ_LATEST );
+		}
+		// TODO: we want to assert this user belongs to the correct wiki,
+		// but User objects are always local and we used to use them
+		// on a non-local DB connection. We need to first deprecate this
+		// possibility and then throw on mismatching User object - T273972
+		// $user->assertWiki( $this->wikiId );
+
+		$userName = $this->normalizeUserName( $user->getName() );
+		if ( $userName === null || $userName === '' ) {
+			$userIdForErrorMessage = $user->getId( $this->wikiId );
+			throw new CannotCreateActorException(
+				'Cannot create an actor for a user with no name: ' .
+				"user_id={$userIdForErrorMessage} user_name=\"{$user->getName()}\""
+			);
+		}
 
 		// allow cache to be used, because if it is in the cache, it already has an actor ID
 		$existingActorId = $this->findActorIdInternal( $userName, $dbw );
 		if ( $existingActorId ) {
-			$this->attachActorId( $user, $existingActorId, false );
+			$this->attachActorId( $user, $existingActorId );
 			return $existingActorId;
+		}
+
+		$userId = $user->getId( $this->wikiId ) ?: null;
+		if ( $userId === null && $this->userNameUtils->isUsable( $user->getName() ) ) {
+			throw new CannotCreateActorException(
+				'Cannot create an actor for a usable name that is not an existing user: ' .
+				"user_name=\"{$user->getName()}\""
+			);
 		}
 
 		$dbw->insert(
@@ -422,11 +499,9 @@ class ActorStore implements UserIdentityLookup, ActorNormalization {
 				'actor_name' => $userName,
 			],
 			__METHOD__,
-			[ 'IGNORE' ]
-		);
-
+			[ 'IGNORE' ] );
 		if ( $dbw->affectedRows() ) {
-			$actorId = $dbw->insertId();
+			$actorId = (int)$dbw->insertId();
 		} else {
 			// Outdated cache?
 			// Use LOCK IN SHARE MODE to bypass any MySQL REPEATABLE-READ snapshot.
@@ -443,150 +518,26 @@ class ActorStore implements UserIdentityLookup, ActorNormalization {
 			}
 		}
 
-		$this->attachActorId( $user, $actorId, true );
+		// Set the actor ID in the User object. To be removed, see T274148.
+		if ( $user instanceof User ) {
+			$user->setActorId( $actorId );
+		}
+
 		// Cache row we've just created
 		$cachedUserIdentity = $this->newActorFromRowFields( $userId, $userName, $actorId );
-		$this->setUpRollbackHandler( $dbw, $cachedUserIdentity, $user );
-		return $actorId;
-	}
-
-	/**
-	 * Create a new actor for the given $user. If an actor with this name already exists,
-	 * this method throws.
-	 *
-	 * @note If called within a transaction, the returned ID might become invalid
-	 * if the transaction is rolled back, so it should not be passed outside of the
-	 * transaction context.
-	 *
-	 * @param UserIdentity $user
-	 * @param IDatabase $dbw
-	 * @return int actor ID greater then 0
-	 * @throws CannotCreateActorException if an actor with this name already exist.
-	 * @internal for use in user account creation only.
-	 */
-	public function createNewActor( UserIdentity $user, IDatabase $dbw ): int {
-		$this->checkDatabaseDomain( $dbw );
-		[ $userId, $userName ] = $this->validateActorForInsertion( $user );
-
-		try {
-			$dbw->insert(
-				'actor',
-				[
-					'actor_user' => $userId,
-					'actor_name' => $userName,
-				],
-				__METHOD__
-			);
-		} catch ( DBQueryError $e ) {
-			// We rely on the database to crash on unique actor_name constraint.
-			throw new CannotCreateActorException( $e->getMessage() );
+		if ( $dbw->trxLevel() ) {
+			// If called within a transaction and it was rolled back, the cached actor ID
+			// becomes invalid, so cache needs to be invalidated as well. See T277795.
+			$dbw->onTransactionResolution(
+				function ( int $trigger ) use ( $actorId, $cachedUserIdentity, $user ) {
+					if ( $trigger === IDatabase::TRIGGER_ROLLBACK ) {
+						$this->deleteUserIdentityFromCache( $actorId, $cachedUserIdentity );
+						$this->detachActorId( $user );
+					}
+				} );
 		}
-		$actorId = $dbw->insertId();
-
-		$this->attachActorId( $user, $actorId, true );
-		// Cache row we've just created
-		$cachedUserIdentity = $this->newActorFromRowFields( $userId, $userName, $actorId );
-		$this->setUpRollbackHandler( $dbw, $cachedUserIdentity, $user );
 
 		return $actorId;
-	}
-
-	/**
-	 * Attempt to assign an ID to an actor for a system user. If an actor ID already
-	 * exists, return it.
-	 *
-	 * @note For reserved user names this method will overwrite the user ID of the
-	 * existing anon actor.
-	 *
-	 * @note If called within a transaction, the returned ID might become invalid
-	 * if the transaction is rolled back, so it should not be passed outside of the
-	 * transaction context.
-	 *
-	 * @param UserIdentity $user
-	 * @param IDatabase $dbw
-	 * @return int actor ID greater then zero
-	 * @throws CannotCreateActorException if the existing actor is associated with registered user.
-	 * @internal for use in user account creation only.
-	 */
-	public function acquireSystemActorId( UserIdentity $user, IDatabase $dbw ): int {
-		$this->checkDatabaseDomain( $dbw );
-		[ $userId, $userName ] = $this->validateActorForInsertion( $user );
-
-		$existingActorId = $this->findActorIdInternal( $userName, $dbw );
-		if ( $existingActorId ) {
-			// It certainly will be cached if we just found it.
-			$existingActor = $this->cache->getActor( ActorCache::KEY_ACTOR_ID, $existingActorId );
-
-			// If we already have an existing actor with a matching user ID
-			// just return it, nothing to do here.
-			if ( $existingActor->getId( $this->wikiId ) === $user->getId( $this->wikiId ) ) {
-				return $existingActorId;
-			}
-
-			// Allow overwriting user ID for already existing actor with reserved user name, see T236444
-			if ( $this->userNameUtils->isUsable( $userName ) || $existingActor->isRegistered() ) {
-				throw new CannotCreateActorException(
-					'Cannot replace user for existing actor: ' .
-					"actor_id=$existingActorId, new user_id=$userId"
-				);
-			}
-		}
-
-		$dbw->upsert(
-			'actor',
-			[ 'actor_name' => $userName, 'actor_user' => $userId ],
-			[ 'actor_name' ],
-			[ 'actor_user' => $userId ],
-			__METHOD__
-		);
-		if ( !$dbw->affectedRows() ) {
-			throw new CannotCreateActorException(
-				'Failed to replace user for actor: ' .
-				"actor_id=$existingActorId, new user_id=$userId"
-			);
-		}
-		$actorId = $dbw->insertId() ?: $existingActorId;
-
-		$this->cache->remove( $user );
-		$this->attachActorId( $user, $actorId, true );
-		// Cache row we've just created
-		$cachedUserIdentity = $this->newActorFromRowFields( $userId, $userName, $actorId );
-		$this->setUpRollbackHandler( $dbw, $cachedUserIdentity, $user );
-		return $actorId;
-	}
-
-	/**
-	 * Delete the actor from the actor table
-	 *
-	 * @warning this method does very limited validation and is extremely
-	 * dangerous since it can break referential integrity of the database
-	 * if used incorrectly. Use at your own risk!
-	 *
-	 * @since 1.37
-	 * @param UserIdentity $actor
-	 * @param IDatabase $dbw
-	 * @return bool true on success, false if nothing was deleted.
-	 */
-	public function deleteActor( UserIdentity $actor, IDatabase $dbw ): bool {
-		$this->checkDatabaseDomain( $dbw );
-		$this->deprecateInvalidCrossWikiParam( $actor );
-
-		$normalizedName = $this->normalizeUserName( $actor->getName() );
-		if ( $normalizedName === null ) {
-			throw new InvalidArgumentException(
-				"Unable to normalize the provided actor name {$actor->getName()}"
-			);
-		}
-		$dbw->delete(
-			'actor',
-			[ 'actor_name' => $normalizedName ],
-			__METHOD__
-		);
-		if ( $dbw->affectedRows() !== 0 ) {
-			$this->cache->remove( $actor );
-			return true;
-		}
-		return false;
 	}
 
 	/**
@@ -594,10 +545,11 @@ class ActorStore implements UserIdentityLookup, ActorNormalization {
 	 *
 	 * @internal
 	 * @param string $name
+	 * @param string $rigor UserNameUtils::RIGOR_XXX
 	 *
 	 * @return string|null
 	 */
-	public function normalizeUserName( string $name ): ?string {
+	public function normalizeUserName( string $name, $rigor = UserNameUtils::RIGOR_NONE ): ?string {
 		if ( $this->userNameUtils->isIP( $name ) ) {
 			return IPUtils::sanitizeIP( $name );
 		} elseif ( ExternalUserNames::isExternal( $name ) ) {
@@ -605,69 +557,11 @@ class ActorStore implements UserIdentityLookup, ActorNormalization {
 			// but it was not done before, so we can not start doing it unless we
 			// fix existing DB rows - T273933
 			return $name;
-		} else {
-			$normalized = $this->userNameUtils->getCanonical( $name );
+		} elseif ( $rigor !== UserNameUtils::RIGOR_NONE ) {
+			$normalized = $this->userNameUtils->getCanonical( $name, $rigor );
 			return $normalized === false ? null : $normalized;
-		}
-	}
-
-	/**
-	 * Validates actor before insertion.
-	 *
-	 * @param UserIdentity $user
-	 * @return array [ $normalizedUserId, $normalizedName ]
-	 */
-	private function validateActorForInsertion( UserIdentity $user ): array {
-		// TODO: we want to assert this user belongs to the correct wiki,
-		// but User objects are always local and we used to use them
-		// on a non-local DB connection. We need to first deprecate this
-		// possibility and then throw on mismatching User object - T273972
-		// $user->assertWiki( $this->wikiId );
-		$this->deprecateInvalidCrossWikiParam( $user );
-
-		$userName = $this->normalizeUserName( $user->getName() );
-		if ( $userName === null || $userName === '' ) {
-			$userIdForErrorMessage = $user->getId( $this->wikiId );
-			throw new CannotCreateActorException(
-				'Cannot create an actor for a user with no name: ' .
-				"user_id={$userIdForErrorMessage} user_name=\"{$user->getName()}\""
-			);
-		}
-
-		$userId = $user->getId( $this->wikiId ) ?: null;
-		if ( $userId === null && $this->userNameUtils->isUsable( $user->getName() ) ) {
-			throw new CannotCreateActorException(
-				'Cannot create an actor for a usable name that is not an existing user: ' .
-				"user_name=\"{$user->getName()}\""
-			);
-		}
-		return [ $userId, $userName ];
-	}
-
-	/**
-	 * Clear in-process caches if transaction gets rolled back.
-	 *
-	 * @param IDatabase $dbw
-	 * @param UserIdentity $cachedActor
-	 * @param UserIdentity $originalActor
-	 */
-	private function setUpRollbackHandler(
-		IDatabase $dbw,
-		UserIdentity $cachedActor,
-		UserIdentity $originalActor
-	) {
-		if ( $dbw->trxLevel() ) {
-			// If called within a transaction and it was rolled back, the cached actor ID
-			// becomes invalid, so cache needs to be invalidated as well. See T277795.
-			$dbw->onTransactionResolution(
-				function ( int $trigger ) use ( $cachedActor, $originalActor ) {
-					if ( $trigger === IDatabase::TRIGGER_ROLLBACK ) {
-						$this->cache->remove( $cachedActor );
-						$this->detachActorId( $originalActor );
-					}
-				},
-				__METHOD__
-			);
+		} else {
+			return $name === '' ? null : $name;
 		}
 	}
 
@@ -717,46 +611,32 @@ class ActorStore implements UserIdentityLookup, ActorNormalization {
 	/**
 	 * Returns a specialized SelectQueryBuilder for querying the UserIdentity objects.
 	 *
-	 * @param IDatabase|int $dbOrQueryFlags The database connection to perform the query on,
-	 *   or one of self::READ_* constants.
+	 * @param int $queryFlags one of IDBAccessObject constants
 	 * @return UserSelectQueryBuilder
 	 */
-	public function newSelectQueryBuilder( $dbOrQueryFlags = self::READ_NORMAL ): UserSelectQueryBuilder {
-		if ( $dbOrQueryFlags instanceof IDatabase ) {
-			[ $db, $options ] = [ $dbOrQueryFlags, [] ];
+	private function newSelectQueryBuilderForQueryFlags( $queryFlags ): UserSelectQueryBuilder {
+		[ $db, $options ] = $this->getDBConnectionRefForQueryFlags( $queryFlags );
+		$queryBuilder = $this->newSelectQueryBuilder( $db );
+		$queryBuilder->options( $options );
+		return $queryBuilder;
+	}
+
+	/**
+	 * Returns a specialized SelectQueryBuilder for querying the UserIdentity objects.
+	 *
+	 * @param IDatabase|null $db The database connection to perform the query on.
+	 *        The database must correspond to ActorStore's wiki ID.
+	 *        If not given, an appropriate database connection will acquired from the
+	 *        LoadBalancer provided to the constructor.
+	 * @return UserSelectQueryBuilder
+	 */
+	public function newSelectQueryBuilder( IDatabase $db = null ): UserSelectQueryBuilder {
+		if ( $db ) {
 			$this->checkDatabaseDomain( $db );
 		} else {
-			[ $db, $options ] = $this->getDBConnectionRefForQueryFlags( $dbOrQueryFlags );
+			[ $db, ] = $this->getDBConnectionRefForQueryFlags( self::READ_NORMAL );
 		}
 
-		return ( new UserSelectQueryBuilder( $db, $this ) )->options( $options );
-	}
-
-	/**
-	 * Emits a deprecation warning if $user does not belong to the
-	 * same wiki this store belongs to.
-	 *
-	 * @param UserIdentity $user
-	 */
-	private function deprecateInvalidCrossWikiParam( UserIdentity $user ) {
-		if ( $user->getWikiId() !== $this->wikiId ) {
-			$expected = $this->wikiIdToString( $user->getWikiId() );
-			$actual = $this->wikiIdToString( $this->wikiId );
-			wfDeprecatedMsg(
-				'Deprecated passing invalid cross-wiki user. ' .
-				"Expected: {$expected}, Actual: {$actual}.",
-				'1.37'
-			);
-		}
-	}
-
-	/**
-	 * Convert $wikiId to a string for logging.
-	 *
-	 * @param string|false $wikiId
-	 * @return string
-	 */
-	private function wikiIdToString( $wikiId ): string {
-		return $wikiId === WikiAwareEntity::LOCAL ? 'the local wiki' : "'{$wikiId}'";
+		return new UserSelectQueryBuilder( $db, $this );
 	}
 }

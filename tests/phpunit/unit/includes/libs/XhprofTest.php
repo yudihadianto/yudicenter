@@ -18,14 +18,30 @@
  * @file
  */
 
-/**
- * @covers Xhprof
- */
 class XhprofTest extends PHPUnit\Framework\TestCase {
 
 	use MediaWikiCoversValidator;
 
 	/**
+	 * Trying to enable Xhprof when it is already enabled causes an exception
+	 * to be thrown.
+	 *
+	 * @covers Xhprof::enable
+	 */
+	public function testEnable() {
+		$xhprof = new ReflectionClass( Xhprof::class );
+		$enabled = $xhprof->getProperty( 'enabled' );
+		$enabled->setAccessible( true );
+		$enabled->setValue( true );
+		$this->expectException( Exception::class );
+		$this->expectExceptionMessage( "already enabled" );
+		$xhprof->getMethod( 'enable' )->invoke( null );
+	}
+
+	/**
+	 * callAny() calls the first function of the list.
+	 *
+	 * @covers Xhprof::callAny
 	 * @dataProvider provideCallAny
 	 */
 	public function testCallAny( array $functions, array $args, $expectedResult ) {
@@ -38,7 +54,7 @@ class XhprofTest extends PHPUnit\Framework\TestCase {
 	}
 
 	/**
-	 * Data provider for callAny(), which calls the first function found.
+	 * Data provider for testCallAny().
 	 */
 	public function provideCallAny() {
 		return [

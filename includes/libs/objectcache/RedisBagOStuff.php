@@ -85,8 +85,7 @@ class RedisBagOStuff extends MediumSpecificBagOStuff {
 
 		$this->automaticFailover = $params['automaticFailover'] ?? true;
 
-		// ...and uses rdb snapshots (redis.conf default)
-		$this->attrMap[self::ATTR_DURABILITY] = self::QOS_DURABILITY_DISK;
+		$this->attrMap[self::ATTR_SYNCWRITES] = self::QOS_SYNCWRITES_NONE;
 	}
 
 	protected function doGet( $key, $flags = 0, &$casToken = null ) {

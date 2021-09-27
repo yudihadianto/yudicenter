@@ -26,42 +26,48 @@ class ApiQueryRecentChangesIntegrationTest extends ApiTestCase {
 
 		$title = Title::newFromLinkTarget( $target );
 		$page = WikiPage::factory( $title );
-		$page->doUserEditContent(
+		$page->doEditContent(
 			ContentHandler::makeContent( __CLASS__ . $i++, $title ),
-			$user,
-			$summary
+			$summary,
+			0,
+			false,
+			$user
 		);
 	}
 
 	private function doMinorPageEdit( User $user, LinkTarget $target, $summary ) {
 		$title = Title::newFromLinkTarget( $target );
 		$page = WikiPage::factory( $title );
-		$page->doUserEditContent(
+		$page->doEditContent(
 			ContentHandler::makeContent( __CLASS__, $title ),
-			$user,
 			$summary,
-			EDIT_MINOR
+			EDIT_MINOR,
+			false,
+			$user
 		);
 	}
 
 	private function doBotPageEdit( User $user, LinkTarget $target, $summary ) {
 		$title = Title::newFromLinkTarget( $target );
 		$page = WikiPage::factory( $title );
-		$page->doUserEditContent(
+		$page->doEditContent(
 			ContentHandler::makeContent( __CLASS__, $title ),
-			$user,
 			$summary,
-			EDIT_FORCE_BOT
+			EDIT_FORCE_BOT,
+			false,
+			$user
 		);
 	}
 
 	private function doAnonPageEdit( LinkTarget $target, $summary ) {
 		$title = Title::newFromLinkTarget( $target );
 		$page = WikiPage::factory( $title );
-		$page->doUserEditContent(
+		$page->doEditContent(
 			ContentHandler::makeContent( __CLASS__, $title ),
-			User::newFromId( 0 ),
-			$summary
+			$summary,
+			0,
+			false,
+			User::newFromId( 0 )
 		);
 	}
 
@@ -574,6 +580,7 @@ class ApiQueryRecentChangesIntegrationTest extends ApiTestCase {
 		$title = Title::newFromLinkTarget( $target );
 
 		$rc = new RecentChange;
+		$rc->mTitle = $title;
 		$rc->mAttribs = [
 			'rc_timestamp' => wfTimestamp( TS_MW ),
 			'rc_namespace' => $title->getNamespace(),

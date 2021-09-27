@@ -286,7 +286,7 @@ class MysqlInstaller extends DatabaseInstaller {
 		$res = $conn->select( 'INFORMATION_SCHEMA.USER_PRIVILEGES', '*',
 			[ 'GRANTEE' => $quotedUser ], __METHOD__ );
 		$insertMysql = false;
-		$grantOptions = array_fill_keys( $this->webUserPrivs, true );
+		$grantOptions = array_flip( $this->webUserPrivs );
 		foreach ( $res as $row ) {
 			if ( $row->PRIVILEGE_TYPE == 'INSERT' ) {
 				$insertMysql = true;

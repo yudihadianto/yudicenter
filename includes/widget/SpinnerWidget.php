@@ -62,6 +62,7 @@ class SpinnerWidget {
 			return $this->toString();
 		} catch ( \Exception $ex ) {
 			trigger_error( (string)$ex, E_USER_ERROR );
+			return '';
 		}
 	}
 }

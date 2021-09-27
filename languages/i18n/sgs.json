@@ -1,7 +1,6 @@
 {
 	"@metadata": {
 		"authors": [
-			"1233qwer1234qwer4",
 			"DannyS712",
 			"Fitoschido",
 			"Hugo.arg",
@@ -701,6 +700,9 @@
 	"restoreprefs": "Grōžintė vėsus nustatīmus kāp bova pradiuo",
 	"prefs-editing": "Redagavėms",
 	"searchresultshead": "Paėiškuos nustatīmā",
+	"stub-threshold": "Minimums <a href=\"#\" class=\"stub\">nabėngta poslapė</a> fuormatavėmō:",
+	"stub-threshold-sample-link": "pavīzdīs",
+	"stub-threshold-disabled": "Ėšjongta īr",
 	"recentchangesdays": "Ruodomas dėinas vielībūju pakeitėmu sārošė:",
 	"recentchangesdays-max": "(daugiausē $1 {{PLURAL:$1|dėina|dėinū|dėinas}})",
 	"recentchangescount": "Ruoduoms keitėmu skaitliosː",
@@ -766,6 +768,7 @@
 	"prefs-displayrc": "Ruodītė nustatīmus",
 	"prefs-displaywatchlist": "Ruodītė nustatīmus",
 	"prefs-diffs": "Skėrtomā",
+	"prefswarning-warning": "Tamsta pamainėt sava nūstatīmus, ale anūm da naėšsauguojėt.\nJēb paliksat poslapi napaspaudus ont $1, Tamstas nūstatīmā napasikeis.",
 	"userrights": "Nauduotuoju teisiu valdīms",
 	"userrights-lookup-user": "Tvarkītė nauduotuojė gropės",
 	"userrights-user-editname": "Iveskėt nauduotuojė varda:",
@@ -1385,7 +1388,7 @@
 	"anoncontribs": "Kūriejē",
 	"contribsub2": "Nauduotuojė $1 ($2)",
 	"nocontribs": "Vagol esamus nūstatīmus nieka nerast.",
-	"uctop": "vielībs",
+	"uctop": " vielībs",
 	"month": "Nug mienėsė (ėr onkstiau):",
 	"year": "Nug metu (ėr onkstiau):",
 	"sp-contributions-blocklog": "Bluokavėmu istuorėjė",
@@ -1471,6 +1474,7 @@
 	"ipblocklist-localblock": "Ožgīnėms vėituo",
 	"ipblocklist-otherblocks": "{{PLURAL:$1|Kėts ožgīnėms|Kėtė ožgīnėmā}}",
 	"infiniteblock": "neribuotā",
+	"expiringblock": "beng vēktė $1 $2",
 	"anononlyblock": "vėn anuonėmā",
 	"noautoblockblock": "savaimėšks ožgīnėms nevēk",
 	"createaccountblock": "paskīrū dėrbėms ožgints īr",

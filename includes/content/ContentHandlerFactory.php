@@ -46,7 +46,7 @@ final class ContentHandlerFactory implements IContentHandlerFactory {
 	/**
 	 * @var string[]|callable[]
 	 */
-	private $handlerSpecs;
+	private $handlerSpecs = [];
 
 	/**
 	 * @var ContentHandler[] Registry of ContentHandler instances by model id
@@ -153,9 +153,7 @@ final class ContentHandlerFactory implements IContentHandlerFactory {
 	public function getAllContentFormats(): array {
 		$formats = [];
 		foreach ( $this->handlerSpecs as $model => $class ) {
-			$formats += array_fill_keys(
-				$this->getContentHandler( $model )->getSupportedFormats(),
-				true );
+			$formats += array_flip( $this->getContentHandler( $model )->getSupportedFormats() );
 		}
 
 		return array_keys( $formats );

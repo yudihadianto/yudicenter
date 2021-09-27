@@ -42,7 +42,7 @@ class FauxSearchResultTest extends MediaWikiUnitTestCase {
 	private function getFileMock( $filename ) {
 		$title = $this->getMockBuilder( File::class )
 			->disableOriginalConstructor()
-			->onlyMethods( [ 'getName' ] )
+			->setMethods( [ 'getName' ] )
 			->getMock();
 		$title->method( 'getName' )
 			->willReturn( $filename );

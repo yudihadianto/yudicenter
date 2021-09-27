@@ -19,7 +19,7 @@ use Wikimedia\AtEase\AtEase;
  */
 class UploadedFileStream implements StreamInterface {
 
-	/** @var resource|null File handle */
+	/** @var resource File handle */
 	private $fp;
 
 	/** @var int|false|null File size. False if not set yet. */
@@ -143,7 +143,6 @@ class UploadedFileStream implements StreamInterface {
 	}
 
 	public function write( $string ) {
-		// @phan-suppress-previous-line PhanPluginNeverReturnMethod
 		$this->checkOpen();
 		throw new RuntimeException( 'Stream is read-only' );
 	}

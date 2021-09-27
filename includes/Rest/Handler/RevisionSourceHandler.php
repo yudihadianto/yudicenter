@@ -4,12 +4,12 @@ namespace MediaWiki\Rest\Handler;
 
 use Config;
 use LogicException;
-use MediaWiki\Page\PageLookup;
 use MediaWiki\Rest\LocalizedHttpException;
 use MediaWiki\Rest\Response;
 use MediaWiki\Rest\SimpleHandler;
 use MediaWiki\Revision\RevisionLookup;
 use MediaWiki\Revision\RevisionRecord;
+use TitleFactory;
 use TitleFormatter;
 
 /**
@@ -26,19 +26,19 @@ class RevisionSourceHandler extends SimpleHandler {
 	 * @param Config $config
 	 * @param RevisionLookup $revisionLookup
 	 * @param TitleFormatter $titleFormatter
-	 * @param PageLookup $pageLookup
+	 * @param TitleFactory $titleFactory
 	 */
 	public function __construct(
 		Config $config,
 		RevisionLookup $revisionLookup,
 		TitleFormatter $titleFormatter,
-		PageLookup $pageLookup
+		TitleFactory $titleFactory
 	) {
 		$this->contentHelper = new RevisionContentHelper(
 			$config,
 			$revisionLookup,
 			$titleFormatter,
-			$pageLookup
+			$titleFactory
 		);
 	}
 

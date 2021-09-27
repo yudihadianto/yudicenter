@@ -40,7 +40,7 @@ class LoadBalancerTest extends MediaWikiIntegrationTestCase {
 
 		return [
 			'host' => $wgDBserver,
-			'serverName' => 'testhost',
+			'hostName' => 'testhost',
 			'dbname' => $wgDBname,
 			'tablePrefix' => $this->dbPrefix(),
 			'user' => $wgDBuser,
@@ -94,7 +94,7 @@ class LoadBalancerTest extends MediaWikiIntegrationTestCase {
 		$this->assertSame( $ld->getId(), $lb->resolveDomainID( $ld ) );
 		$this->assertFalse( $called );
 
-		$dbw = $lb->getConnection( DB_PRIMARY );
+		$dbw = $lb->getConnection( DB_MASTER );
 		$this->assertTrue( $called );
 		$this->assertEquals(
 			$dbw::ROLE_STREAMING_MASTER, $dbw->getTopologyRole(), 'master shows as master'
@@ -108,7 +108,7 @@ class LoadBalancerTest extends MediaWikiIntegrationTestCase {
 		$this->assertTrue( $dbr->getFlag( $dbw::DBO_TRX ), "DBO_TRX set on replica" );
 
 		if ( !$lb->getServerAttributes( $lb->getWriterIndex() )[$dbw::ATTR_DB_LEVEL_LOCKING] ) {
-			$dbwAuto = $lb->getConnection( DB_PRIMARY, [], false, $lb::CONN_TRX_AUTOCOMMIT );
+			$dbwAuto = $lb->getConnection( DB_MASTER, [], false, $lb::CONN_TRX_AUTOCOMMIT );
 			$this->assertFalse(
 				$dbwAuto->getFlag( $dbw::DBO_TRX ), "No DBO_TRX with CONN_TRX_AUTOCOMMIT" );
 			$this->assertTrue( $dbw->getFlag( $dbw::DBO_TRX ), "DBO_TRX still set on master" );
@@ -122,7 +122,7 @@ class LoadBalancerTest extends MediaWikiIntegrationTestCase {
 			$this->assertNotEquals(
 				$dbr, $dbrAuto, "CONN_TRX_AUTOCOMMIT uses separate connection" );
 
-			$dbwAuto2 = $lb->getConnection( DB_PRIMARY, [], false, $lb::CONN_TRX_AUTOCOMMIT );
+			$dbwAuto2 = $lb->getConnection( DB_MASTER, [], false, $lb::CONN_TRX_AUTOCOMMIT );
 			$this->assertEquals( $dbwAuto2, $dbwAuto, "CONN_TRX_AUTOCOMMIT reuses connections" );
 		}
 
@@ -164,15 +164,15 @@ class LoadBalancerTest extends MediaWikiIntegrationTestCase {
 			$this->assertIsArray( $lb->getServerAttributes( $i ) );
 		}
 
-		$dbw = $lb->getConnection( DB_PRIMARY );
+		$dbw = $lb->getConnection( DB_MASTER );
 		$this->assertEquals(
-			$dbw::ROLE_STREAMING_MASTER, $dbw->getTopologyRole(), 'primary shows as primary' );
+			$dbw::ROLE_STREAMING_MASTER, $dbw->getTopologyRole(), 'master shows as master' );
 		$this->assertEquals(
 			( $wgDBserver != '' ) ? $wgDBserver : 'localhost',
-			$dbw->getTopologyRootPrimary(),
-			'cluster primary is set'
+			$dbw->getTopologyRootMaster(),
+			'cluster master set'
 		);
-		$this->assertTrue( $dbw->getFlag( $dbw::DBO_TRX ), "DBO_TRX set on primary" );
+		$this->assertTrue( $dbw->getFlag( $dbw::DBO_TRX ), "DBO_TRX set on master" );
 		$this->assertWriteAllowed( $dbw );
 
 		$dbr = $lb->getConnection( DB_REPLICA );
@@ -181,14 +181,14 @@ class LoadBalancerTest extends MediaWikiIntegrationTestCase {
 		$this->assertTrue( $dbr->isReadOnly(), 'replica shows as replica' );
 		$this->assertEquals(
 			( $wgDBserver != '' ) ? $wgDBserver : 'localhost',
-			$dbr->getTopologyRootPrimary(),
-			'cluster master is set'
+			$dbr->getTopologyRootMaster(),
+			'cluster master set'
 		);
 		$this->assertTrue( $dbr->getFlag( $dbw::DBO_TRX ), "DBO_TRX set on replica" );
 		$this->assertEquals( $dbr->getLBInfo( 'serverIndex' ), $lb->getReaderIndex() );
 
 		if ( !$lb->getServerAttributes( $lb->getWriterIndex() )[$dbw::ATTR_DB_LEVEL_LOCKING] ) {
-			$dbwAuto = $lb->getConnection( DB_PRIMARY, [], false, $lb::CONN_TRX_AUTOCOMMIT );
+			$dbwAuto = $lb->getConnection( DB_MASTER, [], false, $lb::CONN_TRX_AUTOCOMMIT );
 			$this->assertFalse(
 				$dbwAuto->getFlag( $dbw::DBO_TRX ), "No DBO_TRX with CONN_TRX_AUTOCOMMIT" );
 			$this->assertTrue( $dbw->getFlag( $dbw::DBO_TRX ), "DBO_TRX still set on master" );
@@ -202,7 +202,7 @@ class LoadBalancerTest extends MediaWikiIntegrationTestCase {
 			$this->assertNotEquals(
 				$dbr, $dbrAuto, "CONN_TRX_AUTOCOMMIT uses separate connection" );
 
-			$dbwAuto2 = $lb->getConnection( DB_PRIMARY, [], false, $lb::CONN_TRX_AUTOCOMMIT );
+			$dbwAuto2 = $lb->getConnection( DB_MASTER, [], false, $lb::CONN_TRX_AUTOCOMMIT );
 			$this->assertEquals( $dbwAuto2, $dbwAuto, "CONN_TRX_AUTOCOMMIT reuses connections" );
 		}
 
@@ -224,7 +224,7 @@ class LoadBalancerTest extends MediaWikiIntegrationTestCase {
 		global $wgDBserver, $wgDBname, $wgDBuser, $wgDBpassword, $wgDBtype, $wgSQLiteDataDir;
 
 		$servers = [
-			// Primary DB
+			// Master DB
 			0 => $srvExtra + [
 					'host' => $wgDBserver,
 					'dbname' => $wgDBname,
@@ -493,14 +493,14 @@ class LoadBalancerTest extends MediaWikiIntegrationTestCase {
 	/**
 	 * @covers \Wikimedia\Rdbms\LoadBalancer::openConnection()
 	 * @covers \Wikimedia\Rdbms\LoadBalancer::getWriterIndex()
-	 * @covers \Wikimedia\Rdbms\LoadBalancer::forEachOpenPrimaryConnection()
+	 * @covers \Wikimedia\Rdbms\LoadBalancer::forEachOpenMasterConnection()
 	 * @covers \Wikimedia\Rdbms\LoadBalancer::setTransactionListener()
-	 * @covers \Wikimedia\Rdbms\LoadBalancer::beginPrimaryChanges()
-	 * @covers \Wikimedia\Rdbms\LoadBalancer::finalizePrimaryChanges()
-	 * @covers \Wikimedia\Rdbms\LoadBalancer::approvePrimaryChanges()
-	 * @covers \Wikimedia\Rdbms\LoadBalancer::commitPrimaryChanges()
-	 * @covers \Wikimedia\Rdbms\LoadBalancer::runPrimaryTransactionIdleCallbacks()
-	 * @covers \Wikimedia\Rdbms\LoadBalancer::runPrimaryTransactionListenerCallbacks()
+	 * @covers \Wikimedia\Rdbms\LoadBalancer::beginMasterChanges()
+	 * @covers \Wikimedia\Rdbms\LoadBalancer::finalizeMasterChanges()
+	 * @covers \Wikimedia\Rdbms\LoadBalancer::approveMasterChanges()
+	 * @covers \Wikimedia\Rdbms\LoadBalancer::commitMasterChanges()
+	 * @covers \Wikimedia\Rdbms\LoadBalancer::runMasterTransactionIdleCallbacks()
+	 * @covers \Wikimedia\Rdbms\LoadBalancer::runMasterTransactionListenerCallbacks()
 	 */
 	public function testTransactionCallbackChains() {
 		global $wgDBserver, $wgDBname, $wgDBuser, $wgDBpassword, $wgDBtype, $wgSQLiteDataDir;
@@ -528,7 +528,7 @@ class LoadBalancerTest extends MediaWikiIntegrationTestCase {
 		$conn2 = $lb->openConnection( $lb->getWriterIndex(), '' );
 
 		$count = 0;
-		$lb->forEachOpenPrimaryConnection( static function () use ( &$count ) {
+		$lb->forEachOpenMasterConnection( static function () use ( &$count ) {
 			++$count;
 		} );
 		$this->assertEquals( 2, $count, 'Connection handle count' );
@@ -538,49 +538,49 @@ class LoadBalancerTest extends MediaWikiIntegrationTestCase {
 			++$tlCalls;
 		} );
 
-		$lb->beginPrimaryChanges( __METHOD__ );
+		$lb->beginMasterChanges( __METHOD__ );
 		$bc = array_fill_keys( [ 'a', 'b', 'c', 'd' ], 0 );
 		$conn1->onTransactionPreCommitOrIdle( static function () use ( &$bc, $conn1, $conn2 ) {
 			$bc['a'] = 1;
-			$conn2->onTransactionPreCommitOrIdle( static function () use ( &$bc, $conn1 ) {
+			$conn2->onTransactionPreCommitOrIdle( static function () use ( &$bc, $conn1, $conn2 ) {
 				$bc['b'] = 1;
-				$conn1->onTransactionPreCommitOrIdle( static function () use ( &$bc, $conn1 ) {
+				$conn1->onTransactionPreCommitOrIdle( static function () use ( &$bc, $conn1, $conn2 ) {
 					$bc['c'] = 1;
-					$conn1->onTransactionPreCommitOrIdle( static function () use ( &$bc ) {
+					$conn1->onTransactionPreCommitOrIdle( static function () use ( &$bc, $conn1, $conn2 ) {
 						$bc['d'] = 1;
 					} );
 				} );
 			} );
 		} );
-		$lb->finalizePrimaryChanges();
-		$lb->approvePrimaryChanges( [] );
-		$lb->commitPrimaryChanges( __METHOD__ );
-		$lb->runPrimaryTransactionIdleCallbacks();
-		$lb->runPrimaryTransactionListenerCallbacks();
+		$lb->finalizeMasterChanges();
+		$lb->approveMasterChanges( [] );
+		$lb->commitMasterChanges( __METHOD__ );
+		$lb->runMasterTransactionIdleCallbacks();
+		$lb->runMasterTransactionListenerCallbacks();
 
 		$this->assertEquals( array_fill_keys( [ 'a', 'b', 'c', 'd' ], 1 ), $bc );
 		$this->assertEquals( 2, $tlCalls );
 
 		$tlCalls = 0;
-		$lb->beginPrimaryChanges( __METHOD__ );
+		$lb->beginMasterChanges( __METHOD__ );
 		$ac = array_fill_keys( [ 'a', 'b', 'c', 'd' ], 0 );
 		$conn1->onTransactionCommitOrIdle( static function () use ( &$ac, $conn1, $conn2 ) {
 			$ac['a'] = 1;
-			$conn2->onTransactionCommitOrIdle( static function () use ( &$ac, $conn1 ) {
+			$conn2->onTransactionCommitOrIdle( static function () use ( &$ac, $conn1, $conn2 ) {
 				$ac['b'] = 1;
-				$conn1->onTransactionCommitOrIdle( static function () use ( &$ac, $conn1 ) {
+				$conn1->onTransactionCommitOrIdle( static function () use ( &$ac, $conn1, $conn2 ) {
 					$ac['c'] = 1;
-					$conn1->onTransactionCommitOrIdle( static function () use ( &$ac ) {
+					$conn1->onTransactionCommitOrIdle( static function () use ( &$ac, $conn1, $conn2 ) {
 						$ac['d'] = 1;
 					} );
 				} );
 			} );
 		} );
-		$lb->finalizePrimaryChanges();
-		$lb->approvePrimaryChanges( [] );
-		$lb->commitPrimaryChanges( __METHOD__ );
-		$lb->runPrimaryTransactionIdleCallbacks();
-		$lb->runPrimaryTransactionListenerCallbacks();
+		$lb->finalizeMasterChanges();
+		$lb->approveMasterChanges( [] );
+		$lb->commitMasterChanges( __METHOD__ );
+		$lb->runMasterTransactionIdleCallbacks();
+		$lb->runMasterTransactionListenerCallbacks();
 
 		$this->assertEquals( array_fill_keys( [ 'a', 'b', 'c', 'd' ], 1 ), $ac );
 		$this->assertEquals( 2, $tlCalls );
@@ -615,7 +615,7 @@ class LoadBalancerTest extends MediaWikiIntegrationTestCase {
 		$lb = $this->newSingleServerLocalLoadBalancer();
 
 		$rConn = $lb->getConnectionRef( DB_REPLICA );
-		$wConn = $lb->getConnectionRef( DB_PRIMARY );
+		$wConn = $lb->getConnectionRef( DB_MASTER );
 		$wConn2 = $lb->getConnectionRef( 0 );
 
 		$v = [ 'value' => '1', '1' ];
@@ -774,19 +774,19 @@ class LoadBalancerTest extends MediaWikiIntegrationTestCase {
 	public function testGetLazyConnectionRef() {
 		$lb = $this->newMultiServerLocalLoadBalancer();
 
-		$rPrimary = $lb->getLazyConnectionRef( DB_PRIMARY );
+		$rMaster = $lb->getLazyConnectionRef( DB_MASTER );
 		$rReplica = $lb->getLazyConnectionRef( 1 );
 		$this->assertFalse( $lb->getAnyOpenConnection( 0 ) );
 		$this->assertFalse( $lb->getAnyOpenConnection( 1 ) );
 
-		$rPrimary->getType();
+		$rMaster->getType();
 		$rReplica->getType();
-		$rPrimary->getDomainID();
+		$rMaster->getDomainID();
 		$rReplica->getDomainID();
 		$this->assertFalse( $lb->getAnyOpenConnection( 0 ) );
 		$this->assertFalse( $lb->getAnyOpenConnection( 1 ) );
 
-		$rPrimary->query( "SELECT 1", __METHOD__ );
+		$rMaster->query( "SELECT 1", __METHOD__ );
 		$this->assertNotFalse( $lb->getAnyOpenConnection( 0 ) );
 
 		$rReplica->query( "SELECT 1", __METHOD__ );

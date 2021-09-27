@@ -28,7 +28,7 @@ use Monolog\Logger;
  */
 class KafkaHandlerTest extends \MediaWikiUnitTestCase {
 
-	protected function setUp(): void {
+	protected function setUp() : void {
 		parent::setUp();
 		if ( !class_exists( \Monolog\Handler\AbstractProcessingHandler::class )
 			|| !class_exists( \Kafka\Produce::class )
@@ -51,13 +51,15 @@ class KafkaHandlerTest extends \MediaWikiUnitTestCase {
 		$produce = $this->getMockBuilder( \Kafka\Produce::class )
 			->disableOriginalConstructor()
 			->getMock();
-		$produce->method( 'getAvailablePartitions' )
-			->willReturn( [ 'A' ] );
+		$produce->expects( $this->any() )
+			->method( 'getAvailablePartitions' )
+			->will( $this->returnValue( [ 'A' ] ) );
 		$produce->expects( $this->once() )
 			->method( 'setMessages' )
 			->with( $expect, $this->anything(), $this->anything() );
-		$produce->method( 'send' )
-			->willReturn( true );
+		$produce->expects( $this->any() )
+			->method( 'send' )
+			->will( $this->returnValue( true ) );
 
 		$handler = new KafkaHandler( $produce, $options );
 		$handler->handle( [
@@ -86,10 +88,12 @@ class KafkaHandlerTest extends \MediaWikiUnitTestCase {
 		$produce = $this->getMockBuilder( \Kafka\Produce::class )
 			->disableOriginalConstructor()
 			->getMock();
-		$produce->method( 'getAvailablePartitions' )
+		$produce->expects( $this->any() )
+			->method( 'getAvailablePartitions' )
 			->will( $this->throwException( new Exception ) );
-		$produce->method( 'send' )
-			->willReturn( true );
+		$produce->expects( $this->any() )
+			->method( 'send' )
+			->will( $this->returnValue( true ) );
 
 		if ( $expectException ) {
 			$this->expectException( Exception::class );
@@ -115,9 +119,11 @@ class KafkaHandlerTest extends \MediaWikiUnitTestCase {
 		$produce = $this->getMockBuilder( \Kafka\Produce::class )
 			->disableOriginalConstructor()
 			->getMock();
-		$produce->method( 'getAvailablePartitions' )
-			->willReturn( [ 'A' ] );
-		$produce->method( 'send' )
+		$produce->expects( $this->any() )
+			->method( 'getAvailablePartitions' )
+			->will( $this->returnValue( [ 'A' ] ) );
+		$produce->expects( $this->any() )
+			->method( 'send' )
 			->will( $this->throwException( new Exception ) );
 
 		if ( $expectException ) {
@@ -141,19 +147,22 @@ class KafkaHandlerTest extends \MediaWikiUnitTestCase {
 		$produce = $this->getMockBuilder( \Kafka\Produce::class )
 			->disableOriginalConstructor()
 			->getMock();
-		$produce->method( 'getAvailablePartitions' )
-			->willReturn( [ 'A' ] );
+		$produce->expects( $this->any() )
+			->method( 'getAvailablePartitions' )
+			->will( $this->returnValue( [ 'A' ] ) );
 		$produce->expects( $this->exactly( 2 ) )
 			->method( 'setMessages' )
 			->will( $this->onConsecutiveCalls(
 				[ $this->anything(), $this->anything(), [ 'words' ] ],
 				[ $this->anything(), $this->anything(), [ 'lines' ] ]
 			) );
-		$produce->method( 'send' )
-			->willReturn( true );
+		$produce->expects( $this->any() )
+			->method( 'send' )
+			->will( $this->returnValue( true ) );
 
 		$formatter = $this->createMock( \Monolog\Formatter\FormatterInterface::class );
-		$formatter->method( 'format' )
+		$formatter->expects( $this->any() )
+			->method( 'format' )
 			->will( $this->onConsecutiveCalls( 'words', null, 'lines' ) );
 
 		$handler = new KafkaHandler( $produce, [] );
@@ -172,16 +181,19 @@ class KafkaHandlerTest extends \MediaWikiUnitTestCase {
 		$produce = $this->getMockBuilder( \Kafka\Produce::class )
 			->disableOriginalConstructor()
 			->getMock();
-		$produce->method( 'getAvailablePartitions' )
-			->willReturn( [ 'A' ] );
+		$produce->expects( $this->any() )
+			->method( 'getAvailablePartitions' )
+			->will( $this->returnValue( [ 'A' ] ) );
 		$produce->expects( $this->once() )
 			->method( 'setMessages' )
 			->with( $this->anything(), $this->anything(), [ 'words', 'lines' ] );
-		$produce->method( 'send' )
-			->willReturn( true );
+		$produce->expects( $this->any() )
+			->method( 'send' )
+			->will( $this->returnValue( true ) );
 
 		$formatter = $this->createMock( \Monolog\Formatter\FormatterInterface::class );
-		$formatter->method( 'format' )
+		$formatter->expects( $this->any() )
+			->method( 'format' )
 			->will( $this->onConsecutiveCalls( 'words', null, 'lines' ) );
 
 		$handler = new KafkaHandler( $produce, [] );

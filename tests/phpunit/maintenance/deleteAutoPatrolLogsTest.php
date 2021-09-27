@@ -14,7 +14,7 @@ class DeleteAutoPatrolLogsTest extends MaintenanceBaseTestCase {
 		return DeleteAutoPatrolLogs::class;
 	}
 
-	protected function setUp(): void {
+	protected function setUp() : void {
 		parent::setUp();
 		$this->tablesUsed = [ 'logging' ];
 
@@ -23,11 +23,11 @@ class DeleteAutoPatrolLogsTest extends MaintenanceBaseTestCase {
 	}
 
 	private function cleanLoggingTable() {
-		wfGetDB( DB_PRIMARY )->delete( 'logging', '*' );
+		wfGetDB( DB_MASTER )->delete( 'logging', '*' );
 	}
 
 	private function insertLoggingData() {
-		$dbw = wfGetDB( DB_PRIMARY );
+		$dbw = wfGetDB( DB_MASTER );
 		$logs = [];
 
 		$comment = \MediaWiki\MediaWikiServices::getInstance()->getCommentStore()

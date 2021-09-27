@@ -79,8 +79,6 @@ class TraditionalImageGallery extends ImageGalleryBase {
 		}
 
 		$lang = $this->getRenderLang();
-		$enableLegacyMediaDOM = $this->getConfig()->get( 'ParserEnableLegacyMediaDOM' );
-
 		# Output each image...
 		foreach ( $this->mImages as [ $nt, $text, $alt, $link, $handlerOpts, $loading ] ) {
 			// "text" means "caption" here
@@ -120,7 +118,7 @@ class TraditionalImageGallery extends ImageGalleryBase {
 			} elseif ( $this->mHideBadImages &&
 				$badFileLookup->isBadFile( $nt->getDBkey(), $this->getContextTitle() )
 			) {
-				# The image is bad, so just show it as a text link.
+				# The image is blacklisted, just show it as a text link.
 				$thumbhtml = "\n\t\t\t" . '<div class="thumb" style="height: ' .
 					( $this->getThumbPadding() + $this->mHeights ) . 'px;">' .
 					$linkRenderer->makeKnownLink( $nt, $nt->getText() ) .
@@ -157,39 +155,16 @@ class TraditionalImageGallery extends ImageGalleryBase {
 
 					Linker::processResponsiveImages( $img, $thumb, $transformOptions );
 
-					switch ( $img->getMediaType() ) {
-						case 'AUDIO':
-							$rdfaType = 'mw:Audio';
-							break;
-						case 'VIDEO':
-							$rdfaType = 'mw:Video';
-							break;
-						default:
-							$rdfaType = 'mw:Image';
-					}
-
-					$thumbhtml = $thumb->toHtml( $imageParameters );
-
-					if ( !$enableLegacyMediaDOM ) {
-						$thumbhtml = Html::rawElement(
-							'span', [ 'typeof' => $rdfaType ], $thumbhtml
-						);
-					}
-
-					$thumbhtml = Html::rawElement( 'div', [
+					# Set both fixed width and min-height.
+					$thumbhtml = "\n\t\t\t"
+						. '<div class="thumb" style="width: '
+						. $this->getThumbDivWidth( $thumb->getWidth() ) . 'px;">'
 						# Auto-margin centering for block-level elements. Needed
 						# now that we have video handlers since they may emit block-
 						# level elements as opposed to simple <img> tags. ref
 						# http://css-discuss.incutio.com/?page=CenteringBlockElement
-						'style' => "margin:{$vpad}px auto;",
-					], $thumbhtml );
-
-					# Set both fixed width and min-height.
-					$width = $this->getThumbDivWidth( $thumb->getWidth() );
-					$thumbhtml = "\n\t\t\t" . Html::rawElement( 'div', [
-						'class' => 'thumb',
-						'style' => "width: {$width}px;",
-					], $thumbhtml );
+						. '<div style="margin:' . $vpad . 'px auto;">'
+						. $thumb->toHtml( $imageParameters ) . '</div></div>';
 
 					// Call parser transform hook
 					/** @var MediaHandler $handler */
@@ -251,7 +226,6 @@ class TraditionalImageGallery extends ImageGalleryBase {
 		// Preloaded into LinkCache in toHTML
 		return $linkRenderer->makeKnownLink(
 			$nt,
-			// @phan-suppress-next-line SecurityCheck-DoubleEscaped Triggered by Language::truncateForVisual
 			is_int( $this->getCaptionLength() ) ?
 				$lang->truncateForVisual( $nt->getText(), $this->getCaptionLength() ) :
 				$nt->getText(),

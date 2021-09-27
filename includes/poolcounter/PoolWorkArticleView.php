@@ -143,7 +143,8 @@ class PoolWorkArticleView extends PoolCounterWork {
 			$logger = $this->getLogger( 'slow-parse' );
 			$logger->info( 'Parsing {title} was slow, took {time} seconds', [
 				'time' => number_format( $time, 2 ),
-				'title' => (string)$this->revision->getPageAsLinkTarget(),
+				'title' => $this->revision->getPageAsLinkTarget()->getDBkey(),
+				'ns' => $this->revision->getPageAsLinkTarget()->getNamespace(),
 				'trigger' => 'view',
 			] );
 		}

@@ -157,7 +157,7 @@ class SpecialProtectedtitles extends SpecialPage {
 		$htmlForm = HTMLForm::factory( 'ooui', $formDescriptor, $this->getContext() )
 			->setMethod( 'get' )
 			->setWrapperLegendMsg( 'protectedtitles' )
-			->setSubmitTextMsg( 'protectedtitles-submit' );
+			->setSubmitText( $this->msg( 'protectedtitles-submit' )->text() );
 
 		return $htmlForm->prepareForm()->getHTML( false );
 	}

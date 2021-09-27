@@ -20,6 +20,7 @@
  * @file
  */
 use MediaWiki\MediaWikiServices;
+use Wikimedia\ScopedCallback;
 
 /**
  * Update object handling the cleanup of links tables after a page was deleted.
@@ -112,6 +113,9 @@ class LinksDeletionUpdate extends LinksUpdate implements EnqueueableDataUpdate {
 				);
 			}
 		}
+
+		// Commit and release the lock (if set)
+		ScopedCallback::consume( $scopedLock );
 	}
 
 	public function getAsJobSpecification() {

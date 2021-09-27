@@ -6,7 +6,7 @@ class ResourceLoaderModuleTest extends ResourceLoaderTestCase {
 	 * @covers ResourceLoaderModule::getVersionHash
 	 */
 	public function testGetVersionHash() {
-		$context = $this->getResourceLoaderContext( [ 'debug' => 'false' ] );
+		$context = $this->getResourceLoaderContext();
 
 		$baseParams = [
 			'scripts' => [ 'foo.js', 'bar.js' ],
@@ -67,31 +67,10 @@ class ResourceLoaderModuleTest extends ResourceLoaderTestCase {
 	/**
 	 * @covers ResourceLoaderModule::getVersionHash
 	 */
-	public function testGetVersionHash_debug() {
-		$module = new ResourceLoaderTestModule( [ 'script' => 'foo();' ] );
-		$context = $this->getResourceLoaderContext( [ 'debug' => 'true' ] );
-		$this->assertSame( '', $module->getVersionHash( $context ) );
-	}
-
-	/**
-	 * @covers ResourceLoaderModule::getVersionHash
-	 */
-	public function testGetVersionHash_length() {
-		$context = $this->getResourceLoaderContext( [ 'debug' => 'false' ] );
-		$module = new ResourceLoaderTestModule( [
-			'script' => 'foo();'
-		] );
-		$version = $module->getVersionHash( $context );
-		$this->assertSame( ResourceLoader::HASH_LENGTH, strlen( $version ), 'Hash length' );
-	}
-
-	/**
-	 * @covers ResourceLoaderModule::getVersionHash
-	 */
 	public function testGetVersionHash_parentDefinition() {
-		$context = $this->getResourceLoaderContext( [ 'debug' => 'false' ] );
+		$context = $this->getResourceLoaderContext();
 		$module = $this->getMockBuilder( ResourceLoaderModule::class )
-			->onlyMethods( [ 'getDefinitionSummary' ] )->getMock();
+			->setMethods( [ 'getDefinitionSummary' ] )->getMock();
 		$module->method( 'getDefinitionSummary' )->willReturn( [ 'a' => 'summary' ] );
 
 		$this->expectException( LogicException::class );
@@ -111,7 +90,6 @@ class ResourceLoaderModuleTest extends ResourceLoaderTestCase {
 			'mayValidateScript' => true,
 			'script' => "var a = 'this is';\n {\ninvalid"
 		] );
-		$module->setConfig( $context->getResourceLoader()->getConfig() );
 		$this->assertEquals(
 			'mw.log.error(' .
 				'"JavaScript parse error (scripts need to be valid ECMAScript 5): ' .
@@ -229,9 +207,9 @@ class ResourceLoaderModuleTest extends ResourceLoaderTestCase {
 		$this->assertSame( [], $module->getHeaders( $context ), 'Default' );
 
 		$module = $this->getMockBuilder( ResourceLoaderTestModule::class )
-			->onlyMethods( [ 'getPreloadLinks' ] )->getMock();
+			->setMethods( [ 'getPreloadLinks' ] )->getMock();
 		$module->method( 'getPreloadLinks' )->willReturn( [
-			'https://example.org/script.js' => [ 'as' => 'script' ],
+			 'https://example.org/script.js' => [ 'as' => 'script' ],
 		] );
 		$this->assertSame(
 			[
@@ -242,10 +220,10 @@ class ResourceLoaderModuleTest extends ResourceLoaderTestCase {
 		);
 
 		$module = $this->getMockBuilder( ResourceLoaderTestModule::class )
-			->onlyMethods( [ 'getPreloadLinks' ] )->getMock();
+			->setMethods( [ 'getPreloadLinks' ] )->getMock();
 		$module->method( 'getPreloadLinks' )->willReturn( [
-			'https://example.org/script.js' => [ 'as' => 'script' ],
-			'/example.png' => [ 'as' => 'image' ],
+			 'https://example.org/script.js' => [ 'as' => 'script' ],
+			 '/example.png' => [ 'as' => 'image' ],
 		] );
 		$this->assertSame(
 			[

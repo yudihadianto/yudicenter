@@ -30,7 +30,7 @@ use Wikimedia\Rdbms\ILoadBalancer;
  *
  * @ingroup SpecialPage
  */
-class SpecialRandomPage extends SpecialPage {
+class RandomPage extends SpecialPage {
 	private $namespaces; // namespaces to select pages from
 	protected $isRedir = false; // should the result be a redirect?
 	protected $extra = []; // Extra SQL statements
@@ -195,9 +195,3 @@ class SpecialRandomPage extends SpecialPage {
 		return 'redirects';
 	}
 }
-
-/**
- * Retain the old class name for backwards compatibility.
- * @deprecated since 1.37
- */
-class_alias( SpecialRandomPage::class, 'RandomPage' );

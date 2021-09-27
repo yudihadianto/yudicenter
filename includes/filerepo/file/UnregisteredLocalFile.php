@@ -44,10 +44,10 @@ class UnregisteredLocalFile extends File {
 	protected $mime;
 
 	/** @var array[]|bool[] Dimension data */
-	protected $pageDims;
+	protected $dims;
 
-	/** @var array|null */
-	protected $sizeAndMetadata;
+	/** @var bool|string Handler-specific metadata which will be saved in the img_metadata field */
+	protected $metadata;
 
 	/** @var MediaHandler */
 	public $handler;
@@ -103,7 +103,7 @@ class UnregisteredLocalFile extends File {
 		if ( $mime ) {
 			$this->mime = $mime;
 		}
-		$this->pageDims = [];
+		$this->dims = [];
 	}
 
 	/**
@@ -116,22 +116,14 @@ class UnregisteredLocalFile extends File {
 			$page = 1;
 		}
 
-		if ( !isset( $this->pageDims[$page] ) ) {
+		if ( !isset( $this->dims[$page] ) ) {
 			if ( !$this->getHandler() ) {
 				return false;
 			}
-			if ( $this->getHandler()->isMultiPage( $this ) ) {
-				$this->pageDims[$page] = $this->handler->getPageDimensions( $this, $page );
-			} else {
-				$info = $this->getSizeAndMetadata();
-				return [
-					'width' => $info['width'],
-					'height' => $info['height']
-				];
-			}
+			$this->dims[$page] = $this->handler->getPageDimensions( $this, $page );
 		}
 
-		return $this->pageDims[$page];
+		return $this->dims[$page];
 	}
 
 	/**
@@ -167,37 +159,42 @@ class UnregisteredLocalFile extends File {
 	}
 
 	/**
+	 * @param string $filename
+	 * @return array|bool
+	 */
+	protected function getImageSize( $filename ) {
+		if ( !$this->getHandler() ) {
+			return false;
+		}
+
+		return $this->handler->getImageSize( $this, $this->getLocalRefPath() );
+	}
+
+	/**
 	 * @return int
 	 */
 	public function getBitDepth() {
-		$info = $this->getSizeAndMetadata();
-		return $info['bits'] ?? 0;
+		$gis = $this->getImageSize( $this->getLocalRefPath() );
+
+		if ( !$gis || !isset( $gis['bits'] ) ) {
+			return 0;
+		}
+		return $gis['bits'];
 	}
 
 	/**
 	 * @return string|false
 	 */
 	public function getMetadata() {
-		$info = $this->getSizeAndMetadata();
-		return $info['metadata'] ? serialize( $info['metadata'] ) : false;
-	}
-
-	public function getMetadataArray(): array {
-		$info = $this->getSizeAndMetadata();
-		return $info['metadata'];
-	}
-
-	private function getSizeAndMetadata() {
-		if ( $this->sizeAndMetadata === null ) {
+		if ( !isset( $this->metadata ) ) {
 			if ( !$this->getHandler() ) {
-				$this->sizeAndMetadata = [ 'width' => 0, 'height' => 0, 'metadata' => [] ];
+				$this->metadata = false;
 			} else {
-				$this->sizeAndMetadata = $this->getHandler()->getSizeAndMetadataWithFallback(
-					$this, $this->getLocalRefPath() );
+				$this->metadata = $this->handler->getMetadata( $this, $this->getLocalRefPath() );
 			}
 		}
 
-		return $this->sizeAndMetadata;
+		return $this->metadata;
 	}
 
 	/**

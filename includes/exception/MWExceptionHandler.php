@@ -21,7 +21,6 @@
 use MediaWiki\Logger\LoggerFactory;
 use MediaWiki\MediaWikiServices;
 use Psr\Log\LogLevel;
-use Wikimedia\NormalizedException\INormalizedException;
 use Wikimedia\Rdbms\DBError;
 use Wikimedia\Rdbms\DBQueryError;
 
@@ -37,7 +36,7 @@ class MWExceptionHandler {
 	/** @var string Error reported by direct logException() call */
 	public const CAUGHT_BY_OTHER = 'other';
 
-	/** @var string */
+	/** @var string $reservedMemory */
 	protected static $reservedMemory;
 
 	/**
@@ -48,7 +47,7 @@ class MWExceptionHandler {
 	 * As such, these should be sent to MediaWiki's "exception" channel.
 	 * Normally, the error handler logs them to the "error" channel.
 	 *
-	 * @var array
+	 * @var array $fatalErrorTypes
 	 */
 	protected static $fatalErrorTypes = [
 		E_ERROR,
@@ -119,11 +118,11 @@ class MWExceptionHandler {
 	 *
 	 * This method is used to attempt to recover from exceptions
 	 *
-	 * @since 1.37
+	 * @since 1.23
 	 * @param Throwable $e
 	 * @param string $catcher CAUGHT_BY_* class constant indicating what caught the error
 	 */
-	public static function rollbackPrimaryChangesAndLog(
+	public static function rollbackMasterChangesAndLog(
 		Throwable $e,
 		$catcher = self::CAUGHT_BY_OTHER
 	) {
@@ -133,7 +132,7 @@ class MWExceptionHandler {
 			// to rollback some databases due to connection issues or exceptions.
 			// However, any sane DB driver will rollback implicitly anyway.
 			try {
-				$services->getDBLoadBalancerFactory()->rollbackPrimaryChanges( __METHOD__ );
+				$services->getDBLoadBalancerFactory()->rollbackMasterChanges( __METHOD__ );
 			} catch ( DBError $e2 ) {
 				// If the DB is unreacheable, rollback() will throw an error
 				// and the error report() method might need messages from the DB,
@@ -148,19 +147,6 @@ class MWExceptionHandler {
 	}
 
 	/**
-	 * @deprecated since 1.37; please use rollbackPrimaryChangesAndLog() instead.
-	 * @param Throwable $e
-	 * @param string $catcher CAUGHT_BY_* class constant indicating what caught the error
-	 */
-	public static function rollbackMasterChangesAndLog(
-		Throwable $e,
-		$catcher = self::CAUGHT_BY_OTHER
-	) {
-		wfDeprecated( __METHOD__, '1.37' );
-		self::rollbackPrimaryChangesAndLog( $e, $catcher );
-	}
-
-	/**
 	 * Callback to use with PHP's set_exception_handler.
 	 *
 	 * @since 1.31
@@ -172,9 +158,6 @@ class MWExceptionHandler {
 		// Make sure we don't claim success on exit for CLI scripts (T177414)
 		if ( wfIsCLI() ) {
 			register_shutdown_function(
-				/**
-				 * @return never
-				 */
 				static function () {
 					exit( 255 );
 				}
@@ -198,7 +181,7 @@ class MWExceptionHandler {
 	 * @param string $catcher CAUGHT_BY_* class constant indicating what caught the error
 	 */
 	public static function handleException( Throwable $e, $catcher = self::CAUGHT_BY_OTHER ) {
-		self::rollbackPrimaryChangesAndLog( $e, $catcher );
+		self::rollbackMasterChangesAndLog( $e, $catcher );
 		self::report( $e );
 	}
 
@@ -279,6 +262,7 @@ class MWExceptionHandler {
 					$file = $real['file'];
 					$line = $real['line'];
 					$message = $real['message'];
+					$prefix = '';
 				}
 				break;
 			default:
@@ -491,11 +475,7 @@ TXT;
 
 		if ( $e instanceof DBQueryError ) {
 			$message = "A database query error has occurred. Did you forget to run"
-				. " your application's database schema updater after upgrading"
-				. " or after adding a new extension?\n\nPlease see"
-				. " https://www.mediawiki.org/wiki/Special:MyLanguage/Manual:Upgrading and"
-				. " https://www.mediawiki.org/wiki/Special:MyLanguage/Manual:How_to_debug"
-				. " for more information.\n\n"
+				. " your application's database schema updater after upgrading?\n\n"
 				. $message;
 		}
 
@@ -512,20 +492,10 @@ TXT;
 	 * @return string
 	 */
 	public static function getLogNormalMessage( Throwable $e ) {
-		if ( $e instanceof INormalizedException ) {
-			$message = $e->getNormalizedMessage();
-		} else {
-			$message = $e->getMessage();
-		}
-		if ( !$e instanceof ErrorException ) {
-			// ErrorException is something we use internally to represent
-			// PHP errors (runtime warnings that aren't thrown or caught),
-			// don't bother putting it in the logs. Let the log message
-			// lead with "PHP Warning: " instead (see ::handleError).
-			$message = get_class( $e ) . ": $message";
-		}
+		$type = get_class( $e );
+		$message = $e->getMessage();
 
-		return "[{reqId}] {exception_url}   $message";
+		return "[{reqId}] {exception_url}   $type: $message";
 	}
 
 	/**
@@ -553,7 +523,7 @@ TXT;
 	 * @return array
 	 */
 	public static function getLogContext( Throwable $e, $catcher = self::CAUGHT_BY_OTHER ) {
-		$context = [
+		return [
 			'exception' => $e,
 			'exception_url' => self::getURL() ?: '[no req]',
 			// The reqId context key use the same familiar name and value as the top-level field
@@ -565,10 +535,6 @@ TXT;
 			'reqId' => WebRequest::getRequestId(),
 			'caught_by' => $catcher
 		];
-		if ( $e instanceof INormalizedException ) {
-			$context += $e->getMessageContext();
-		}
-		return $context;
 	}
 
 	/**

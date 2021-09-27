@@ -7,6 +7,7 @@ namespace MediaWiki\HookContainer {
 	use UnexpectedValueException;
 	use Wikimedia\ObjectFactory;
 	use Wikimedia\ScopedCallback;
+	use Wikimedia\TestingAccessWrapper;
 
 	class HookContainerTest extends MediaWikiUnitTestCase {
 
@@ -104,7 +105,7 @@ namespace MediaWiki\HookContainer {
 						'name' => 'FooExtension-FooActionHandler',
 						'class' => 'FooExtension\\Hooks',
 						'services' => [] ],
-					'deprecated' => true
+					  'deprecated' => true
 					],
 					[]
 				],

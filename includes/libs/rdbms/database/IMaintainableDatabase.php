@@ -313,7 +313,7 @@ interface IMaintainableDatabase extends IDatabase {
 	public function indexUnique( $table, $index, $fname = __METHOD__ );
 
 	/**
-	 * Get information about a field
+	 * mysql_fetch_field() wrapper
 	 * Returns false if the field doesn't exist
 	 *
 	 * @param string $table Table name

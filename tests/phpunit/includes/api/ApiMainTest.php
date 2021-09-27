@@ -1,10 +1,6 @@
 <?php
 
-use MediaWiki\Permissions\Authority;
-use MediaWiki\Tests\Unit\Permissions\MockAuthorityTrait;
-use Wikimedia\Rdbms\DBConnRef;
 use Wikimedia\Rdbms\DBQueryError;
-use Wikimedia\Rdbms\ILoadBalancer;
 use Wikimedia\TestingAccessWrapper;
 use Wikimedia\Timestamp\ConvertibleTimestamp;
 
@@ -16,9 +12,8 @@ use Wikimedia\Timestamp\ConvertibleTimestamp;
  * @covers ApiMain
  */
 class ApiMainTest extends ApiTestCase {
-	use MockAuthorityTrait;
 
-	protected function setUp(): void {
+	protected function setUp() : void {
 		parent::setUp();
 		$this->mergeMwGlobalArrayValue(
 			'wgGroupPermissions',
@@ -71,7 +66,7 @@ class ApiMainTest extends ApiTestCase {
 	 */
 	private function getNonInternalApiMain( array $requestData, array $headers = [] ) {
 		$req = $this->getMockBuilder( WebRequest::class )
-			->onlyMethods( [ 'response', 'getRawIP' ] )
+			->setMethods( [ 'response', 'getRawIP' ] )
 			->getMock();
 		$response = new FauxResponse();
 		$req->method( 'response' )->willReturn( $response );
@@ -103,15 +98,8 @@ class ApiMainTest extends ApiTestCase {
 	}
 
 	public function testSuppressedLogin() {
-		// Testing some logic that changes the global $wgUser
-		// ApiMain will be setting it to a StubGlobalUser object, it should already
-		// be one but in case its a full User object we will wrap the comparisons
-		// in StubGlobalUser::getRealUser() which will return the inner User object
-		// for a StubGlobalUser, or the actual User object if given a user.
-
-		// phpcs:ignore MediaWiki.Usage.DeprecatedGlobalVariables.Deprecated$wgUser
 		global $wgUser;
-		$origUser = StubGlobalUser::getRealUser( $wgUser );
+		$origUser = $wgUser;
 
 		$api = $this->getNonInternalApiMain( [
 			'action' => 'query',
@@ -123,7 +111,7 @@ class ApiMainTest extends ApiTestCase {
 		$api->execute();
 		ob_end_clean();
 
-		$this->assertNotSame( $origUser, StubGlobalUser::getRealUser( $wgUser ) );
+		$this->assertNotSame( $origUser, $wgUser );
 		$this->assertSame( 'true', $api->getContext()->getRequest()->response()
 			->getHeader( 'MediaWiki-Login-Suppressed' ) );
 	}
@@ -297,7 +285,7 @@ class ApiMainTest extends ApiTestCase {
 
 		$mock = $this->getMockBuilder( ApiMain::class )
 			->setConstructorArgs( [ $req ] )
-			->onlyMethods( [ 'checkMaxLag' ] )
+			->setMethods( [ 'checkMaxLag' ] )
 			->getMock();
 		$mock->method( 'checkMaxLag' )->willReturn( false );
 
@@ -344,9 +332,12 @@ class ApiMainTest extends ApiTestCase {
 	}
 
 	private function doTestCheckMaxLag( $lag ) {
-		$mockLB = $this->createMock( ILoadBalancer::class );
+		$mockLB = $this->getMockBuilder( LoadBalancer::class )
+			->disableOriginalConstructor()
+			->setMethods( [ 'getMaxLag', 'getConnectionRef', '__destruct' ] )
+			->getMock();
 		$mockLB->method( 'getMaxLag' )->willReturn( [ 'somehost', $lag ] );
-		$mockLB->method( 'getConnectionRef' )->willReturn( $this->createMock( DBConnRef::class ) );
+		$mockLB->method( 'getConnectionRef' )->willReturn( $this->db );
 		$this->setService( 'DBLoadBalancer', $mockLB );
 
 		$req = new FauxRequest();
@@ -392,15 +383,15 @@ class ApiMainTest extends ApiTestCase {
 		$this->doTestCheckMaxLag( 4 );
 	}
 
-	public function provideAssert() {
+	public static function provideAssert() {
 		return [
-			[ $this->mockAnonNullAuthority(), 'user', 'assertuserfailed' ],
-			[ $this->mockRegisteredNullAuthority(), 'user', false ],
-			[ $this->mockAnonNullAuthority(), 'anon', false ],
-			[ $this->mockRegisteredNullAuthority(), 'anon', 'assertanonfailed' ],
-			[ $this->mockRegisteredNullAuthority(), 'bot', 'assertbotfailed' ],
-			[ $this->mockRegisteredAuthorityWithPermissions( [ 'bot' ] ), 'user', false ],
-			[ $this->mockRegisteredAuthorityWithPermissions( [ 'bot' ] ), 'bot', false ],
+			[ false, [], 'user', 'assertuserfailed' ],
+			[ true, [], 'user', false ],
+			[ false, [], 'anon', false ],
+			[ true, [], 'anon', 'assertanonfailed' ],
+			[ true, [], 'bot', 'assertbotfailed' ],
+			[ true, [ 'bot' ], 'user', false ],
+			[ true, [ 'bot' ], 'bot', false ],
 		];
 	}
 
@@ -408,13 +399,24 @@ class ApiMainTest extends ApiTestCase {
 	 * Tests the assert={user|bot} functionality
 	 *
 	 * @dataProvider provideAssert
+	 * @param bool $registered
+	 * @param array $rights
+	 * @param string $assert
+	 * @param string|bool $error False if no error expected
 	 */
-	public function testAssert( Authority $performer, $assert, $error ) {
+	public function testAssert( $registered, $rights, $assert, $error ) {
+		if ( $registered ) {
+			$user = $this->getMutableTestUser()->getUser();
+			$user->load(); // load before setting mRights
+		} else {
+			$user = new User();
+		}
+		$this->overrideUserPermissions( $user, $rights );
 		try {
 			$this->doApiRequest( [
 				'action' => 'query',
 				'assert' => $assert,
-			], null, null, $performer );
+			], null, null, $user );
 			$this->assertFalse( $error ); // That no error was expected
 		} catch ( ApiUsageException $e ) {
 			$this->assertTrue( self::apiExceptionHasCode( $e, $error ),
@@ -524,9 +526,10 @@ class ApiMainTest extends ApiTestCase {
 
 		$module = $this->getMockBuilder( ApiBase::class )
 			->setConstructorArgs( [ $api, 'mock' ] )
-			->onlyMethods( [ 'getConditionalRequestData' ] )
+			->setMethods( [ 'getConditionalRequestData' ] )
 			->getMockForAbstractClass();
-		$module->method( 'getConditionalRequestData' )
+		$module->expects( $this->any() )
+			->method( 'getConditionalRequestData' )
 			->will( $this->returnCallback( static function ( $condition ) use ( $conditions ) {
 				return $conditions[$condition] ?? null;
 			} ) );
@@ -654,9 +657,10 @@ class ApiMainTest extends ApiTestCase {
 
 		$module = $this->getMockBuilder( ApiBase::class )
 			->setConstructorArgs( [ $api, 'mock' ] )
-			->onlyMethods( [ 'getConditionalRequestData' ] )
+			->setMethods( [ 'getConditionalRequestData' ] )
 			->getMockForAbstractClass();
-		$module->method( 'getConditionalRequestData' )
+		$module->expects( $this->any() )
+			->method( 'getConditionalRequestData' )
 			->will( $this->returnCallback( static function ( $condition ) use ( $conditions ) {
 				return $conditions[$condition] ?? null;
 			} ) );
@@ -1032,9 +1036,9 @@ class ApiMainTest extends ApiTestCase {
 		$apiEx1->getStatusValue()->fatal( new ApiRawMessage( 'Another error', 'sv-error2' ) );
 
 		$badMsg = $this->getMockBuilder( ApiRawMessage::class )
-			->setConstructorArgs( [ 'An error', 'ignored' ] )
-			->onlyMethods( [ 'getApiCode' ] )
-			->getMock();
+			 ->setConstructorArgs( [ 'An error', 'ignored' ] )
+			 ->setMethods( [ 'getApiCode' ] )
+			 ->getMock();
 		$badMsg->method( 'getApiCode' )->willReturn( "bad\nvalue" );
 		$apiEx2 = new ApiUsageException( null, StatusValue::newFatal( $badMsg ) );
 
@@ -1118,8 +1122,7 @@ class ApiMainTest extends ApiTestCase {
 						[ 'code' => 'sv-error2', 'text' => 'Another error', 'module' => 'foo+bar' ],
 					],
 					'docref' => "See $doclink for API usage. Subscribe to the mediawiki-api-announce mailing " .
-						// phpcs:ignore Generic.Files.LineLength.TooLong
-						"list at &lt;https://lists.wikimedia.org/postorius/lists/mediawiki-api-announce.lists.wikimedia.org/&gt; " .
+						"list at &lt;https://lists.wikimedia.org/mailman/listinfo/mediawiki-api-announce&gt; " .
 						"for notice of API deprecations and breaking changes.",
 					'servedby' => wfHostname(),
 				]
@@ -1136,8 +1139,7 @@ class ApiMainTest extends ApiTestCase {
 						[ 'code' => "bad\nvalue", 'text' => 'An error' ],
 					],
 					'docref' => "See $doclink for API usage. Subscribe to the mediawiki-api-announce mailing " .
-						// phpcs:ignore Generic.Files.LineLength.TooLong
-						"list at &lt;https://lists.wikimedia.org/postorius/lists/mediawiki-api-announce.lists.wikimedia.org/&gt; " .
+						"list at &lt;https://lists.wikimedia.org/mailman/listinfo/mediawiki-api-announce&gt; " .
 						"for notice of API deprecations and breaking changes.",
 					'servedby' => wfHostname(),
 				]

@@ -1,6 +1,7 @@
 <?php
 
 use MediaWiki\User\UserIdentityValue;
+use PHPUnit\Framework\MockObject\MockObject;
 
 /**
  * @author Addshore
@@ -9,37 +10,11 @@ use MediaWiki\User\UserIdentityValue;
  */
 class NoWriteWatchedItemStoreUnitTest extends \MediaWikiUnitTestCase {
 
-	/**
-	 * @return NoWriteWatchedItemStore
-	 */
-	private function getNoWriteStoreForErrors(): NoWriteWatchedItemStore {
-		// NoWriteWatchedItemStore where the inner actual store should never be called,
-		// because we are testing the methods that throw exceptions instead
-		// We could do a fancy constrant for never having a method that matches the
-		// specific list, but since we don't use this for the cases that we have the
-		// inner actual store do anything, it should never be used
-		$innerService = $this->createNoOpAbstractMock( WatchedItemStoreInterface::class );
-		return new NoWriteWatchedItemStore( $innerService );
-	}
-
-	/**
-	 * @param string $method
-	 * @param mixed $result
-	 * @return NoWriteWatchedItemStore
-	 */
-	private function getNoWriteStoreForProxyCall( string $method, $result ): NoWriteWatchedItemStore {
-		// NoWriteWatchedItemStore where the inner actual store is used a single time
-		// for a method call
-		$innerService = $this->createNoOpAbstractMock(
-			WatchedItemStoreInterface::class,
-			[ $method ]
-		);
-		$innerService->expects( $this->once() )->method( $method )->willReturn( $result );
-		return new NoWriteWatchedItemStore( $innerService );
-	}
-
 	public function testAddWatch() {
-		$noWriteService = $this->getNoWriteStoreForErrors();
+		/** @var WatchedItemStoreInterface|MockObject $innerService */
+		$innerService = $this->getMockForAbstractClass( WatchedItemStoreInterface::class );
+		$innerService->expects( $this->never() )->method( 'addWatch' );
+		$noWriteService = new NoWriteWatchedItemStore( $innerService );
 
 		$this->expectException( DBReadOnlyError::class );
 		$noWriteService->addWatch(
@@ -47,14 +22,20 @@ class NoWriteWatchedItemStoreUnitTest extends \MediaWikiUnitTestCase {
 	}
 
 	public function testAddWatchBatchForUser() {
-		$noWriteService = $this->getNoWriteStoreForErrors();
+		/** @var WatchedItemStoreInterface|MockObject $innerService */
+		$innerService = $this->getMockForAbstractClass( WatchedItemStoreInterface::class );
+		$innerService->expects( $this->never() )->method( 'addWatchBatchForUser' );
+		$noWriteService = new NoWriteWatchedItemStore( $innerService );
 
 		$this->expectException( DBReadOnlyError::class );
 		$noWriteService->addWatchBatchForUser( new UserIdentityValue( 1, 'MockUser' ), [] );
 	}
 
 	public function testRemoveWatch() {
-		$noWriteService = $this->getNoWriteStoreForErrors();
+		/** @var WatchedItemStoreInterface|MockObject $innerService */
+		$innerService = $this->getMockForAbstractClass( WatchedItemStoreInterface::class );
+		$innerService->expects( $this->never() )->method( 'removeWatch' );
+		$noWriteService = new NoWriteWatchedItemStore( $innerService );
 
 		$this->expectException( DBReadOnlyError::class );
 		$noWriteService->removeWatch(
@@ -62,7 +43,10 @@ class NoWriteWatchedItemStoreUnitTest extends \MediaWikiUnitTestCase {
 	}
 
 	public function testSetNotificationTimestampsForUser() {
-		$noWriteService = $this->getNoWriteStoreForErrors();
+		/** @var WatchedItemStoreInterface|MockObject $innerService */
+		$innerService = $this->getMockForAbstractClass( WatchedItemStoreInterface::class );
+		$innerService->expects( $this->never() )->method( 'setNotificationTimestampsForUser' );
+		$noWriteService = new NoWriteWatchedItemStore( $innerService );
 
 		$this->expectException( DBReadOnlyError::class );
 		$noWriteService->setNotificationTimestampsForUser(
@@ -73,7 +57,10 @@ class NoWriteWatchedItemStoreUnitTest extends \MediaWikiUnitTestCase {
 	}
 
 	public function testUpdateNotificationTimestamp() {
-		$noWriteService = $this->getNoWriteStoreForErrors();
+		/** @var WatchedItemStoreInterface|MockObject $innerService */
+		$innerService = $this->getMockForAbstractClass( WatchedItemStoreInterface::class );
+		$innerService->expects( $this->never() )->method( 'updateNotificationTimestamp' );
+		$noWriteService = new NoWriteWatchedItemStore( $innerService );
 
 		$this->expectException( DBReadOnlyError::class );
 		$noWriteService->updateNotificationTimestamp(
@@ -84,7 +71,10 @@ class NoWriteWatchedItemStoreUnitTest extends \MediaWikiUnitTestCase {
 	}
 
 	public function testResetNotificationTimestamp() {
-		$noWriteService = $this->getNoWriteStoreForErrors();
+		/** @var WatchedItemStoreInterface|MockObject $innerService */
+		$innerService = $this->getMockForAbstractClass( WatchedItemStoreInterface::class );
+		$innerService->expects( $this->never() )->method( 'resetNotificationTimestamp' );
+		$noWriteService = new NoWriteWatchedItemStore( $innerService );
 
 		$this->expectException( DBReadOnlyError::class );
 		$noWriteService->resetNotificationTimestamp(
@@ -94,7 +84,10 @@ class NoWriteWatchedItemStoreUnitTest extends \MediaWikiUnitTestCase {
 	}
 
 	public function testCountWatchedItems() {
-		$noWriteService = $this->getNoWriteStoreForProxyCall( 'countWatchedItems', __METHOD__ );
+		/** @var WatchedItemStoreInterface|MockObject $innerService */
+		$innerService = $this->getMockForAbstractClass( WatchedItemStoreInterface::class );
+		$innerService->expects( $this->once() )->method( 'countWatchedItems' )->willReturn( __METHOD__ );
+		$noWriteService = new NoWriteWatchedItemStore( $innerService );
 
 		$return = $noWriteService->countWatchedItems(
 			new UserIdentityValue( 1, 'MockUser' )
@@ -103,7 +96,10 @@ class NoWriteWatchedItemStoreUnitTest extends \MediaWikiUnitTestCase {
 	}
 
 	public function testCountWatchers() {
-		$noWriteService = $this->getNoWriteStoreForProxyCall( 'countWatchers', __METHOD__ );
+		/** @var WatchedItemStoreInterface|MockObject $innerService */
+		$innerService = $this->getMockForAbstractClass( WatchedItemStoreInterface::class );
+		$innerService->expects( $this->once() )->method( 'countWatchers' )->willReturn( __METHOD__ );
+		$noWriteService = new NoWriteWatchedItemStore( $innerService );
 
 		$return = $noWriteService->countWatchers(
 			new TitleValue( 0, 'Foo' )
@@ -112,7 +108,12 @@ class NoWriteWatchedItemStoreUnitTest extends \MediaWikiUnitTestCase {
 	}
 
 	public function testCountVisitingWatchers() {
-		$noWriteService = $this->getNoWriteStoreForProxyCall( 'countVisitingWatchers', __METHOD__ );
+		/** @var WatchedItemStoreInterface|MockObject $innerService */
+		$innerService = $this->getMockForAbstractClass( WatchedItemStoreInterface::class );
+		$innerService->expects( $this->once() )
+			->method( 'countVisitingWatchers' )
+			->willReturn( __METHOD__ );
+		$noWriteService = new NoWriteWatchedItemStore( $innerService );
 
 		$return = $noWriteService->countVisitingWatchers(
 			new TitleValue( 0, 'Foo' ),
@@ -122,7 +123,12 @@ class NoWriteWatchedItemStoreUnitTest extends \MediaWikiUnitTestCase {
 	}
 
 	public function testCountWatchersMultiple() {
-		$noWriteService = $this->getNoWriteStoreForProxyCall( 'countWatchersMultiple', __METHOD__ );
+		/** @var WatchedItemStoreInterface|MockObject $innerService */
+		$innerService = $this->getMockForAbstractClass( WatchedItemStoreInterface::class );
+		$innerService->expects( $this->once() )
+			->method( 'countVisitingWatchersMultiple' )
+			->willReturn( __METHOD__ );
+		$noWriteService = new NoWriteWatchedItemStore( $innerService );
 
 		$return = $noWriteService->countWatchersMultiple(
 			[ new TitleValue( 0, 'Foo' ) ],
@@ -132,7 +138,12 @@ class NoWriteWatchedItemStoreUnitTest extends \MediaWikiUnitTestCase {
 	}
 
 	public function testCountVisitingWatchersMultiple() {
-		$noWriteService = $this->getNoWriteStoreForProxyCall( 'countVisitingWatchersMultiple', __METHOD__ );
+		/** @var WatchedItemStoreInterface|MockObject $innerService */
+		$innerService = $this->getMockForAbstractClass( WatchedItemStoreInterface::class );
+		$innerService->expects( $this->once() )
+			->method( 'countVisitingWatchersMultiple' )
+			->willReturn( __METHOD__ );
+		$noWriteService = new NoWriteWatchedItemStore( $innerService );
 
 		$return = $noWriteService->countVisitingWatchersMultiple(
 			[ [ new TitleValue( 0, 'Foo' ), 99 ] ],
@@ -142,7 +153,10 @@ class NoWriteWatchedItemStoreUnitTest extends \MediaWikiUnitTestCase {
 	}
 
 	public function testGetWatchedItem() {
-		$noWriteService = $this->getNoWriteStoreForProxyCall( 'getWatchedItem', __METHOD__ );
+		/** @var WatchedItemStoreInterface|MockObject $innerService */
+		$innerService = $this->getMockForAbstractClass( WatchedItemStoreInterface::class );
+		$innerService->expects( $this->once() )->method( 'getWatchedItem' )->willReturn( __METHOD__ );
+		$noWriteService = new NoWriteWatchedItemStore( $innerService );
 
 		$return = $noWriteService->getWatchedItem(
 			new UserIdentityValue( 1, 'MockUser' ),
@@ -152,7 +166,10 @@ class NoWriteWatchedItemStoreUnitTest extends \MediaWikiUnitTestCase {
 	}
 
 	public function testLoadWatchedItem() {
-		$noWriteService = $this->getNoWriteStoreForProxyCall( 'loadWatchedItem', __METHOD__ );
+		/** @var WatchedItemStoreInterface|MockObject $innerService */
+		$innerService = $this->getMockForAbstractClass( WatchedItemStoreInterface::class );
+		$innerService->expects( $this->once() )->method( 'loadWatchedItem' )->willReturn( __METHOD__ );
+		$noWriteService = new NoWriteWatchedItemStore( $innerService );
 
 		$return = $noWriteService->loadWatchedItem(
 			new UserIdentityValue( 1, 'MockUser' ),
@@ -162,7 +179,12 @@ class NoWriteWatchedItemStoreUnitTest extends \MediaWikiUnitTestCase {
 	}
 
 	public function testGetWatchedItemsForUser() {
-		$noWriteService = $this->getNoWriteStoreForProxyCall( 'getWatchedItemsForUser', __METHOD__ );
+		/** @var WatchedItemStoreInterface|MockObject $innerService */
+		$innerService = $this->getMockForAbstractClass( WatchedItemStoreInterface::class );
+		$innerService->expects( $this->once() )
+			->method( 'getWatchedItemsForUser' )
+			->willReturn( __METHOD__ );
+		$noWriteService = new NoWriteWatchedItemStore( $innerService );
 
 		$return = $noWriteService->getWatchedItemsForUser(
 			new UserIdentityValue( 1, 'MockUser' ),
@@ -172,7 +194,10 @@ class NoWriteWatchedItemStoreUnitTest extends \MediaWikiUnitTestCase {
 	}
 
 	public function testIsWatched() {
-		$noWriteService = $this->getNoWriteStoreForProxyCall( 'isWatched', __METHOD__ );
+		/** @var WatchedItemStoreInterface|MockObject $innerService */
+		$innerService = $this->getMockForAbstractClass( WatchedItemStoreInterface::class );
+		$innerService->expects( $this->once() )->method( 'isWatched' )->willReturn( __METHOD__ );
+		$noWriteService = new NoWriteWatchedItemStore( $innerService );
 
 		$return = $noWriteService->isWatched(
 			new UserIdentityValue( 1, 'MockUser' ),
@@ -182,7 +207,12 @@ class NoWriteWatchedItemStoreUnitTest extends \MediaWikiUnitTestCase {
 	}
 
 	public function testGetNotificationTimestampsBatch() {
-		$noWriteService = $this->getNoWriteStoreForProxyCall( 'getNotificationTimestampsBatch', __METHOD__ );
+		/** @var WatchedItemStoreInterface|MockObject $innerService */
+		$innerService = $this->getMockForAbstractClass( WatchedItemStoreInterface::class );
+		$innerService->expects( $this->once() )
+			->method( 'getNotificationTimestampsBatch' )
+			->willReturn( __METHOD__ );
+		$noWriteService = new NoWriteWatchedItemStore( $innerService );
 
 		$return = $noWriteService->getNotificationTimestampsBatch(
 			new UserIdentityValue( 1, 'MockUser' ),
@@ -192,7 +222,12 @@ class NoWriteWatchedItemStoreUnitTest extends \MediaWikiUnitTestCase {
 	}
 
 	public function testCountUnreadNotifications() {
-		$noWriteService = $this->getNoWriteStoreForProxyCall( 'countUnreadNotifications', __METHOD__ );
+		/** @var WatchedItemStoreInterface|MockObject $innerService */
+		$innerService = $this->getMockForAbstractClass( WatchedItemStoreInterface::class );
+		$innerService->expects( $this->once() )
+			->method( 'countUnreadNotifications' )
+			->willReturn( __METHOD__ );
+		$noWriteService = new NoWriteWatchedItemStore( $innerService );
 
 		$return = $noWriteService->countUnreadNotifications(
 			new UserIdentityValue( 1, 'MockUser' ),
@@ -202,7 +237,9 @@ class NoWriteWatchedItemStoreUnitTest extends \MediaWikiUnitTestCase {
 	}
 
 	public function testDuplicateAllAssociatedEntries() {
-		$noWriteService = $this->getNoWriteStoreForErrors();
+		/** @var WatchedItemStoreInterface|MockObject $innerService */
+		$innerService = $this->getMockForAbstractClass( WatchedItemStoreInterface::class );
+		$noWriteService = new NoWriteWatchedItemStore( $innerService );
 
 		$this->expectException( DBReadOnlyError::class );
 		$noWriteService->duplicateAllAssociatedEntries(

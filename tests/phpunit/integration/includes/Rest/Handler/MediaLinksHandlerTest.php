@@ -2,6 +2,7 @@
 
 namespace MediaWiki\Tests\Rest\Handler;
 
+use MediaWiki\MediaWikiServices;
 use MediaWiki\Rest\Handler\MediaLinksHandler;
 use MediaWiki\Rest\LocalizedHttpException;
 use MediaWiki\Rest\RequestData;
@@ -18,14 +19,15 @@ class MediaLinksHandlerTest extends \MediaWikiIntegrationTestCase {
 	use MediaTestTrait;
 
 	public function addDBDataOnce() {
+		// NOTE: MediaTestTrait::makeMockRepoGroup() treats files with "missing" in the
+		// name as non-existent.
 		$this->editPage( __CLASS__ . '_Foo', 'Foo [[Image:Existing.jpg]] [[Image:Missing.jpg]]' );
 	}
 
 	private function newHandler() {
 		return new MediaLinksHandler(
-			$this->getServiceContainer()->getDBLoadBalancer(),
-			$this->makeMockRepoGroup( [ 'Existing.jpg' ] ),
-			$this->getServiceContainer()->getPageStore()
+			MediaWikiServices::getInstance()->getDBLoadBalancer(),
+			$this->makeMockRepoGroup()
 		);
 	}
 
@@ -57,8 +59,7 @@ class MediaLinksHandlerTest extends \MediaWikiIntegrationTestCase {
 		// NOTE: See MediaTestTrait::makeMockFile() for hard-coded values.
 		$this->assertLink( [
 			'title' => 'Existing.jpg',
-			// File repo mocks will end up calling File namespace ns6
-			'file_description_url' => 'https://example.com/wiki/ns6:Existing.jpg',
+			'file_description_url' => 'https://example.com/wiki/File:Existing.jpg',
 			'latest' => [
 				'timestamp' => '2020-01-02T03:04:05Z',
 				'user' => [ 'id' => 7, 'name' => 'Alice' ]
@@ -85,8 +86,7 @@ class MediaLinksHandlerTest extends \MediaWikiIntegrationTestCase {
 		// name as non-existent.
 		$this->assertLink( [
 			'title' => 'Missing.jpg',
-			// File repo mocks will end up calling File namespace ns6
-			'file_description_url' => 'https://example.com/wiki/ns6:Missing.jpg',
+			'file_description_url' => 'https://example.com/wiki/File:Missing.jpg',
 			'latest' => null,
 			'preferred' => null,
 			'original' => null,

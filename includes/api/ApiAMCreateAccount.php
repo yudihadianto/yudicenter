@@ -22,6 +22,7 @@
 
 use MediaWiki\Auth\AuthenticationResponse;
 use MediaWiki\Auth\AuthManager;
+use MediaWiki\MediaWikiServices;
 
 /**
  * Create an account with AuthManager
@@ -30,21 +31,8 @@ use MediaWiki\Auth\AuthManager;
  */
 class ApiAMCreateAccount extends ApiBase {
 
-	/** @var AuthManager */
-	private $authManager;
-
-	/**
-	 * @param ApiMain $main
-	 * @param string $action
-	 * @param AuthManager $authManager
-	 */
-	public function __construct(
-		ApiMain $main,
-		$action,
-		AuthManager $authManager
-	) {
+	public function __construct( ApiMain $main, $action ) {
 		parent::__construct( $main, $action, 'create' );
-		$this->authManager = $authManager;
 	}
 
 	public function getFinalDescription() {
@@ -76,10 +64,11 @@ class ApiAMCreateAccount extends ApiBase {
 			}
 		}
 
-		$helper = new ApiAuthManagerHelper( $this, $this->authManager );
+		$manager = MediaWikiServices::getInstance()->getAuthManager();
+		$helper = new ApiAuthManagerHelper( $this, $manager );
 
 		// Make sure it's possible to create accounts
-		if ( !$this->authManager->canCreateAccounts() ) {
+		if ( !$manager->canCreateAccounts() ) {
 			$this->getResult()->addValue( null, 'createaccount', $helper->formatAuthenticationResponse(
 				AuthenticationResponse::newFail(
 					$this->msg( 'userlogin-cannot-' . AuthManager::ACTION_CREATE )
@@ -93,7 +82,7 @@ class ApiAMCreateAccount extends ApiBase {
 		// Perform the create step
 		if ( $params['continue'] ) {
 			$reqs = $helper->loadAuthenticationRequests( AuthManager::ACTION_CREATE_CONTINUE );
-			$res = $this->authManager->continueAccountCreation( $reqs );
+			$res = $manager->continueAccountCreation( $reqs );
 		} else {
 			$reqs = $helper->loadAuthenticationRequests( AuthManager::ACTION_CREATE );
 			if ( $params['preservestate'] ) {
@@ -102,11 +91,7 @@ class ApiAMCreateAccount extends ApiBase {
 					$reqs[] = $req;
 				}
 			}
-			$res = $this->authManager->beginAccountCreation(
-				$this->getAuthority(),
-				$reqs,
-				$params['returnurl']
-			);
+			$res = $manager->beginAccountCreation( $this->getUser(), $reqs, $params['returnurl'] );
 		}
 
 		$this->getResult()->addValue( null, 'createaccount',

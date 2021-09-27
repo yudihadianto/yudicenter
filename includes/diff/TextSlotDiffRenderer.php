@@ -136,7 +136,10 @@ class TextSlotDiffRenderer extends SlotDiffRenderer {
 	 * @param string $newText
 	 * @return string HTML, one or more <tr> tags.
 	 */
-	public function getTextDiff( string $oldText, string $newText ) {
+	public function getTextDiff( $oldText, $newText ) {
+		Assert::parameterType( 'string', $oldText, '$oldText' );
+		Assert::parameterType( 'string', $newText, '$newText' );
+
 		$diff = function () use ( $oldText, $newText ) {
 			$time = microtime( true );
 
@@ -162,7 +165,6 @@ class TextSlotDiffRenderer extends SlotDiffRenderer {
 		/**
 		 * @param Status $status
 		 * @throws FatalError
-		 * @return never
 		 */
 		$error = static function ( $status ) {
 			throw new FatalError( $status->getWikiText() );

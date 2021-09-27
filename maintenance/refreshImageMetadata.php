@@ -63,14 +63,6 @@ class RefreshImageMetadata extends Maintenance {
 			'Only fix really broken records, leave old but still compatible records alone.'
 		);
 		$this->addOption(
-			'convert-to-json',
-			'Fix records with an out of date serialization format.'
-		);
-		$this->addOption(
-			'split',
-			'Enable splitting out large metadata items to the text table. Implies --convert-to-json.'
-		);
-		$this->addOption(
 			'verbose',
 			'Output extra information about each upgraded/non-upgraded file.',
 			false,
@@ -101,12 +93,6 @@ class RefreshImageMetadata extends Maintenance {
 			false,
 			true
 		);
-		$this->addOption(
-			'sleep',
-			'Time to sleep between each batch (in seconds). Default: 0',
-			false,
-			true
-		);
 	}
 
 	public function execute() {
@@ -114,21 +100,19 @@ class RefreshImageMetadata extends Maintenance {
 		$brokenOnly = $this->hasOption( 'broken-only' );
 		$verbose = $this->hasOption( 'verbose' );
 		$start = $this->getOption( 'start', false );
-		$split = $this->hasOption( 'split' );
-		$sleep = (int)$this->getOption( 'sleep', 0 );
-		$reserialize = $this->hasOption( 'convert-to-json' );
+		$this->setupParameters( $force, $brokenOnly );
 
 		$upgraded = 0;
 		$leftAlone = 0;
 		$error = 0;
 
-		$dbw = $this->getDB( DB_PRIMARY );
+		$dbw = $this->getDB( DB_MASTER );
 		$batchSize = $this->getBatchSize();
 		if ( $batchSize <= 0 ) {
 			$this->fatalError( "Batch size is too low...", 12 );
 		}
 
-		$repo = $this->newLocalRepo( $force, $brokenOnly, $reserialize, $split );
+		$repo = MediaWikiServices::getInstance()->getRepoGroup()->getLocalRepo();
 		$conds = $this->getConditions( $dbw );
 
 		// For the WHERE img_name > 'foo' condition that comes after doing a batch
@@ -165,15 +149,39 @@ class RefreshImageMetadata extends Maintenance {
 				try {
 					// LocalFile will upgrade immediately here if obsolete
 					$file = $repo->newFileFromRow( $row );
-					$file->maybeUpgradeRow();
 					if ( $file->getUpgraded() ) {
 						// File was upgraded.
 						$upgraded++;
-						$this->output( "Refreshed File:{$row->img_name}.\n" );
+						$newLength = strlen( $file->getMetadata() );
+						$oldLength = strlen( $row->img_metadata );
+						if ( $newLength < $oldLength - 5 ) {
+							// If after updating, the metadata is smaller then
+							// what it was before, that's probably not a good thing
+							// because we extract more data with time, not less.
+							// Thus this probably indicates an error of some sort,
+							// or at the very least is suspicious. Have the - 5 just
+							// to weed out any inconsequential changes.
+							$error++;
+							$this->output(
+								"Warning: File:{$row->img_name} used to have " .
+								"$oldLength bytes of metadata but now has $newLength bytes.\n"
+							);
+						} elseif ( $verbose ) {
+							$this->output( "Refreshed File:{$row->img_name}.\n" );
+						}
 					} else {
 						$leftAlone++;
 						if ( $force ) {
 							$file->upgradeRow();
+							$newLength = strlen( $file->getMetadata() );
+							$oldLength = strlen( $row->img_metadata );
+							if ( $newLength < $oldLength - 5 ) {
+								$error++;
+								$this->output(
+									"Warning: File:{$row->img_name} used to have " .
+									"$oldLength bytes of metadata but now has $newLength bytes. (forced)\n"
+								);
+							}
 							if ( $verbose ) {
 								$this->output( "Forcibly refreshed File:{$row->img_name}.\n" );
 							}
@@ -189,9 +197,6 @@ class RefreshImageMetadata extends Maintenance {
 			}
 			$conds2 = [ 'img_name > ' . $dbw->addQuotes( $row->img_name ) ];
 			$lbFactory->waitForReplication();
-			if ( $sleep ) {
-				sleep( $sleep );
-			}
 		} while ( $res->numRows() === $batchSize );
 
 		$total = $upgraded + $leftAlone;
@@ -241,34 +246,19 @@ class RefreshImageMetadata extends Maintenance {
 	/**
 	 * @param bool $force
 	 * @param bool $brokenOnly
-	 * @param bool $reserialize
-	 * @param bool $split
-	 *
-	 * @return LocalRepo
 	 */
-	private function newLocalRepo( $force, $brokenOnly, $reserialize, $split ): LocalRepo {
+	private function setupParameters( $force, $brokenOnly ) {
+		global $wgUpdateCompatibleMetadata;
+
+		if ( $brokenOnly ) {
+			$wgUpdateCompatibleMetadata = false;
+		} else {
+			$wgUpdateCompatibleMetadata = true;
+		}
+
 		if ( $brokenOnly && $force ) {
 			$this->fatalError( 'Cannot use --broken-only and --force together. ', 2 );
 		}
-		$reserialize = $reserialize || $split;
-		if ( $brokenOnly && $reserialize ) {
-			$this->fatalError( 'Cannot use --broken-only with --convert-to-json or --split. ',
-				2 );
-		}
-
-		$overrides = [
-			'updateCompatibleMetadata' => !$brokenOnly,
-		];
-		if ( $reserialize ) {
-			$overrides['reserializeMetadata'] = true;
-			$overrides['useJsonMetadata'] = true;
-		}
-		if ( $split ) {
-			$overrides['useSplitMetadata'] = true;
-		}
-
-		return MediaWikiServices::getInstance()->getRepoGroup()
-			->newCustomLocalRepo( $overrides );
 	}
 }
 

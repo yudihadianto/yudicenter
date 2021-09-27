@@ -1,5 +1,7 @@
 <?php
 
+require __DIR__ . "/../../../maintenance/runJobs.php";
+
 /**
  * @group Database
  */
@@ -17,10 +19,12 @@ class TemplateCategoriesTest extends MediaWikiLangTestCase {
 
 		$title = Title::newFromText( "Categorized from template" );
 		$page = WikiPage::factory( $title );
-		$page->doUserEditContent(
+		$page->doEditContent(
 			new WikitextContent( '{{Categorising template}}' ),
-			$user,
-			'Create a page with a template'
+			'Create a page with a template',
+			0,
+			false,
+			$user
 		);
 
 		$this->assertEquals(
@@ -31,14 +35,19 @@ class TemplateCategoriesTest extends MediaWikiLangTestCase {
 
 		// Create template
 		$template = WikiPage::factory( Title::newFromText( 'Template:Categorising template' ) );
-		$template->doUserEditContent(
+		$template->doEditContent(
 			new WikitextContent( '[[Category:Solved bugs]]' ),
-			$user,
-			'Add a category through a template'
+			'Add a category through a template',
+			0,
+			false,
+			$user
 		);
 
 		// Run the job queue
-		$this->runJobs();
+		JobQueueGroup::destroySingletons();
+		$jobs = new RunJobs;
+		$jobs->loadParamsAndArgs( null, [ 'quiet' => true ], null );
+		$jobs->execute();
 
 		// Make sure page is in the category
 		$this->assertEquals(
@@ -48,14 +57,19 @@ class TemplateCategoriesTest extends MediaWikiLangTestCase {
 		);
 
 		// Edit the template
-		$template->doUserEditContent(
+		$template->doEditContent(
 			new WikitextContent( '[[Category:Solved bugs 2]]' ),
-			$user,
-			'Change the category added by the template'
+			'Change the category added by the template',
+			0,
+			false,
+			$user
 		);
 
 		// Run the job queue
-		$this->runJobs();
+		JobQueueGroup::destroySingletons();
+		$jobs = new RunJobs;
+		$jobs->loadParamsAndArgs( null, [ 'quiet' => true ], null );
+		$jobs->execute();
 
 		// Make sure page is in the right category
 		$this->assertEquals(
@@ -68,7 +82,10 @@ class TemplateCategoriesTest extends MediaWikiLangTestCase {
 		$template->doDeleteArticleReal( 'Delete the template', $user );
 
 		// Run the job queue
-		$this->runJobs();
+		JobQueueGroup::destroySingletons();
+		$jobs = new RunJobs;
+		$jobs->loadParamsAndArgs( null, [ 'quiet' => true ], null );
+		$jobs->execute();
 
 		// Make sure the page is no longer in the category
 		$this->assertEquals(

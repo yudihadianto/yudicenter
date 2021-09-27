@@ -48,20 +48,10 @@ class UserSelectQueryBuilder extends SelectQueryBuilder {
 	 * @param int|int[] $userIds
 	 * @return UserSelectQueryBuilder
 	 */
-	public function whereUserIds( $userIds ): self {
+	public function userIds( $userIds ): self {
 		Assert::parameterType( 'integer|array', $userIds, '$userIds' );
 		$this->conds( [ 'actor_user' => $userIds ] );
 		return $this;
-	}
-
-	/**
-	 * Find by provided user ids.
-	 * @deprecated since 1.37, use whereUserIds instead
-	 * @param int|int[] $userIds
-	 * @return UserSelectQueryBuilder
-	 */
-	public function userIds( $userIds ): self {
-		return $this->whereUserIds( $userIds );
 	}
 
 	/**
@@ -70,7 +60,7 @@ class UserSelectQueryBuilder extends SelectQueryBuilder {
 	 * @param string|string[] $userNames
 	 * @return UserSelectQueryBuilder
 	 */
-	public function whereUserNames( $userNames ): self {
+	public function userNames( $userNames ): self {
 		Assert::parameterType( 'string|array', $userNames, '$userIds' );
 		$userNames = array_map( function ( $name ) {
 			return $this->actorStore->normalizeUserName( (string)$name );
@@ -80,16 +70,6 @@ class UserSelectQueryBuilder extends SelectQueryBuilder {
 	}
 
 	/**
-	 * Find by provided user names.
-	 * @deprecated since 1.37, use whereUserNames instead
-	 * @param string|string[] $userNames
-	 * @return UserSelectQueryBuilder
-	 */
-	public function userNames( $userNames ): self {
-		return $this->whereUserNames( $userNames );
-	}
-
-	/**
 	 * Find users with names starting from the provided prefix.
 	 *
 	 * @note this could produce a huge number of results, like User00000 ... User99999,
@@ -98,26 +78,13 @@ class UserSelectQueryBuilder extends SelectQueryBuilder {
 	 * @param string $prefix
 	 * @return UserSelectQueryBuilder
 	 */
-	public function whereUserNamePrefix( string $prefix ): self {
+	public function userNamePrefix( string $prefix ): self {
 		if ( !isset( $this->options['LIMIT'] ) ) {
 			throw new PreconditionException( 'Must set a limit when using a user name prefix' );
 		}
 		$like = $this->db->buildLike( $prefix, $this->db->anyString() );
 		$this->conds( "actor_name{$like}" );
 		return $this;
-	}
-
-	/**
-	 * Find users with names starting from the provided prefix.
-	 *
-	 * @note this could produce a huge number of results, like User00000 ... User99999,
-	 * so you must set a limit when using this condition.
-	 * @deprecated since 1.37 use whereUserNamePrefix instead
-	 * @param string $prefix
-	 * @return UserSelectQueryBuilder
-	 */
-	public function userNamePrefix( string $prefix ): self {
-		return $this->whereUserNamePrefix( $prefix );
 	}
 
 	/**

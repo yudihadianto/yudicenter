@@ -13,9 +13,9 @@ class LockManagerGroupIntegrationTest extends MediaWikiIntegrationTestCase {
 	public function testWgLockManagers() {
 		$this->setMwGlobals( 'wgLockManagers',
 			[ [ 'name' => 'a', 'class' => 'b' ], [ 'name' => 'c', 'class' => 'd' ] ] );
-		$this->getServiceContainer()->resetServiceForTesting( 'LockManagerGroupFactory' );
+		LockManagerGroup::destroySingletons();
 
-		$lmg = $this->getServiceContainer()->getLockManagerGroupFactory()->getLockManagerGroup();
+		$lmg = LockManagerGroup::singleton();
 		$domain = WikiMap::getCurrentWikiDbDomain()->getId();
 
 		$this->assertSame(
@@ -28,28 +28,36 @@ class LockManagerGroupIntegrationTest extends MediaWikiIntegrationTestCase {
 
 	public function testSingletonFalse() {
 		$this->setMwGlobals( 'wgLockManagers', [ [ 'name' => 'a', 'class' => 'b' ] ] );
-		$this->getServiceContainer()->resetServiceForTesting( 'LockManagerGroupFactory' );
+		LockManagerGroup::destroySingletons();
 
 		$this->assertSame(
 			WikiMap::getCurrentWikiDbDomain()->getId(),
-			$this->getServiceContainer()
-				->getLockManagerGroupFactory()
-				->getLockManagerGroup( false )
-				->config( 'a' )['domain']
+			LockManagerGroup::singleton( false )->config( 'a' )['domain']
 		);
 	}
 
 	public function testSingletonNull() {
 		$this->setMwGlobals( 'wgLockManagers', [ [ 'name' => 'a', 'class' => 'b' ] ] );
-		$this->getServiceContainer()->resetServiceForTesting( 'LockManagerGroupFactory' );
+		LockManagerGroup::destroySingletons();
 
 		$this->assertSame(
 			WikiMap::getCurrentWikiDbDomain()->getId(),
-			$this->getServiceContainer()
-				->getLockManagerGroupFactory()
-				->getLockManagerGroup( null )
-				->config( 'a' )['domain']
+			LockManagerGroup::singleton( null )->config( 'a' )['domain']
 		);
+	}
+
+	public function testDestroySingletons() {
+		$instance = LockManagerGroup::singleton();
+		$this->assertSame( $instance, LockManagerGroup::singleton() );
+		LockManagerGroup::destroySingletons();
+		$this->assertNotSame( $instance, LockManagerGroup::singleton() );
+	}
+
+	public function testDestroySingletonsNamedDomain() {
+		$instance = LockManagerGroup::singleton( 'domain' );
+		$this->assertSame( $instance, LockManagerGroup::singleton( 'domain' ) );
+		LockManagerGroup::destroySingletons();
+		$this->assertNotSame( $instance, LockManagerGroup::singleton( 'domain' ) );
 	}
 
 	public function testGetDBLockManager() {
@@ -60,7 +68,7 @@ class LockManagerGroupIntegrationTest extends MediaWikiIntegrationTestCase {
 		$mockLB->expects( $this->never() )
 			->method( $this->anythingBut( '__destruct', 'getLazyConnectionRef' ) );
 		$mockLB->expects( $this->once() )->method( 'getLazyConnectionRef' )
-			->with( DB_PRIMARY, [], 'domain', $mockLB::CONN_TRX_AUTOCOMMIT )
+			->with( DB_MASTER, [], 'domain', $mockLB::CONN_TRX_AUTOCOMMIT )
 			->willReturn( 'bogus value' );
 
 		$mockLBFactory = $this->createMock( LBFactory::class );

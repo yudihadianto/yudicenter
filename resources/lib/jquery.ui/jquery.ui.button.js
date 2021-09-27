@@ -55,8 +55,8 @@ $.widget( "ui.button", {
 	},
 	_create: function() {
 		this.element.closest( "form" )
-			.off( "reset" + this.eventNamespace )
-			.on( "reset" + this.eventNamespace, formResetHandler );
+			.unbind( "reset" + this.eventNamespace )
+			.bind( "reset" + this.eventNamespace, formResetHandler );
 
 		if ( typeof this.options.disabled !== "boolean" ) {
 			this.options.disabled = !!this.element.prop( "disabled" );
@@ -82,7 +82,7 @@ $.widget( "ui.button", {
 		this.buttonElement
 			.addClass( baseClasses )
 			.attr( "role", "button" )
-			.on( "mouseenter" + this.eventNamespace, function() {
+			.bind( "mouseenter" + this.eventNamespace, function() {
 				if ( options.disabled ) {
 					return;
 				}
@@ -90,13 +90,13 @@ $.widget( "ui.button", {
 					$( this ).addClass( "ui-state-active" );
 				}
 			})
-			.on( "mouseleave" + this.eventNamespace, function() {
+			.bind( "mouseleave" + this.eventNamespace, function() {
 				if ( options.disabled ) {
 					return;
 				}
 				$( this ).removeClass( activeClass );
 			})
-			.on( "click" + this.eventNamespace, function( event ) {
+			.bind( "click" + this.eventNamespace, function( event ) {
 				if ( options.disabled ) {
 					event.preventDefault();
 					event.stopImmediatePropagation();
@@ -104,16 +104,16 @@ $.widget( "ui.button", {
 			});
 
 		this.element
-			.on( "focus" + this.eventNamespace, function() {
+			.bind( "focus" + this.eventNamespace, function() {
 				// no need to check disabled, focus won't be triggered anyway
 				that.buttonElement.addClass( focusClass );
 			})
-			.on( "blur" + this.eventNamespace, function() {
+			.bind( "blur" + this.eventNamespace, function() {
 				that.buttonElement.removeClass( focusClass );
 			});
 
 		if ( toggleButton ) {
-			this.element.on( "change" + this.eventNamespace, function() {
+			this.element.bind( "change" + this.eventNamespace, function() {
 				if ( clickDragged ) {
 					return;
 				}
@@ -123,7 +123,7 @@ $.widget( "ui.button", {
 			// prevents issue where button state changes but checkbox/radio checked state
 			// does not in Firefox (see ticket #6970)
 			this.buttonElement
-				.on( "mousedown" + this.eventNamespace, function( event ) {
+				.bind( "mousedown" + this.eventNamespace, function( event ) {
 					if ( options.disabled ) {
 						return;
 					}
@@ -131,7 +131,7 @@ $.widget( "ui.button", {
 					startXPos = event.pageX;
 					startYPos = event.pageY;
 				})
-				.on( "mouseup" + this.eventNamespace, function( event ) {
+				.bind( "mouseup" + this.eventNamespace, function( event ) {
 					if ( options.disabled ) {
 						return;
 					}
@@ -142,7 +142,7 @@ $.widget( "ui.button", {
 		}
 
 		if ( this.type === "checkbox" ) {
-			this.buttonElement.on( "click" + this.eventNamespace, function() {
+			this.buttonElement.bind( "click" + this.eventNamespace, function() {
 				if ( options.disabled || clickDragged ) {
 					return false;
 				}
@@ -150,7 +150,7 @@ $.widget( "ui.button", {
 				that.buttonElement.attr( "aria-pressed", that.element[0].checked );
 			});
 		} else if ( this.type === "radio" ) {
-			this.buttonElement.on( "click" + this.eventNamespace, function() {
+			this.buttonElement.bind( "click" + this.eventNamespace, function() {
 				if ( options.disabled || clickDragged ) {
 					return false;
 				}
@@ -168,7 +168,7 @@ $.widget( "ui.button", {
 			});
 		} else {
 			this.buttonElement
-				.on( "mousedown" + this.eventNamespace, function() {
+				.bind( "mousedown" + this.eventNamespace, function() {
 					if ( options.disabled ) {
 						return false;
 					}
@@ -178,13 +178,13 @@ $.widget( "ui.button", {
 						lastActive = null;
 					});
 				})
-				.on( "mouseup" + this.eventNamespace, function() {
+				.bind( "mouseup" + this.eventNamespace, function() {
 					if ( options.disabled ) {
 						return false;
 					}
 					$( this ).removeClass( "ui-state-active" );
 				})
-				.on( "keydown" + this.eventNamespace, function(event) {
+				.bind( "keydown" + this.eventNamespace, function(event) {
 					if ( options.disabled ) {
 						return false;
 					}
@@ -192,7 +192,7 @@ $.widget( "ui.button", {
 						$( this ).addClass( "ui-state-active" );
 					}
 				})
-				.on( "keyup" + this.eventNamespace, function() {
+				.bind( "keyup" + this.eventNamespace, function() {
 					$( this ).removeClass( "ui-state-active" );
 				});
 
@@ -348,7 +348,7 @@ $.widget( "ui.button", {
 				buttonClasses.push( multipleIcons ? "ui-button-icons-only" : "ui-button-icon-only" );
 
 				if ( !this.hasTitle ) {
-					buttonElement.attr( "title", buttonText.trim() );
+					buttonElement.attr( "title", $.trim( buttonText ) );
 				}
 			}
 		} else {

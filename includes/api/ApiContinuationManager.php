@@ -24,30 +24,23 @@
  * @ingroup API
  */
 class ApiContinuationManager {
-	/** @var string */
 	private $source;
 
-	/** @var (ApiBase|false)[] */
 	private $allModules = [];
-	/** @var string[] */
-	private $generatedModules;
+	private $generatedModules = [];
 
 	/** @var array[] */
 	private $continuationData = [];
-	/** @var array[] */
 	private $generatorContinuationData = [];
-	/** @var array[] */
 	private $generatorNonContinuationData = [];
 
-	/** @var array */
 	private $generatorParams = [];
-	/** @var bool */
 	private $generatorDone = false;
 
 	/**
 	 * @param ApiBase $module Module starting the continuation
 	 * @param ApiBase[] $allModules Contains ApiBase instances that will be executed
-	 * @param string[] $generatedModules Names of modules that depend on the generator
+	 * @param array $generatedModules Names of modules that depend on the generator
 	 * @throws ApiUsageException
 	 */
 	public function __construct(
@@ -74,7 +67,7 @@ class ApiContinuationManager {
 				if ( $params ) {
 					$this->generatorParams = array_intersect_key(
 						$request->getValues(),
-						array_fill_keys( $params, true )
+						array_flip( $params )
 					);
 				}
 			} else {
@@ -184,7 +177,7 @@ class ApiContinuationManager {
 
 	/**
 	 * Fetch raw continuation data
-	 * @return array[]
+	 * @return array
 	 */
 	public function getRawContinuation() {
 		return array_merge_recursive( $this->continuationData, $this->generatorContinuationData );
@@ -193,7 +186,7 @@ class ApiContinuationManager {
 	/**
 	 * Fetch raw non-continuation data
 	 * @since 1.28
-	 * @return array[]
+	 * @return array
 	 */
 	public function getRawNonContinuation() {
 		return $this->generatorNonContinuationData;
@@ -231,7 +224,6 @@ class ApiContinuationManager {
 				$generatorParams += $kvp;
 			}
 			$generatorParams += $this->generatorParams;
-			// @phan-suppress-next-line PhanTypeInvalidLeftOperand False positive in phan
 			$data += $generatorParams;
 			$generatorKeys = implode( '|', array_keys( $generatorParams ) );
 		} elseif ( $this->generatorContinuationData ) {

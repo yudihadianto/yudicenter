@@ -15,11 +15,7 @@ use Wikimedia\TestingAccessWrapper;
  * @covers ChangesListSpecialPage
  */
 class ChangesListSpecialPageTest extends AbstractChangesListSpecialPageTestCase {
-
-	/**
-	 * @return ChangesListSpecialPage
-	 */
-	protected function getPageAccessWrapper() {
+	protected function getPage() {
 		$mock = $this->getMockBuilder( ChangesListSpecialPage::class )
 			->setConstructorArgs(
 				[
@@ -27,7 +23,7 @@ class ChangesListSpecialPageTest extends AbstractChangesListSpecialPageTestCase 
 					''
 				]
 			)
-			->onlyMethods( [ 'getPageTitle' ] )
+			->setMethods( [ 'getPageTitle' ] )
 			->getMockForAbstractClass();
 
 		$mock->method( 'getPageTitle' )->willReturn(
@@ -42,9 +38,9 @@ class ChangesListSpecialPageTest extends AbstractChangesListSpecialPageTestCase 
 	}
 
 	private function buildQuery(
-		array $requestOptions,
-		User $user = null
-	): array {
+		$requestOptions = null,
+		$user = null
+	) {
 		$context = new RequestContext;
 		$context->setRequest( new FauxRequest( $requestOptions ) );
 		if ( $user ) {
@@ -55,7 +51,7 @@ class ChangesListSpecialPageTest extends AbstractChangesListSpecialPageTestCase 
 		$this->changesListSpecialPage->filterGroups = [];
 		$formOptions = $this->changesListSpecialPage->setup( null );
 
-		# Filter out rc_timestamp conditions which depends on the test runtime
+		#  Filter out rc_timestamp conditions which depends on the test runtime
 		# This condition is not needed as of march 2, 2011 -- hashar
 		# @todo FIXME: Find a way to generate the correct rc_timestamp
 
@@ -88,15 +84,15 @@ class ChangesListSpecialPageTest extends AbstractChangesListSpecialPageTestCase 
 	/**
 	 * helper to test SpecialRecentchanges::buildQuery()
 	 * @param array $expected
-	 * @param array $requestOptions
+	 * @param array|null $requestOptions
 	 * @param string $message
 	 * @param User|null $user
 	 */
 	private function assertConditions(
-		array $expected,
-		array $requestOptions,
-		string $message,
-		User $user = null
+		$expected,
+		$requestOptions = null,
+		$message = '',
+		$user = null
 	) {
 		$queryConditions = $this->buildQuery( $requestOptions, $user );
 
@@ -107,7 +103,7 @@ class ChangesListSpecialPageTest extends AbstractChangesListSpecialPageTestCase 
 		);
 	}
 
-	private static function normalizeCondition( array $conds ): array {
+	private static function normalizeCondition( $conds ) {
 		$dbr = wfGetDB( DB_REPLICA );
 		$normalized = array_map(
 			static function ( $k, $v ) use ( $dbr ) {
@@ -128,7 +124,7 @@ class ChangesListSpecialPageTest extends AbstractChangesListSpecialPageTestCase 
 	 * @param array|string $var
 	 * @return bool false if condition begins with 'rc_timestamp '
 	 */
-	private static function filterOutRcTimestampCondition( $var ): bool {
+	private static function filterOutRcTimestampCondition( $var ) {
 		return ( is_array( $var ) || strpos( $var, 'rc_timestamp ' ) === false );
 	}
 
@@ -185,7 +181,7 @@ class ChangesListSpecialPageTest extends AbstractChangesListSpecialPageTestCase 
 	public function testRcNsFilterAssociatedSpecial() {
 		$this->assertConditions(
 			[ # expected
-				'rc_namespace IN (-1,0,1)',
+			  'rc_namespace IN (-1,0,1)',
 			],
 			[
 				'namespace' => '1;-1',
@@ -264,11 +260,12 @@ class ChangesListSpecialPageTest extends AbstractChangesListSpecialPageTestCase 
 	}
 
 	public function testRcHidemyselfFilter() {
+		$actorNormalization = $this->getServiceContainer()->getActorNormalization();
 		$user = $this->getTestUser()->getUser();
-		$encName = $this->db->addQuotes( $user->getName() );
+		$actorId = $actorNormalization->acquireActorId( $user, $this->db );
 		$this->assertConditions(
 			[ # expected
-				"actor_name<>$encName",
+				"NOT((rc_actor = {$actorId}))",
 			],
 			[
 				'hidemyself' => 1,
@@ -278,9 +275,10 @@ class ChangesListSpecialPageTest extends AbstractChangesListSpecialPageTestCase 
 		);
 
 		$user = User::newFromName( '10.11.12.13', false );
+		$actorId = $actorNormalization->acquireActorId( $user, $this->db );
 		$this->assertConditions(
 			[ # expected
-				"actor_name<>'10.11.12.13'",
+				"NOT((rc_actor = {$actorId}))",
 			],
 			[
 				'hidemyself' => 1,
@@ -291,10 +289,12 @@ class ChangesListSpecialPageTest extends AbstractChangesListSpecialPageTestCase 
 	}
 
 	public function testRcHidebyothersFilter() {
+		$actorNormalization = $this->getServiceContainer()->getActorNormalization();
 		$user = $this->getTestUser()->getUser();
+		$actorId = $actorNormalization->acquireActorId( $user, $this->db );
 		$this->assertConditions(
 			[ # expected
-				'actor_user' => $user->getId(),
+				"(rc_actor = {$actorId})",
 			],
 			[
 				'hidebyothers' => 1,
@@ -304,9 +304,10 @@ class ChangesListSpecialPageTest extends AbstractChangesListSpecialPageTestCase 
 		);
 
 		$user = User::newFromName( '10.11.12.13', false );
+		$actorId = $actorNormalization->acquireActorId( $user, $this->db );
 		$this->assertConditions(
 			[ # expected
-				'actor_name' => '10.11.12.13',
+				"(rc_actor = {$actorId})",
 			],
 			[
 				'hidebyothers' => 1,
@@ -522,7 +523,7 @@ class ChangesListSpecialPageTest extends AbstractChangesListSpecialPageTestCase 
 		$this->assertConditions(
 			[
 				# expected
-				'actor_user IS NOT NULL',
+				'actor_rc_user.actor_user IS NOT NULL',
 			],
 			[
 				'userExpLevel' => 'newcomer;learner;experienced',
@@ -535,7 +536,7 @@ class ChangesListSpecialPageTest extends AbstractChangesListSpecialPageTestCase 
 		$this->assertConditions(
 			[
 				# expected
-				'actor_user IS NOT NULL',
+				'actor_rc_user.actor_user IS NOT NULL',
 			],
 			[
 				'userExpLevel' => 'registered',
@@ -548,7 +549,7 @@ class ChangesListSpecialPageTest extends AbstractChangesListSpecialPageTestCase 
 		$this->assertConditions(
 			[
 				# expected
-				'actor_user' => null,
+				'actor_rc_user.actor_user IS NULL',
 			],
 			[
 				'userExpLevel' => 'unregistered',
@@ -561,7 +562,7 @@ class ChangesListSpecialPageTest extends AbstractChangesListSpecialPageTestCase 
 		$this->assertConditions(
 			[
 				# expected
-				'actor_user IS NOT NULL',
+				'actor_rc_user.actor_user IS NOT NULL',
 			],
 			[
 				'userExpLevel' => 'registered;learner',
@@ -574,7 +575,7 @@ class ChangesListSpecialPageTest extends AbstractChangesListSpecialPageTestCase 
 		$conds = $this->buildQuery( [ 'userExpLevel' => 'unregistered;experienced' ] );
 
 		$this->assertRegExp(
-			'/actor_user IS NULL OR '
+			'/\(actor_rc_user\.actor_user IS NULL\) OR '
 				. '\(\(user_editcount >= 500\) AND \(\(user_registration IS NULL\) OR '
 				. '\(user_registration <= \'[^\']+\'\)\)\)/',
 			reset( $conds ),
@@ -648,8 +649,8 @@ class ChangesListSpecialPageTest extends AbstractChangesListSpecialPageTestCase 
 		);
 	}
 
-	private function createUsers( array $specs, int $now ) {
-		$dbw = wfGetDB( DB_PRIMARY );
+	private function createUsers( $specs, $now ) {
+		$dbw = wfGetDB( DB_MASTER );
 		foreach ( $specs as $name => $spec ) {
 			User::createNew(
 				$name,
@@ -662,7 +663,7 @@ class ChangesListSpecialPageTest extends AbstractChangesListSpecialPageTestCase 
 		}
 	}
 
-	private function fetchUsers( array $filters, int $now ): array {
+	private function fetchUsers( $filters, $now ) {
 		$tables = [];
 		$conds = [];
 		$fields = [];
@@ -689,7 +690,7 @@ class ChangesListSpecialPageTest extends AbstractChangesListSpecialPageTestCase 
 
 		// @todo: This is not at all safe or sane. It just blindly assumes
 		// nothing in $conds depends on any other tables.
-		$result = wfGetDB( DB_PRIMARY )->select(
+		$result = wfGetDB( DB_MASTER )->select(
 			'user',
 			'user_name',
 			array_filter( $conds ) + [ 'user_email' => 'ut' ]
@@ -703,7 +704,7 @@ class ChangesListSpecialPageTest extends AbstractChangesListSpecialPageTestCase 
 		return $usernames;
 	}
 
-	private function daysAgo( int $days, int $now ): int {
+	private function daysAgo( $days, $now ) {
 		$secondsPerDay = 86400;
 		return $now - $days * $secondsPerDay;
 	}

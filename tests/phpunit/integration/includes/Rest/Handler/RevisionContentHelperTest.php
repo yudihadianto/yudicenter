@@ -3,7 +3,6 @@
 namespace MediaWiki\Tests\Rest\Helper;
 
 use HashConfig;
-use MediaWiki\Page\ExistingPageRecord;
 use MediaWiki\Permissions\Authority;
 use MediaWiki\Rest\Handler\RevisionContentHelper;
 use MediaWiki\Rest\HttpException;
@@ -12,6 +11,7 @@ use MediaWiki\Storage\RevisionRecord;
 use MediaWiki\Storage\SlotRecord;
 use MediaWiki\Tests\Unit\Permissions\MockAuthorityTrait;
 use MediaWikiIntegrationTestCase;
+use Title;
 
 /**
  * @covers \MediaWiki\Rest\Handler\RevisionContentHelper
@@ -52,7 +52,7 @@ class RevisionContentHelperTest extends MediaWikiIntegrationTestCase {
 			] ),
 			$this->getServiceContainer()->getRevisionLookup(),
 			$this->getServiceContainer()->getTitleFormatter(),
-			$this->getServiceContainer()->getPageStore()
+			$this->getServiceContainer()->getTitleFactory()
 		);
 
 		$authority = $authority ?: $this->mockRegisteredUltimateAuthority();
@@ -82,16 +82,19 @@ class RevisionContentHelperTest extends MediaWikiIntegrationTestCase {
 
 	/**
 	 * @covers \MediaWiki\Rest\Handler\RevisionContentHelper::getTitleText()
-	 * @covers \MediaWiki\Rest\Handler\RevisionContentHelper::getPage()
+	 * @covers \MediaWiki\Rest\Handler\RevisionContentHelper::getTitle()
 	 */
-	public function testGetPage() {
+	public function testGetTitle() {
 		[ $page, $revisions ] = $this->getExistingPageWithRevisions( __METHOD__ );
 
 		$helper = $this->newHelper( [ 'id' => $revisions['first']->getId() ] );
 		$this->assertSame( $page->getTitle()->getPrefixedDBKey(), $helper->getTitleText() );
 
-		$this->assertInstanceOf( ExistingPageRecord::class, $helper->getPage() );
-		$this->assertTrue( $helper->getPage()->isSamePageAs( $page->getTitle() ) );
+		$this->assertInstanceOf( Title::class, $helper->getTitle() );
+		$this->assertSame(
+			$page->getTitle()->getPrefixedDBKey(),
+			$helper->getTitle()->getPrefixedDBkey()
+		);
 	}
 
 	/**
@@ -116,7 +119,7 @@ class RevisionContentHelperTest extends MediaWikiIntegrationTestCase {
 
 	/**
 	 * @covers \MediaWiki\Rest\Handler\RevisionContentHelper::getTitleText()
-	 * @covers \MediaWiki\Rest\Handler\RevisionContentHelper::getPage()
+	 * @covers \MediaWiki\Rest\Handler\RevisionContentHelper::getTitle()
 	 * @covers \MediaWiki\Rest\Handler\RevisionContentHelper::isAccessible()
 	 * @covers \MediaWiki\Rest\Handler\RevisionContentHelper::hasContent()
 	 * @covers \MediaWiki\Rest\Handler\RevisionContentHelper::getTargetRevision()
@@ -129,12 +132,12 @@ class RevisionContentHelperTest extends MediaWikiIntegrationTestCase {
 		$helper = $this->newHelper();
 
 		$this->assertNull( $helper->getTitleText() );
-		$this->assertNull( $helper->getPage() );
+		$this->assertFalse( $helper->getTitle() );
 
 		$this->assertFalse( $helper->hasContent() );
 		$this->assertFalse( $helper->isAccessible() );
 
-		$this->assertNull( $helper->getTargetRevision() );
+		$this->assertFalse( $helper->getTargetRevision() );
 
 		$this->assertNull( $helper->getLastModified() );
 		$this->assertSame( self::NO_REVISION_ETAG, $helper->getETag() );
@@ -156,7 +159,7 @@ class RevisionContentHelperTest extends MediaWikiIntegrationTestCase {
 
 	/**
 	 * @covers \MediaWiki\Rest\Handler\RevisionContentHelper::getTitleText()
-	 * @covers \MediaWiki\Rest\Handler\RevisionContentHelper::getPage()
+	 * @covers \MediaWiki\Rest\Handler\RevisionContentHelper::getTitle()
 	 * @covers \MediaWiki\Rest\Handler\RevisionContentHelper::isAccessible()
 	 * @covers \MediaWiki\Rest\Handler\RevisionContentHelper::hasContent()
 	 * @covers \MediaWiki\Rest\Handler\RevisionContentHelper::getTargetRevision()
@@ -170,12 +173,12 @@ class RevisionContentHelperTest extends MediaWikiIntegrationTestCase {
 
 		$this->assertSame( 287436534, $helper->getRevisionId() );
 		$this->assertNull( $helper->getTitleText() );
-		$this->assertNull( $helper->getPage() );
+		$this->assertFalse( $helper->getTitle() );
 
 		$this->assertFalse( $helper->hasContent() );
 		$this->assertFalse( $helper->isAccessible() );
 
-		$this->assertNull( $helper->getTargetRevision() );
+		$this->assertFalse( $helper->getTargetRevision() );
 
 		$this->assertNull( $helper->getLastModified() );
 		$this->assertSame( self::NO_REVISION_ETAG, $helper->getETag() );
@@ -197,7 +200,7 @@ class RevisionContentHelperTest extends MediaWikiIntegrationTestCase {
 
 	/**
 	 * @covers \MediaWiki\Rest\Handler\RevisionContentHelper::getTitleText()
-	 * @covers \MediaWiki\Rest\Handler\RevisionContentHelper::getPage()
+	 * @covers \MediaWiki\Rest\Handler\RevisionContentHelper::getTitle()
 	 * @covers \MediaWiki\Rest\Handler\RevisionContentHelper::isAccessible()
 	 * @covers \MediaWiki\Rest\Handler\RevisionContentHelper::hasContent()
 	 * @covers \MediaWiki\Rest\Handler\RevisionContentHelper::getTargetRevision()
@@ -215,7 +218,7 @@ class RevisionContentHelperTest extends MediaWikiIntegrationTestCase {
 		);
 
 		$this->assertSame( $title->getPrefixedDBkey(), $helper->getTitleText() );
-		$this->assertTrue( $helper->getPage()->isSamePageAs( $title ) );
+		$this->assertSame( $title->getPrefixedDBkey(), $helper->getTitle()->getPrefixedDBkey() );
 
 		$this->assertTrue( $helper->hasContent() );
 		$this->assertFalse( $helper->isAccessible() );

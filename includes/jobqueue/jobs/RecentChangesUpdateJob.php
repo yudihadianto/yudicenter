@@ -73,7 +73,7 @@ class RecentChangesUpdateJob extends Job {
 	protected function purgeExpiredRows() {
 		global $wgRCMaxAge, $wgUpdateRowsPerQuery;
 
-		$dbw = wfGetDB( DB_PRIMARY );
+		$dbw = wfGetDB( DB_MASTER );
 		$lockKey = $dbw->getDomainID() . ':recentchanges-prune';
 		if ( !$dbw->lock( $lockKey, __METHOD__, 0 ) ) {
 			// already in progress
@@ -123,7 +123,7 @@ class RecentChangesUpdateJob extends Job {
 		// Pull in the full window of active users in this update
 		$window = $wgActiveUserDays * 86400;
 
-		$dbw = wfGetDB( DB_PRIMARY );
+		$dbw = wfGetDB( DB_MASTER );
 		$factory = MediaWikiServices::getInstance()->getDBLoadBalancerFactory();
 		$ticket = $factory->getEmptyTransactionTicket( __METHOD__ );
 
@@ -153,14 +153,15 @@ class RecentChangesUpdateJob extends Job {
 		$eTimestamp = min( $sTimestamp + $window, $nowUnix );
 
 		// Get all the users active since the last update
+		$actorQuery = ActorMigration::newMigration()->getJoin( 'rc_user' );
 		$res = $dbw->select(
-			[ 'recentchanges', 'actor' ],
+			[ 'recentchanges' ] + $actorQuery['tables'],
 			[
-				'actor_name',
+				'rc_user_text' => $actorQuery['fields']['rc_user_text'],
 				'lastedittime' => 'MAX(rc_timestamp)'
 			],
 			[
-				'actor_user IS NOT NULL', // actual accounts
+				$actorQuery['fields']['rc_user'] . ' > 0', // actual accounts
 				'rc_type != ' . $dbw->addQuotes( RC_EXTERNAL ), // no wikidata
 				'rc_log_type IS NULL OR rc_log_type != ' . $dbw->addQuotes( 'newusers' ),
 				'rc_timestamp >= ' . $dbw->addQuotes( $dbw->timestamp( $sTimestamp ) ),
@@ -168,16 +169,14 @@ class RecentChangesUpdateJob extends Job {
 			],
 			__METHOD__,
 			[
-				'GROUP BY' => 'actor_name',
+				'GROUP BY' => [ $actorQuery['fields']['rc_user_text'] ],
 				'ORDER BY' => 'NULL' // avoid filesort
 			],
-			[
-				'actor' => [ 'JOIN', 'actor_id=rc_actor' ]
-			]
+			$actorQuery['joins']
 		);
 		$names = [];
 		foreach ( $res as $row ) {
-			$names[$row->actor_name] = $row->lastedittime;
+			$names[$row->rc_user_text] = $row->lastedittime;
 		}
 
 		// Find which of the recently active users are already accounted for
@@ -189,7 +188,7 @@ class RecentChangesUpdateJob extends Job {
 					'qcc_namespace' => NS_USER,
 					'qcc_title' => array_map( 'strval', array_keys( $names ) ),
 					'qcc_value >= ' . $dbw->addQuotes( $nowUnix - $days * 86400 ), // TS_UNIX
-				],
+				 ],
 				__METHOD__
 			);
 			// Note: In order for this to be actually consistent, we would need

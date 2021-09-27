@@ -217,7 +217,11 @@ class ParserMethodsTest extends MediaWikiLangTestCase {
 			'language' => MediaWikiServices::getInstance()->getLanguageFactory()->getLanguage( 'en' )
 		] );
 
-		$frank = new UserIdentityValue( 5, 'Frank' );
+		$frank = $this->getMockBuilder( User::class )
+			->disableOriginalConstructor()
+			->getMock();
+
+		$frank->method( 'getName' )->willReturn( 'Frank' );
 
 		$text = '* user:{{REVISIONUSER}};id:{{REVISIONID}};time:{{REVISIONTIMESTAMP}};';
 		$po = new ParserOptions( $frank );
@@ -365,7 +369,7 @@ class ParserMethodsTest extends MediaWikiLangTestCase {
 		$this->assertStringContainsString( $expectedInHtml, $html, 'In HTML' );
 
 		if ( $expectedInPst !== null ) {
-			$pst = $parser->preSaveTransform( $text, $title, $po->getUserIdentity(), $po );
+			$pst = $parser->preSaveTransform( $text, $title, $po->getUser(), $po );
 			$this->assertStringContainsString( $expectedInPst, $pst, 'After Pre-Safe Transform' );
 		}
 	}

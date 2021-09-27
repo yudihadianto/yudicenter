@@ -20,61 +20,54 @@
  * @file
  */
 
-use MediaWiki\Languages\LanguageFactory;
+use MediaWiki\MediaWikiServices;
 
 class BashkirUppercaseCollation extends CustomUppercaseCollation {
 
-	/**
-	 * @param LanguageFactory $languageFactory
-	 */
-	public function __construct( LanguageFactory $languageFactory ) {
-		parent::__construct(
-			$languageFactory,
-			[
-				'А',
-				'Б',
-				'В',
-				'Г',
-				'Ғ',
-				'Д',
-				'Ҙ',
-				'Е',
-				'Ё',
-				'Ж',
-				'З',
-				'И',
-				'Й',
-				'К',
-				'Ҡ',
-				'Л',
-				'М',
-				'Н',
-				'Ң',
-				'О',
-				'Ө',
-				'П',
-				'Р',
-				'С',
-				'Ҫ',
-				'Т',
-				'У',
-				'Ү',
-				'Ф',
-				'Х',
-				'Һ',
-				'Ц',
-				'Ч',
-				'Ш',
-				'Щ',
-				'Ъ',
-				'Ы',
-				'Ь',
-				'Э',
-				'Ә',
-				'Ю',
-				'Я',
-			],
-			'ba'
-		);
+	public function __construct() {
+		parent::__construct( [
+			'А',
+			'Б',
+			'В',
+			'Г',
+			'Ғ',
+			'Д',
+			'Ҙ',
+			'Е',
+			'Ё',
+			'Ж',
+			'З',
+			'И',
+			'Й',
+			'К',
+			'Ҡ',
+			'Л',
+			'М',
+			'Н',
+			'Ң',
+			'О',
+			'Ө',
+			'П',
+			'Р',
+			'С',
+			'Ҫ',
+			'Т',
+			'У',
+			'Ү',
+			'Ф',
+			'Х',
+			'Һ',
+			'Ц',
+			'Ч',
+			'Ш',
+			'Щ',
+			'Ъ',
+			'Ы',
+			'Ь',
+			'Э',
+			'Ә',
+			'Ю',
+			'Я',
+		], MediaWikiServices::getInstance()->getLanguageFactory()->getLanguage( 'ba' ) );
 	}
 }

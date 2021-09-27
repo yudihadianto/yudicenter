@@ -34,7 +34,7 @@ class ApiQueryTags extends ApiQueryBase {
 	public function execute() {
 		$params = $this->extractRequestParams();
 
-		$prop = array_fill_keys( $params['prop'], true );
+		$prop = array_flip( $params['prop'] );
 
 		$fld_displayname = isset( $prop['displayname'] );
 		$fld_description = isset( $prop['description'] );

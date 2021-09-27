@@ -11,7 +11,7 @@ class WikitextContentHandlerTest extends MediaWikiLangTestCase {
 	/** @var WikitextContentHandler */
 	private $handler;
 
-	protected function setUp(): void {
+	protected function setUp() : void {
 		parent::setUp();
 
 		$this->handler = MediaWikiServices::getInstance()->getContentHandlerFactory()
@@ -275,18 +275,18 @@ class WikitextContentHandlerTest extends MediaWikiLangTestCase {
 
 		$fileHandler = $this->getMockBuilder( FileContentHandler::class )
 			->disableOriginalConstructor()
-			->onlyMethods( [ 'getDataForSearchIndex' ] )
+			->setMethods( [ 'getDataForSearchIndex' ] )
 			->getMock();
 
 		$handler = $this->getMockBuilder( WikitextContentHandler::class )
 			->disableOriginalConstructor()
-			->onlyMethods( [ 'getFileHandler' ] )
+			->setMethods( [ 'getFileHandler' ] )
 			->getMock();
 
-		$handler->method( 'getFileHandler' )->willReturn( $fileHandler );
+		$handler->method( 'getFileHandler' )->will( $this->returnValue( $fileHandler ) );
 		$fileHandler->expects( $this->once() )
 			->method( 'getDataForSearchIndex' )
-			->willReturn( [ 'file_text' => 'This is file content' ] );
+			->will( $this->returnValue( [ 'file_text' => 'This is file content' ] ) );
 
 		$data = $handler->getDataForSearchIndex( $page, new ParserOutput(), $mockEngine );
 		$this->assertArrayHasKey( 'file_text', $data );

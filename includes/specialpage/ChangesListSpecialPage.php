@@ -55,6 +55,12 @@ abstract class ChangesListSpecialPage extends SpecialPage {
 	protected static $daysPreferenceName;
 
 	/**
+	 * Preference name for 'limit'. Subclasses should override this.
+	 * @var string
+	 */
+	protected static $limitPreferenceName;
+
+	/**
 	 * Preference name for collapsing the active filter display. Subclasses should override this.
 	 * @var string
 	 */
@@ -122,10 +128,14 @@ abstract class ChangesListSpecialPage extends SpecialPage {
 						// wlshowhideliu
 						'showHideSuffix' => 'showhideliu',
 						'default' => false,
-						'queryCallable' => static function ( string $specialClassName, IContextSource $ctx,
-							IDatabase $dbr, &$tables, &$fields, &$conds, &$query_options, &$join_conds
+						'queryCallable' => static function ( $specialClassName, $ctx, $dbr, &$tables, &$fields, &$conds,
+							&$query_options, &$join_conds
 						) {
-							$conds['actor_user'] = null;
+							$actorMigration = ActorMigration::newMigration();
+							$actorQuery = $actorMigration->getJoin( 'rc_user' );
+							$tables += $actorQuery['tables'];
+							$join_conds += $actorQuery['joins'];
+							$conds[] = $actorMigration->isAnon( $actorQuery['fields']['rc_user'] );
 						},
 						'isReplacedInStructuredUi' => true,
 
@@ -136,10 +146,14 @@ abstract class ChangesListSpecialPage extends SpecialPage {
 						// wlshowhideanons
 						'showHideSuffix' => 'showhideanons',
 						'default' => false,
-						'queryCallable' => static function ( string $specialClassName, IContextSource $ctx,
-							IDatabase $dbr, &$tables, &$fields, &$conds, &$query_options, &$join_conds
+						'queryCallable' => static function ( $specialClassName, $ctx, $dbr, &$tables, &$fields, &$conds,
+							&$query_options, &$join_conds
 						) {
-							$conds[] = 'actor_user IS NOT NULL';
+							$actorMigration = ActorMigration::newMigration();
+							$actorQuery = $actorMigration->getJoin( 'rc_user' );
+							$tables += $actorQuery['tables'];
+							$join_conds += $actorQuery['joins'];
+							$conds[] = $actorMigration->isNotAnon( $actorQuery['fields']['rc_user'] );
 						},
 						'isReplacedInStructuredUi' => true,
 					]
@@ -157,7 +171,7 @@ abstract class ChangesListSpecialPage extends SpecialPage {
 						'label' => 'rcfilters-filter-user-experience-level-unregistered-label',
 						'description' => 'rcfilters-filter-user-experience-level-unregistered-description',
 						'cssClassSuffix' => 'user-unregistered',
-						'isRowApplicableCallable' => static function ( IContextSource $ctx, RecentChange $rc ) {
+						'isRowApplicableCallable' => static function ( $ctx, $rc ) {
 							return !$rc->getAttribute( 'rc_user' );
 						}
 					],
@@ -166,7 +180,7 @@ abstract class ChangesListSpecialPage extends SpecialPage {
 						'label' => 'rcfilters-filter-user-experience-level-registered-label',
 						'description' => 'rcfilters-filter-user-experience-level-registered-description',
 						'cssClassSuffix' => 'user-registered',
-						'isRowApplicableCallable' => static function ( IContextSource $ctx, RecentChange $rc ) {
+						'isRowApplicableCallable' => static function ( $ctx, $rc ) {
 							return $rc->getAttribute( 'rc_user' );
 						}
 					],
@@ -175,8 +189,8 @@ abstract class ChangesListSpecialPage extends SpecialPage {
 						'label' => 'rcfilters-filter-user-experience-level-newcomer-label',
 						'description' => 'rcfilters-filter-user-experience-level-newcomer-description',
 						'cssClassSuffix' => 'user-newcomer',
-						'isRowApplicableCallable' => static function ( IContextSource $ctx, RecentChange $rc ) {
-							$performer = User::newFromIdentity( $rc->getPerformerIdentity() );
+						'isRowApplicableCallable' => static function ( $ctx, $rc ) {
+							$performer = $rc->getPerformer();
 							return $performer && $performer->isRegistered() &&
 								$performer->getExperienceLevel() === 'newcomer';
 						}
@@ -186,8 +200,8 @@ abstract class ChangesListSpecialPage extends SpecialPage {
 						'label' => 'rcfilters-filter-user-experience-level-learner-label',
 						'description' => 'rcfilters-filter-user-experience-level-learner-description',
 						'cssClassSuffix' => 'user-learner',
-						'isRowApplicableCallable' => static function ( IContextSource $ctx, RecentChange $rc ) {
-							$performer = User::newFromIdentity( $rc->getPerformerIdentity() );
+						'isRowApplicableCallable' => static function ( $ctx, $rc ) {
+							$performer = $rc->getPerformer();
 							return $performer && $performer->isRegistered() &&
 								$performer->getExperienceLevel() === 'learner';
 						},
@@ -197,8 +211,8 @@ abstract class ChangesListSpecialPage extends SpecialPage {
 						'label' => 'rcfilters-filter-user-experience-level-experienced-label',
 						'description' => 'rcfilters-filter-user-experience-level-experienced-description',
 						'cssClassSuffix' => 'user-experienced',
-						'isRowApplicableCallable' => static function ( IContextSource $ctx, RecentChange $rc ) {
-							$performer = User::newFromIdentity( $rc->getPerformerIdentity() );
+						'isRowApplicableCallable' => static function ( $ctx, $rc ) {
+							$performer = $rc->getPerformer();
 							return $performer && $performer->isRegistered() &&
 								$performer->getExperienceLevel() === 'experienced';
 						},
@@ -221,15 +235,17 @@ abstract class ChangesListSpecialPage extends SpecialPage {
 						// wlshowhidemine
 						'showHideSuffix' => 'showhidemine',
 						'default' => false,
-						'queryCallable' => static function ( string $specialClassName, IContextSource $ctx,
-							IDatabase $dbr, &$tables, &$fields, &$conds, &$query_options, &$join_conds
+						'queryCallable' => static function ( $specialClassName, $ctx, $dbr, &$tables, &$fields, &$conds,
+							&$query_options, &$join_conds
 						) {
-							$user = $ctx->getUser();
-							$conds[] = 'actor_name<>' . $dbr->addQuotes( $user->getName() );
+							$actorQuery = ActorMigration::newMigration()->getWhere( $dbr, 'rc_user', $ctx->getUser() );
+							$tables += $actorQuery['tables'];
+							$join_conds += $actorQuery['joins'];
+							$conds[] = 'NOT(' . $actorQuery['conds'] . ')';
 						},
 						'cssClassSuffix' => 'self',
-						'isRowApplicableCallable' => static function ( IContextSource $ctx, RecentChange $rc ) {
-							return $ctx->getUser()->equals( $rc->getPerformerIdentity() );
+						'isRowApplicableCallable' => static function ( $ctx, $rc ) {
+							return $ctx->getUser()->equals( $rc->getPerformer() );
 						},
 					],
 					[
@@ -237,19 +253,18 @@ abstract class ChangesListSpecialPage extends SpecialPage {
 						'label' => 'rcfilters-filter-editsbyother-label',
 						'description' => 'rcfilters-filter-editsbyother-description',
 						'default' => false,
-						'queryCallable' => static function ( string $specialClassName, IContextSource $ctx,
-							IDatabase $dbr, &$tables, &$fields, &$conds, &$query_options, &$join_conds
+						'queryCallable' => static function ( $specialClassName, $ctx, $dbr, &$tables, &$fields, &$conds,
+							&$query_options, &$join_conds
 						) {
-							$user = $ctx->getUser();
-							if ( $user->isAnon() ) {
-								$conds['actor_name'] = $user->getName();
-							} else {
-								$conds['actor_user'] = $user->getId();
-							}
+							$actorQuery = ActorMigration::newMigration()
+								->getWhere( $dbr, 'rc_user', $ctx->getUser(), false );
+							$tables += $actorQuery['tables'];
+							$join_conds += $actorQuery['joins'];
+							$conds[] = $actorQuery['conds'];
 						},
 						'cssClassSuffix' => 'others',
-						'isRowApplicableCallable' => static function ( IContextSource $ctx, RecentChange $rc ) {
-							return !$ctx->getUser()->equals( $rc->getPerformerIdentity() );
+						'isRowApplicableCallable' => static function ( $ctx, $rc ) {
+							return !$ctx->getUser()->equals( $rc->getPerformer() );
 						},
 					]
 				]
@@ -268,13 +283,13 @@ abstract class ChangesListSpecialPage extends SpecialPage {
 						// wlshowhidebots
 						'showHideSuffix' => 'showhidebots',
 						'default' => false,
-						'queryCallable' => static function ( string $specialClassName, IContextSource $ctx,
-							IDatabase $dbr, &$tables, &$fields, &$conds, &$query_options, &$join_conds
+						'queryCallable' => static function ( $specialClassName, $ctx, $dbr, &$tables, &$fields, &$conds,
+							&$query_options, &$join_conds
 						) {
 							$conds['rc_bot'] = 0;
 						},
 						'cssClassSuffix' => 'bot',
-						'isRowApplicableCallable' => static function ( IContextSource $ctx, RecentChange $rc ) {
+						'isRowApplicableCallable' => static function ( $ctx, $rc ) {
 							return $rc->getAttribute( 'rc_bot' );
 						},
 					],
@@ -283,13 +298,13 @@ abstract class ChangesListSpecialPage extends SpecialPage {
 						'label' => 'rcfilters-filter-humans-label',
 						'description' => 'rcfilters-filter-humans-description',
 						'default' => false,
-						'queryCallable' => static function ( string $specialClassName, IContextSource $ctx,
-							IDatabase $dbr, &$tables, &$fields, &$conds, &$query_options, &$join_conds
+						'queryCallable' => static function ( $specialClassName, $ctx, $dbr, &$tables, &$fields, &$conds,
+							&$query_options, &$join_conds
 						) {
 							$conds['rc_bot'] = 1;
 						},
 						'cssClassSuffix' => 'human',
-						'isRowApplicableCallable' => static function ( IContextSource $ctx, RecentChange $rc ) {
+						'isRowApplicableCallable' => static function ( $ctx, $rc ) {
 							return !$rc->getAttribute( 'rc_bot' );
 						},
 					]
@@ -312,13 +327,13 @@ abstract class ChangesListSpecialPage extends SpecialPage {
 						// wlshowhideminor
 						'showHideSuffix' => 'showhideminor',
 						'default' => false,
-						'queryCallable' => static function ( string $specialClassName, IContextSource $ctx,
-							IDatabase $dbr, &$tables, &$fields, &$conds, &$query_options, &$join_conds
+						'queryCallable' => static function ( $specialClassName, $ctx, $dbr, &$tables, &$fields, &$conds,
+							&$query_options, &$join_conds
 						) {
 							$conds[] = 'rc_minor = 0';
 						},
 						'cssClassSuffix' => 'minor',
-						'isRowApplicableCallable' => static function ( IContextSource $ctx, RecentChange $rc ) {
+						'isRowApplicableCallable' => static function ( $ctx, $rc ) {
 							return $rc->getAttribute( 'rc_minor' );
 						}
 					],
@@ -327,13 +342,13 @@ abstract class ChangesListSpecialPage extends SpecialPage {
 						'label' => 'rcfilters-filter-major-label',
 						'description' => 'rcfilters-filter-major-description',
 						'default' => false,
-						'queryCallable' => static function ( string $specialClassName, IContextSource $ctx,
-							IDatabase $dbr, &$tables, &$fields, &$conds, &$query_options, &$join_conds
+						'queryCallable' => static function ( $specialClassName, $ctx, $dbr, &$tables, &$fields, &$conds,
+							&$query_options, &$join_conds
 						) {
 							$conds[] = 'rc_minor = 1';
 						},
 						'cssClassSuffix' => 'major',
-						'isRowApplicableCallable' => static function ( IContextSource $ctx, RecentChange $rc ) {
+						'isRowApplicableCallable' => static function ( $ctx, $rc ) {
 							return !$rc->getAttribute( 'rc_minor' );
 						}
 					]
@@ -351,9 +366,8 @@ abstract class ChangesListSpecialPage extends SpecialPage {
 						'label' => 'rcfilters-filter-lastrevision-label',
 						'description' => 'rcfilters-filter-lastrevision-description',
 						'default' => false,
-						'queryCallable' => static function ( string $specialClassName, IContextSource $ctx,
-							IDatabase $dbr, &$tables, &$fields, &$conds, &$query_options, &$join_conds
-						) use ( $nonRevisionTypes ) {
+						'queryCallable' => static function ( $specialClassName, $ctx, $dbr, &$tables, &$fields, &$conds,
+							&$query_options, &$join_conds ) use ( $nonRevisionTypes ) {
 							$conds[] = $dbr->makeList(
 								[
 									'rc_this_oldid <> page_latest',
@@ -363,7 +377,7 @@ abstract class ChangesListSpecialPage extends SpecialPage {
 							);
 						},
 						'cssClassSuffix' => 'last',
-						'isRowApplicableCallable' => static function ( IContextSource $ctx, RecentChange $rc ) {
+						'isRowApplicableCallable' => static function ( $ctx, $rc ) {
 							return $rc->getAttribute( 'rc_this_oldid' ) === $rc->getAttribute( 'page_latest' );
 						}
 					],
@@ -372,9 +386,8 @@ abstract class ChangesListSpecialPage extends SpecialPage {
 						'label' => 'rcfilters-filter-previousrevision-label',
 						'description' => 'rcfilters-filter-previousrevision-description',
 						'default' => false,
-						'queryCallable' => static function ( string $specialClassName, IContextSource $ctx,
-							IDatabase $dbr, &$tables, &$fields, &$conds, &$query_options, &$join_conds
-						) use ( $nonRevisionTypes ) {
+						'queryCallable' => static function ( $specialClassName, $ctx, $dbr, &$tables, &$fields, &$conds,
+							&$query_options, &$join_conds ) use ( $nonRevisionTypes ) {
 							$conds[] = $dbr->makeList(
 								[
 									'rc_this_oldid = page_latest',
@@ -384,7 +397,7 @@ abstract class ChangesListSpecialPage extends SpecialPage {
 							);
 						},
 						'cssClassSuffix' => 'previous',
-						'isRowApplicableCallable' => static function ( IContextSource $ctx, RecentChange $rc ) {
+						'isRowApplicableCallable' => static function ( $ctx, $rc ) {
 							return $rc->getAttribute( 'rc_this_oldid' ) !== $rc->getAttribute( 'page_latest' );
 						}
 					]
@@ -404,13 +417,13 @@ abstract class ChangesListSpecialPage extends SpecialPage {
 						'description' => 'rcfilters-filter-pageedits-description',
 						'default' => false,
 						'priority' => -2,
-						'queryCallable' => static function ( string $specialClassName, IContextSource $ctx,
-							IDatabase $dbr, &$tables, &$fields, &$conds, &$query_options, &$join_conds
+						'queryCallable' => static function ( $specialClassName, $ctx, $dbr, &$tables, &$fields, &$conds,
+							&$query_options, &$join_conds
 						) {
 							$conds[] = 'rc_type != ' . $dbr->addQuotes( RC_EDIT );
 						},
 						'cssClassSuffix' => 'src-mw-edit',
-						'isRowApplicableCallable' => static function ( IContextSource $ctx, RecentChange $rc ) {
+						'isRowApplicableCallable' => static function ( $ctx, $rc ) {
 							return $rc->getAttribute( 'rc_source' ) === RecentChange::SRC_EDIT;
 						},
 					],
@@ -420,13 +433,13 @@ abstract class ChangesListSpecialPage extends SpecialPage {
 						'description' => 'rcfilters-filter-newpages-description',
 						'default' => false,
 						'priority' => -3,
-						'queryCallable' => static function ( string $specialClassName, IContextSource $ctx,
-							IDatabase $dbr, &$tables, &$fields, &$conds, &$query_options, &$join_conds
+						'queryCallable' => static function ( $specialClassName, $ctx, $dbr, &$tables, &$fields, &$conds,
+							&$query_options, &$join_conds
 						) {
 							$conds[] = 'rc_type != ' . $dbr->addQuotes( RC_NEW );
 						},
 						'cssClassSuffix' => 'src-mw-new',
-						'isRowApplicableCallable' => static function ( IContextSource $ctx, RecentChange $rc ) {
+						'isRowApplicableCallable' => static function ( $ctx, $rc ) {
 							return $rc->getAttribute( 'rc_source' ) === RecentChange::SRC_NEW;
 						},
 					],
@@ -439,13 +452,13 @@ abstract class ChangesListSpecialPage extends SpecialPage {
 						'description' => 'rcfilters-filter-logactions-description',
 						'default' => false,
 						'priority' => -5,
-						'queryCallable' => static function ( string $specialClassName, IContextSource $ctx,
-							IDatabase $dbr, &$tables, &$fields, &$conds, &$query_options, &$join_conds
+						'queryCallable' => static function ( $specialClassName, $ctx, $dbr, &$tables, &$fields, &$conds,
+							&$query_options, &$join_conds
 						) {
 							$conds[] = 'rc_type != ' . $dbr->addQuotes( RC_LOG );
 						},
 						'cssClassSuffix' => 'src-mw-log',
-						'isRowApplicableCallable' => static function ( IContextSource $ctx, RecentChange $rc ) {
+						'isRowApplicableCallable' => static function ( $ctx, $rc ) {
 							return $rc->getAttribute( 'rc_source' ) === RecentChange::SRC_LOG;
 						}
 					],
@@ -466,8 +479,8 @@ abstract class ChangesListSpecialPage extends SpecialPage {
 						// wlshowhidepatr
 						'showHideSuffix' => 'showhidepatr',
 						'default' => false,
-						'queryCallable' => static function ( string $specialClassName, IContextSource $ctx,
-							IDatabase $dbr, &$tables, &$fields, &$conds, &$query_options, &$join_conds
+						'queryCallable' => static function ( $specialClassName, $ctx, $dbr, &$tables, &$fields, &$conds,
+							&$query_options, &$join_conds
 						) {
 							$conds['rc_patrolled'] = RecentChange::PRC_UNPATROLLED;
 						},
@@ -476,8 +489,8 @@ abstract class ChangesListSpecialPage extends SpecialPage {
 					[
 						'name' => 'hideunpatrolled',
 						'default' => false,
-						'queryCallable' => static function ( string $specialClassName, IContextSource $ctx,
-							IDatabase $dbr, &$tables, &$fields, &$conds, &$query_options, &$join_conds
+						'queryCallable' => static function ( $specialClassName, $ctx, $dbr, &$tables, &$fields, &$conds,
+							&$query_options, &$join_conds
 						) {
 							$conds[] = 'rc_patrolled != ' . RecentChange::PRC_UNPATROLLED;
 						},
@@ -500,7 +513,7 @@ abstract class ChangesListSpecialPage extends SpecialPage {
 						'label' => 'rcfilters-filter-reviewstatus-unpatrolled-label',
 						'description' => 'rcfilters-filter-reviewstatus-unpatrolled-description',
 						'cssClassSuffix' => 'reviewstatus-unpatrolled',
-						'isRowApplicableCallable' => static function ( IContextSource $ctx, RecentChange $rc ) {
+						'isRowApplicableCallable' => static function ( $ctx, $rc ) {
 							return $rc->getAttribute( 'rc_patrolled' ) == RecentChange::PRC_UNPATROLLED;
 						},
 					],
@@ -509,7 +522,7 @@ abstract class ChangesListSpecialPage extends SpecialPage {
 						'label' => 'rcfilters-filter-reviewstatus-manual-label',
 						'description' => 'rcfilters-filter-reviewstatus-manual-description',
 						'cssClassSuffix' => 'reviewstatus-manual',
-						'isRowApplicableCallable' => static function ( IContextSource $ctx, RecentChange $rc ) {
+						'isRowApplicableCallable' => static function ( $ctx, $rc ) {
 							return $rc->getAttribute( 'rc_patrolled' ) == RecentChange::PRC_PATROLLED;
 						},
 					],
@@ -518,14 +531,14 @@ abstract class ChangesListSpecialPage extends SpecialPage {
 						'label' => 'rcfilters-filter-reviewstatus-auto-label',
 						'description' => 'rcfilters-filter-reviewstatus-auto-description',
 						'cssClassSuffix' => 'reviewstatus-auto',
-						'isRowApplicableCallable' => static function ( IContextSource $ctx, RecentChange $rc ) {
+						'isRowApplicableCallable' => static function ( $ctx, $rc ) {
 							return $rc->getAttribute( 'rc_patrolled' ) == RecentChange::PRC_AUTOPATROLLED;
 						},
 					],
 				],
 				'default' => ChangesListStringOptionsFilterGroup::NONE,
-				'queryCallable' => static function ( string $specialClassName, IContextSource $ctx,
-					IDatabase $dbr, &$tables, &$fields, &$conds, &$query_options, &$join_conds, $selected
+				'queryCallable' => static function ( $specialPageClassName, $ctx, $dbr,
+					&$tables, &$fields, &$conds, &$query_options, &$join_conds, $selected
 				) {
 					if ( $selected === [] ) {
 						return;
@@ -552,13 +565,13 @@ abstract class ChangesListSpecialPage extends SpecialPage {
 			'showHideSuffix' => 'showhidecategorization',
 			'default' => false,
 			'priority' => -4,
-			'queryCallable' => static function ( string $specialClassName, IContextSource $ctx,
-				IDatabase $dbr, &$tables, &$fields, &$conds, &$query_options, &$join_conds
+			'queryCallable' => static function ( $specialClassName, $ctx, $dbr, &$tables, &$fields, &$conds,
+				&$query_options, &$join_conds
 			) {
 				$conds[] = 'rc_type != ' . $dbr->addQuotes( RC_CATEGORIZE );
 			},
 			'cssClassSuffix' => 'src-mw-categorize',
-			'isRowApplicableCallable' => static function ( IContextSource $ctx, RecentChange $rc ) {
+			'isRowApplicableCallable' => static function ( $ctx, $rc ) {
 				return $rc->getAttribute( 'rc_source' ) === RecentChange::SRC_CATEGORIZE;
 			},
 		];
@@ -628,7 +641,7 @@ abstract class ChangesListSpecialPage extends SpecialPage {
 			}
 
 			// Used by Structured UI app to get results without MW chrome
-			if ( $this->getRequest()->getRawVal( 'action' ) === 'render' ) {
+			if ( $this->getRequest()->getVal( 'action' ) === 'render' ) {
 				$this->getOutput()->setArticleBodyOnly( true );
 			}
 
@@ -834,7 +847,7 @@ abstract class ChangesListSpecialPage extends SpecialPage {
 			);
 			$out->addJsConfigVars(
 				'wgStructuredChangeFiltersLimitPreferenceName',
-				$this->getLimitPreferenceName()
+				static::$limitPreferenceName
 			);
 			$out->addJsConfigVars(
 				'wgStructuredChangeFiltersDaysPreferenceName',
@@ -891,7 +904,7 @@ abstract class ChangesListSpecialPage extends SpecialPage {
 	 *
 	 * Returns an array of associative arrays with information about each tag:
 	 * - name: Tag name (string)
-	 * - labelMsg: Short description message (Message object, or false for hidden tags)
+	 * - labelMsg: Short description message (Message object)
 	 * - label: Short description message (raw message contents)
 	 * - descriptionMsg: Long description message (Message object)
 	 * - description: Long description message (raw message contents)
@@ -925,11 +938,15 @@ abstract class ChangesListSpecialPage extends SpecialPage {
 						$hits > 0
 					) {
 						$labelMsg = ChangeTags::tagShortDescriptionMessage( $tagName, $context );
+						if ( $labelMsg === false ) {
+							// Tag is hidden, skip it
+							continue;
+						}
 						$descriptionMsg = ChangeTags::tagLongDescriptionMessage( $tagName, $context );
 						$result[] = [
 							'name' => $tagName,
 							'labelMsg' => $labelMsg,
-							'label' => $labelMsg ? $labelMsg->plain() : $tagName,
+							'label' => $labelMsg->plain(),
 							'descriptionMsg' => $descriptionMsg,
 							'description' => $descriptionMsg ? $descriptionMsg->plain() : '',
 							'cssClass' => Sanitizer::escapeClass( 'mw-tag-' . $tagName ),
@@ -960,11 +977,7 @@ abstract class ChangesListSpecialPage extends SpecialPage {
 		$language = MediaWikiServices::getInstance()->getLanguageFactory()
 			->getLanguage( $context->getLanguage() );
 		foreach ( $tags as &$tagInfo ) {
-			if ( $tagInfo['labelMsg'] ) {
-				$tagInfo['label'] = Sanitizer::stripAllTags( $tagInfo['labelMsg']->parse() );
-			} else {
-				$tagInfo['label'] = $context->msg( 'rcfilters-tag-hidden', $tagInfo['name'] )->text();
-			}
+			$tagInfo['label'] = Sanitizer::stripAllTags( $tagInfo['labelMsg']->parse() );
 			$tagInfo['description'] = $tagInfo['descriptionMsg'] ?
 				$language->truncateForVisual(
 					Sanitizer::stripAllTags( $tagInfo['descriptionMsg']->parse() ),
@@ -987,11 +1000,9 @@ abstract class ChangesListSpecialPage extends SpecialPage {
 	 */
 	protected function outputNoResults() {
 		$this->getOutput()->addHTML(
-			Html::rawElement(
-				'div',
-				[ 'class' => 'mw-changeslist-empty' ],
-				$this->msg( 'recentchanges-noresult' )->parse()
-			)
+			'<div class="mw-changeslist-empty">' .
+			$this->msg( 'recentchanges-noresult' )->parse() .
+			'</div>'
 		);
 	}
 
@@ -1132,7 +1143,7 @@ abstract class ChangesListSpecialPage extends SpecialPage {
 	 *
 	 * There is light processing to simplify core maintenance.
 	 * @param array $definition
-	 * @phan-param array<int,array{class:class-string<ChangesListFilterGroup>,filters:array}> $definition
+	 * @phan-param array<int,array{class:string,filters:array}> $definition
 	 */
 	protected function registerFiltersFromDefinitions( array $definition ) {
 		$autoFillPriority = -1;
@@ -1158,7 +1169,7 @@ abstract class ChangesListSpecialPage extends SpecialPage {
 	}
 
 	/**
-	 * @return ChangesListBooleanFilter[] The legacy show/hide toggle filters
+	 * @return array The legacy show/hide toggle filters
 	 */
 	protected function getLegacyShowHideFilters() {
 		$filters = [];
@@ -1247,7 +1258,7 @@ abstract class ChangesListSpecialPage extends SpecialPage {
 	/**
 	 * Gets the currently registered filters groups
 	 *
-	 * @return ChangesListFilterGroup[] Associative array of ChangesListFilterGroup objects, with group name as key
+	 * @return array Associative array of ChangesListFilterGroup objects, with group name as key
 	 */
 	protected function getFilterGroups() {
 		return $this->filterGroups;
@@ -1283,7 +1294,7 @@ abstract class ChangesListSpecialPage extends SpecialPage {
 			'messageKeys' => [],
 		];
 
-		usort( $this->filterGroups, static function ( ChangesListFilterGroup $a, ChangesListFilterGroup $b ) {
+		usort( $this->filterGroups, static function ( $a, $b ) {
 			return $b->getPriority() <=> $a->getPriority();
 		} );
 
@@ -1395,7 +1406,7 @@ abstract class ChangesListSpecialPage extends SpecialPage {
 
 				$allInGroupEnabled = array_reduce(
 					$filters,
-					static function ( bool $carry, ChangesListBooleanFilter $filter ) use ( $opts ) {
+					static function ( $carry, $filter ) use ( $opts ) {
 						return $carry && $opts[ $filter->getName() ];
 					},
 					/* initialValue */ count( $filters ) > 0
@@ -1801,14 +1812,13 @@ abstract class ChangesListSpecialPage extends SpecialPage {
 
 		# Collapsible
 		$collapsedState = $this->getRequest()->getCookie( 'changeslist-state' );
-		$collapsedClass = $collapsedState === 'collapsed' ? 'mw-collapsed' : '';
+		$collapsedClass = $collapsedState === 'collapsed' ? ' mw-collapsed' : '';
 
-		$legend = Html::rawElement(
-			'div',
-			[ 'class' => [ 'mw-changeslist-legend', 'mw-collapsible', $collapsedClass ] ],
-			$legendHeading .
-				Html::rawElement( 'div', [ 'class' => 'mw-collapsible-content' ], $legend )
-		);
+		$legend =
+			'<div class="mw-changeslist-legend mw-collapsible' . $collapsedClass . '">' .
+				$legendHeading .
+				'<div class="mw-collapsible-content">' . $legend . '</div>' .
+			'</div>';
 
 		return $legend;
 	}
@@ -1875,22 +1885,27 @@ abstract class ChangesListSpecialPage extends SpecialPage {
 			return;
 		}
 
+		$actorMigration = ActorMigration::newMigration();
+		$actorQuery = $actorMigration->getJoin( 'rc_user' );
+		$tables += $actorQuery['tables'];
+		$join_conds += $actorQuery['joins'];
+
 		// 'registered' but not 'unregistered', experience levels, if any, are included in 'registered'
 		if (
 			in_array( 'registered', $selectedExpLevels ) &&
 			!in_array( 'unregistered', $selectedExpLevels )
 		) {
-			$conds[] = 'actor_user IS NOT NULL';
+			$conds[] = $actorMigration->isNotAnon( $actorQuery['fields']['rc_user'] );
 			return;
 		}
 
 		if ( $selectedExpLevels === [ 'unregistered' ] ) {
-			$conds['actor_user'] = null;
+			$conds[] = $actorMigration->isAnon( $actorQuery['fields']['rc_user'] );
 			return;
 		}
 
 		$tables[] = 'user';
-		$join_conds['user'] = [ 'LEFT JOIN', 'actor_user=user_id' ];
+		$join_conds['user'] = [ 'LEFT JOIN', $actorQuery['fields']['rc_user'] . ' = user_id' ];
 
 		if ( $now === 0 ) {
 			$now = time();
@@ -1926,7 +1941,7 @@ abstract class ChangesListSpecialPage extends SpecialPage {
 
 		if ( in_array( 'unregistered', $selectedExpLevels ) ) {
 			$selectedExpLevels = array_diff( $selectedExpLevels, [ 'unregistered' ] );
-			$conditions['actor_user'] = null;
+			$conditions[] = $actorMigration->isAnon( $actorQuery['fields']['rc_user'] );
 		}
 
 		if ( $selectedExpLevels === [ 'newcomer' ] ) {
@@ -1948,7 +1963,7 @@ abstract class ChangesListSpecialPage extends SpecialPage {
 		} elseif ( $selectedExpLevels === [ 'experienced', 'learner' ] ) {
 			$conditions[] = $aboveNewcomer;
 		} elseif ( $selectedExpLevels === [ 'experienced', 'learner', 'newcomer' ] ) {
-			$conditions[] = 'actor_user IS NOT NULL';
+			$conditions[] = $actorMigration->isNotAnon( $actorQuery['fields']['rc_user'] );
 		}
 
 		if ( count( $conditions ) > 1 ) {
@@ -1994,9 +2009,7 @@ abstract class ChangesListSpecialPage extends SpecialPage {
 	 * @return int
 	 */
 	public function getDefaultLimit() {
-		return MediaWikiServices::getInstance()
-			->getUserOptionsLookup()
-			->getIntOption( $this->getUser(), $this->getLimitPreferenceName() );
+		return $this->getUser()->getIntOption( static::$limitPreferenceName );
 	}
 
 	/**
@@ -2011,18 +2024,6 @@ abstract class ChangesListSpecialPage extends SpecialPage {
 		return floatval( $this->getUser()->getOption( static::$daysPreferenceName ) );
 	}
 
-	/**
-	 * Getting the preference name for 'limit'.
-	 *
-	 * @since 1.37
-	 * @return string
-	 */
-	abstract protected function getLimitPreferenceName(): string;
-
-	/**
-	 * @param array $namespaces
-	 * @return array
-	 */
 	private function expandSymbolicNamespaceFilters( array $namespaces ) {
 		$nsInfo = MediaWikiServices::getInstance()->getNamespaceInfo();
 		$symbolicFilters = [

@@ -1,12 +1,11 @@
 <?php
 
-use MediaWiki\Tests\Unit\DummyServicesTrait;
+use MediaWiki\Interwiki\InterwikiLookup;
 
 /**
  * @covers ExternalUserNames
  */
 class ExternalUserNamesTest extends MediaWikiIntegrationTestCase {
-	use DummyServicesTrait;
 
 	public function provideGetUserLinkTitle() {
 		return [
@@ -65,9 +64,18 @@ class ExternalUserNamesTest extends MediaWikiIntegrationTestCase {
 	public function testGetUserLinkTitle( $caseDescription, $username, $expected ) {
 		$this->setContentLang( 'en' );
 
-		// DummyServicesTrait::getDummyInterwikiLookup
-		$interwikiLookup = $this->getDummyInterwikiLookup( [ 'valid' ] );
-		$this->setService( 'InterwikiLookup', $interwikiLookup );
+		$interwikiLookupMock = $this->getMockBuilder( InterwikiLookup::class )
+			->getMock();
+
+		$interwikiValueMap = [
+			[ 'valid', true ],
+			[ 'invalid', false ]
+		];
+		$interwikiLookupMock->expects( $this->any() )
+			->method( 'isValidInterwiki' )
+			->will( $this->returnValueMap( $interwikiValueMap ) );
+
+		$this->setService( 'InterwikiLookup', $interwikiLookupMock );
 
 		$this->assertEquals(
 			$expected,

@@ -23,6 +23,7 @@ namespace MediaWiki\Block;
 
 use MediaWiki\Config\ServiceOptions;
 use MediaWiki\Permissions\Authority;
+use MediaWiki\User\UserFactory;
 use MediaWiki\User\UserIdentity;
 
 /**
@@ -43,17 +44,23 @@ class BlockPermissionCheckerFactory {
 	/** @var BlockUtils */
 	private $blockUtils;
 
+	/** @var UserFactory */
+	private $userFactory;
+
 	/**
 	 * @param ServiceOptions $options
 	 * @param BlockUtils $blockUtils
+	 * @param UserFactory $userFactory
 	 */
 	public function __construct(
 		ServiceOptions $options,
-		BlockUtils $blockUtils
+		BlockUtils $blockUtils,
+		UserFactory $userFactory
 	) {
 		$options->assertRequiredOptions( self::CONSTRUCTOR_OPTIONS );
 		$this->options = $options;
 		$this->blockUtils = $blockUtils;
+		$this->userFactory = $userFactory;
 	}
 
 	/**
@@ -69,6 +76,7 @@ class BlockPermissionCheckerFactory {
 		return new BlockPermissionChecker(
 			$this->options,
 			$this->blockUtils,
+			$this->userFactory,
 			$target,
 			$performer
 		);

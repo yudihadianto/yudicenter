@@ -20,7 +20,7 @@
  * @file
  */
 
-use MediaWiki\Cache\LinkBatchFactory;
+use MediaWiki\MediaWikiServices;
 
 /**
  * A query module to list all wiki links on a given set of pages.
@@ -34,19 +34,11 @@ class ApiQueryLinks extends ApiQueryGeneratorBase {
 
 	private $table, $prefix, $titlesParam, $helpUrl;
 
-	/** @var LinkBatchFactory */
-	private $linkBatchFactory;
-
 	/**
 	 * @param ApiQuery $query
 	 * @param string $moduleName
-	 * @param LinkBatchFactory $linkBatchFactory
 	 */
-	public function __construct(
-		ApiQuery $query,
-		$moduleName,
-		LinkBatchFactory $linkBatchFactory
-	) {
+	public function __construct( ApiQuery $query, $moduleName ) {
 		switch ( $moduleName ) {
 			case self::LINKS:
 				$this->table = 'pagelinks';
@@ -65,7 +57,6 @@ class ApiQueryLinks extends ApiQueryGeneratorBase {
 		}
 
 		parent::__construct( $query, $moduleName, $this->prefix );
-		$this->linkBatchFactory = $linkBatchFactory;
 	}
 
 	public function execute() {
@@ -103,9 +94,10 @@ class ApiQueryLinks extends ApiQueryGeneratorBase {
 		$multiTitle = true;
 		if ( $params[$this->titlesParam] ) {
 			// Filter the titles in PHP so our ORDER BY bug avoidance below works right.
-			$filterNS = $params['namespace'] ? array_fill_keys( $params['namespace'], true ) : false;
+			$filterNS = $params['namespace'] ? array_flip( $params['namespace'] ) : false;
 
-			$lb = $this->linkBatchFactory->newLinkBatch();
+			$linkBatchFactory = MediaWikiServices::getInstance()->getLinkBatchFactory();
+			$lb = $linkBatchFactory->newLinkBatch();
 			foreach ( $params[$this->titlesParam] as $t ) {
 				$title = Title::newFromText( $t );
 				if ( !$title ) {

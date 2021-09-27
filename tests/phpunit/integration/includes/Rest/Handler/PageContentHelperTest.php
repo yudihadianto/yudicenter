@@ -3,7 +3,6 @@
 namespace MediaWiki\Tests\Rest\Helper;
 
 use HashConfig;
-use MediaWiki\Page\ExistingPageRecord;
 use MediaWiki\Permissions\Authority;
 use MediaWiki\Rest\Handler\PageContentHelper;
 use MediaWiki\Rest\HttpException;
@@ -12,6 +11,7 @@ use MediaWiki\Storage\RevisionRecord;
 use MediaWiki\Storage\SlotRecord;
 use MediaWiki\Tests\Unit\Permissions\MockAuthorityTrait;
 use MediaWikiIntegrationTestCase;
+use Title;
 
 /**
  * @covers \MediaWiki\Rest\Handler\PageContentHelper
@@ -52,7 +52,7 @@ class PageContentHelperTest extends MediaWikiIntegrationTestCase {
 			] ),
 			$this->getServiceContainer()->getRevisionLookup(),
 			$this->getServiceContainer()->getTitleFormatter(),
-			$this->getServiceContainer()->getPageStore()
+			$this->getServiceContainer()->getTitleFactory()
 		);
 
 		$authority = $authority ?: $this->mockRegisteredUltimateAuthority();
@@ -70,19 +70,14 @@ class PageContentHelperTest extends MediaWikiIntegrationTestCase {
 
 	/**
 	 * @covers \MediaWiki\Rest\Handler\PageContentHelper::getTitleText()
-	 * @covers \MediaWiki\Rest\Handler\PageContentHelper::getPage()
+	 * @covers \MediaWiki\Rest\Handler\PageContentHelper::getTitle()
 	 */
 	public function testGetTitle() {
-		$this->getExistingTestPage( 'Foo' );
-
 		$helper = $this->newHelper( [ 'title' => 'Foo' ] );
 		$this->assertSame( 'Foo', $helper->getTitleText() );
 
-		$this->assertInstanceOf( ExistingPageRecord::class, $helper->getPage() );
-		$this->assertSame(
-			'Foo',
-			$this->getServiceContainer()->getTitleFormatter()->getPrefixedDBkey( $helper->getPage() )
-		);
+		$this->assertInstanceOf( Title::class, $helper->getTitle() );
+		$this->assertSame( 'Foo', $helper->getTitle()->getPrefixedDBkey() );
 	}
 
 	/**
@@ -108,7 +103,7 @@ class PageContentHelperTest extends MediaWikiIntegrationTestCase {
 
 	/**
 	 * @covers \MediaWiki\Rest\Handler\PageContentHelper::getTitleText()
-	 * @covers \MediaWiki\Rest\Handler\PageContentHelper::getPage()
+	 * @covers \MediaWiki\Rest\Handler\PageContentHelper::getTitle()
 	 * @covers \MediaWiki\Rest\Handler\PageContentHelper::isAccessible()
 	 * @covers \MediaWiki\Rest\Handler\PageContentHelper::hasContent()
 	 * @covers \MediaWiki\Rest\Handler\PageContentHelper::getTargetRevision()
@@ -121,12 +116,12 @@ class PageContentHelperTest extends MediaWikiIntegrationTestCase {
 		$helper = $this->newHelper();
 
 		$this->assertNull( $helper->getTitleText() );
-		$this->assertNull( $helper->getPage() );
+		$this->assertFalse( $helper->getTitle() );
 
 		$this->assertFalse( $helper->hasContent() );
 		$this->assertFalse( $helper->isAccessible() );
 
-		$this->assertNull( $helper->getTargetRevision() );
+		$this->assertFalse( $helper->getTargetRevision() );
 
 		$this->assertNull( $helper->getLastModified() );
 		$this->assertSame( self::NO_REVISION_ETAG, $helper->getETag() );
@@ -148,7 +143,7 @@ class PageContentHelperTest extends MediaWikiIntegrationTestCase {
 
 	/**
 	 * @covers \MediaWiki\Rest\Handler\PageContentHelper::getTitleText()
-	 * @covers \MediaWiki\Rest\Handler\PageContentHelper::getPage()
+	 * @covers \MediaWiki\Rest\Handler\PageContentHelper::getTitle()
 	 * @covers \MediaWiki\Rest\Handler\PageContentHelper::isAccessible()
 	 * @covers \MediaWiki\Rest\Handler\PageContentHelper::hasContent()
 	 * @covers \MediaWiki\Rest\Handler\PageContentHelper::getTargetRevision()
@@ -163,12 +158,12 @@ class PageContentHelperTest extends MediaWikiIntegrationTestCase {
 		$helper = $this->newHelper( [ 'title' => $title->getPrefixedDBkey() ] );
 
 		$this->assertSame( $title->getPrefixedDBkey(), $helper->getTitleText() );
-		$this->assertNull( $helper->getPage() );
+		$this->assertSame( $title->getPrefixedDBkey(), $helper->getTitle()->getPrefixedDBkey() );
 
 		$this->assertFalse( $helper->hasContent() );
 		$this->assertFalse( $helper->isAccessible() );
 
-		$this->assertNull( $helper->getTargetRevision() );
+		$this->assertFalse( $helper->getTargetRevision() );
 
 		$this->assertNull( $helper->getLastModified() );
 		$this->assertSame( self::NO_REVISION_ETAG, $helper->getETag() );
@@ -190,7 +185,7 @@ class PageContentHelperTest extends MediaWikiIntegrationTestCase {
 
 	/**
 	 * @covers \MediaWiki\Rest\Handler\PageContentHelper::getTitleText()
-	 * @covers \MediaWiki\Rest\Handler\PageContentHelper::getPage()
+	 * @covers \MediaWiki\Rest\Handler\PageContentHelper::getTitle()
 	 * @covers \MediaWiki\Rest\Handler\PageContentHelper::isAccessible()
 	 * @covers \MediaWiki\Rest\Handler\PageContentHelper::hasContent()
 	 * @covers \MediaWiki\Rest\Handler\PageContentHelper::getTargetRevision()
@@ -208,7 +203,7 @@ class PageContentHelperTest extends MediaWikiIntegrationTestCase {
 		);
 
 		$this->assertSame( $title->getPrefixedDBkey(), $helper->getTitleText() );
-		$this->assertTrue( $helper->getPage()->isSamePageAs( $title ) );
+		$this->assertSame( $title->getPrefixedDBkey(), $helper->getTitle()->getPrefixedDBkey() );
 
 		$this->assertTrue( $helper->hasContent() );
 		$this->assertFalse( $helper->isAccessible() );

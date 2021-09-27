@@ -45,7 +45,7 @@ class CategoryMembershipChange {
 	private $pageTitle;
 
 	/**
-	 * @var RevisionRecord|null Latest revision of the categorized page
+	 * @var RevisionRecord|null Latest Revision instance of the categorized page
 	 */
 	private $revision;
 
@@ -61,20 +61,23 @@ class CategoryMembershipChange {
 	 */
 	private $newForCategorizationCallback = null;
 
-	/** @var BacklinkCache */
-	private $backlinkCache;
-
 	/**
 	 * @param Title $pageTitle Title instance of the categorized page
-	 * @param BacklinkCache $backlinkCache
-	 * @param RevisionRecord|null $revision Latest revision of the categorized page.
+	 * @param RevisionRecord|Revision|null $revision Latest Revision instance of the categorized page.
+	 *   Since 1.35 passing a Revision object is deprecated in favor of RevisionRecord.
 	 *
 	 * @throws MWException
 	 */
-	public function __construct(
-		Title $pageTitle, BacklinkCache $backlinkCache, RevisionRecord $revision = null
-	) {
+	public function __construct( Title $pageTitle, $revision = null ) {
 		$this->pageTitle = $pageTitle;
+		if ( $revision instanceof Revision ) {
+			wfDeprecatedMsg(
+				'Passing a Revision for the $revision parameter to ' . __METHOD__ .
+				' was deprecated in MediaWiki 1.35',
+				'1.35'
+			);
+			$revision = $revision->getRevisionRecord();
+		}
 		$this->revision = $revision;
 		if ( $revision === null ) {
 			$this->timestamp = wfTimestampNow();
@@ -82,7 +85,6 @@ class CategoryMembershipChange {
 			$this->timestamp = $revision->getTimestamp();
 		}
 		$this->newForCategorizationCallback = [ RecentChange::class, 'newForCategorization' ];
-		$this->backlinkCache = $backlinkCache;
 	}
 
 	/**
@@ -105,7 +107,7 @@ class CategoryMembershipChange {
 	 * Determines the number of template links for recursive link updates
 	 */
 	public function checkTemplateLinks() {
-		$this->numTemplateLinks = $this->backlinkCache->getNumLinks( 'templatelinks' );
+		$this->numTemplateLinks = $this->pageTitle->getBacklinkCache()->getNumLinks( 'templatelinks' );
 	}
 
 	/**

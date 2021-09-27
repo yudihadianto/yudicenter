@@ -31,7 +31,6 @@ class ParserTestParserHook {
 		$parser->setHook( 'tag', [ __CLASS__, 'dumpHook' ] );
 		$parser->setHook( 'tåg', [ __CLASS__, 'dumpHook' ] );
 		$parser->setHook( 'statictag', [ __CLASS__, 'staticTagHook' ] );
-		$parser->setHook( 'asidetag', [ __CLASS__, 'asideTagHook' ] );
 		return true;
 	}
 
@@ -59,9 +58,5 @@ class ParserTestParserHook {
 				"text: " . var_export( $in, true ) . "\n" .
 				"argv: " . var_export( $argv, true ) . "\n";
 		}
-	}
-
-	public static function asideTagHook(): string {
-		return Html::element( 'aside', [], 'Some aside content' );
 	}
 }

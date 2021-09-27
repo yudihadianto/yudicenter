@@ -390,8 +390,6 @@ class SpecialSearch extends SpecialPage {
 			$this,
 			$this->searchConfig,
 			$this->getHookContainer(),
-			$this->languageConverterFactory->getLanguageConverter( $this->getLanguage() ),
-			$this->nsInfo,
 			$this->getSearchProfiles()
 		);
 		$filePrefix = $this->getContentLanguage()->getFormattedNsText( NS_FILE ) . ':';
@@ -425,7 +423,7 @@ class SpecialSearch extends SpecialPage {
 		}
 
 		$title = Title::newFromText( $term );
-		$languageConverter = $this->languageConverterFactory->getLanguageConverter( $this->getContentLanguage() );
+		$languageConverter = $this->languageConverterFactory->getLanguageConverter();
 		if ( $languageConverter->hasVariants() ) {
 			// findVariantLink will replace the link arg as well but we want to keep our original
 			// search string, use a copy in the $variantTerm var so that $term remains intact.
@@ -596,6 +594,7 @@ class SpecialSearch extends SpecialPage {
 			} elseif (
 				$this->contentHandlerFactory->getContentHandler( $title->getContentModel() )
 					->supportsDirectEditing()
+				&& $this->getAuthority()->probablyCan( 'create', $title )
 				&& $this->getAuthority()->probablyCan( 'edit', $title )
 			) {
 				$messageName = 'searchmenu-new';
@@ -863,7 +862,8 @@ class SpecialSearch extends SpecialPage {
 	 * @param string $term
 	 * @param OutputPage $out
 	 */
-	private function prevNextLinks( ?int $totalRes, ?ISearchResultSet $textMatches, string $term, OutputPage $out ) {
+	private function prevNextLinks( ?int $totalRes, ?ISearchResultSet $textMatches, string $term,
+								   OutputPage $out ) {
 		if ( $totalRes > $this->limit || $this->offset ) {
 			// Allow matches to define the correct offset, as interleaved
 			// AB testing may require a different next page offset.

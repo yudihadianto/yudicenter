@@ -202,7 +202,7 @@ class SpecialPrefixindex extends SpecialAllPages {
 				[
 					'ORDER BY' => 'page_title',
 					'LIMIT' => $this->maxPerPage + 1,
-					'USE INDEX' => 'page_name_title',
+					'USE INDEX' => 'name_title',
 				]
 			);
 

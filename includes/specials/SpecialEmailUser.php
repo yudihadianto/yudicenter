@@ -243,9 +243,8 @@ class SpecialEmailUser extends UnlistedSpecialPage {
 		$muteList = $target->getOption( 'email-blacklist', '' );
 		if ( $muteList ) {
 			$muteList = MultiUsernameFilter::splitIds( $muteList );
-			$senderId = MediaWikiServices::getInstance()
-				->getCentralIdLookup()
-				->centralIdFromLocalUser( $sender );
+			$lookup = CentralIdLookup::factory();
+			$senderId = $lookup->centralIdFromLocalUser( $sender );
 			if ( $senderId !== 0 && in_array( $senderId, $muteList ) ) {
 				wfDebug( "User does not allow user emails from this user." );
 
@@ -384,7 +383,7 @@ class SpecialEmailUser extends UnlistedSpecialPage {
 	 *
 	 * @param array $data
 	 * @param IContextSource $context
-	 * @return Status|false
+	 * @return Status|bool
 	 * @throws MWException if EmailUser hook sets the error to something unsupported
 	 */
 	public static function submit( array $data, IContextSource $context ) {
@@ -491,14 +490,14 @@ class SpecialEmailUser extends UnlistedSpecialPage {
 			$replyTo = null;
 		}
 
-		$status = Status::wrap( $emailer->send(
+		$status = $emailer->send(
 			$toAddress,
 			$mailFrom,
 			$subject,
 			$text,
 			null,
 			[ 'replyTo' => $replyTo ]
-		) );
+		);
 
 		if ( !$status->isGood() ) {
 			return $status;

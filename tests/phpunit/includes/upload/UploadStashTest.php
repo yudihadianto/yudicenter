@@ -7,7 +7,7 @@
  */
 class UploadStashTest extends MediaWikiIntegrationTestCase {
 	/**
-	 * @var TestUser[]
+	 * @var TestUser[] Array of UploadStashTestUser
 	 */
 	public static $users;
 
@@ -16,7 +16,7 @@ class UploadStashTest extends MediaWikiIntegrationTestCase {
 	 */
 	private $tmpFile;
 
-	protected function setUp(): void {
+	protected function setUp() : void {
 		parent::setUp();
 
 		$this->tmpFile = $this->getNewTempFile();

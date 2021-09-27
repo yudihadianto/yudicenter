@@ -1,8 +1,6 @@
 <?php
 
 use MediaWiki\MediaWikiServices;
-use MediaWiki\Page\PageReference;
-use MediaWiki\Page\PageReferenceValue;
 use Wikimedia\TestingAccessWrapper;
 
 /**
@@ -10,7 +8,7 @@ use Wikimedia\TestingAccessWrapper;
  */
 class MessageTest extends MediaWikiLangTestCase {
 
-	protected function setUp(): void {
+	protected function setUp() : void {
 		parent::setUp();
 
 		$this->setMwGlobals( [
@@ -31,8 +29,10 @@ class MessageTest extends MediaWikiLangTestCase {
 		$this->assertSame( $expectedLang->getCode(), $message->getLanguage()->getCode() );
 
 		$messageSpecifier = $this->getMockForAbstractClass( MessageSpecifier::class );
-		$messageSpecifier->method( 'getKey' )->willReturn( $key );
-		$messageSpecifier->method( 'getParams' )->willReturn( $params );
+		$messageSpecifier->expects( $this->any() )
+			->method( 'getKey' )->will( $this->returnValue( $key ) );
+		$messageSpecifier->expects( $this->any() )
+			->method( 'getParams' )->will( $this->returnValue( $params ) );
 		$message = new Message( $messageSpecifier, [], $language );
 
 		$this->assertSame( $key, $message->getKey() );
@@ -314,9 +314,14 @@ class MessageTest extends MediaWikiLangTestCase {
 		$msg = new Message( $key );
 		$this->assertSame( $expect, $msg->$format() );
 
+		// This statefulness is deprecated (T146416)
+		$this->hideDeprecated( 'Message::toString with implicit format' );
+		$this->assertSame( $expect, $msg->toString(), 'toString is affected by format call' );
+
 		// This used to behave the same as toString() and was a security risk.
 		// It now has a stable return value that is always parsed/sanitized. (T146416)
 		$this->assertSame( $expectImplicit, $msg->__toString(), '__toString is not affected by format call' );
+		$this->assertSame( $expect, $msg->toString(), 'toString is not affected by __toString' );
 	}
 
 	public static function provideToString_raw() {
@@ -341,15 +346,19 @@ class MessageTest extends MediaWikiLangTestCase {
 	 */
 	public function testToString_raw( $message, $format, $expect, $expectImplicit ) {
 		// make the message behave like RawMessage and use the key as-is
-		$msg = $this->getMockBuilder( Message::class )->onlyMethods( [ 'fetchMessage' ] )
+		$msg = $this->getMockBuilder( Message::class )->setMethods( [ 'fetchMessage' ] )
 			->disableOriginalConstructor()
 			->getMock();
-		$msg->method( 'fetchMessage' )->willReturn( $message );
+		$msg->expects( $this->any() )->method( 'fetchMessage' )->willReturn( $message );
 		/** @var Message $msg */
 
 		$this->assertSame( $expect, $msg->$format() );
 
+		$this->hideDeprecated( 'Message::toString with implicit format' );
+		$this->assertSame( $expect, $msg->toString(), 'toString is affected by format call' );
+
 		$this->assertSame( $expectImplicit, $msg->__toString() );
+		$this->assertSame( $expect, $msg->toString(), 'toString is not naffected by __toString' );
 	}
 
 	/**
@@ -856,13 +865,13 @@ class MessageTest extends MediaWikiLangTestCase {
 	public function testSerialization() {
 		$msg = new Message( 'parentheses' );
 		$msg->rawParams( '<a>foo</a>' );
-		$msg->page( PageReferenceValue::localReference( NS_MAIN, 'Testing' ) );
+		$msg->title( Title::newFromText( 'Testing' ) );
 		$this->assertSame( '(<a>foo</a>)', $msg->parse(), 'Sanity check' );
 		$msg = unserialize( serialize( $msg ) );
 		$this->assertSame( '(<a>foo</a>)', $msg->parse() );
-		$title = TestingAccessWrapper::newFromObject( $msg )->contextPage;
-		$this->assertInstanceOf( PageReference::class, $title );
-		$this->assertSame( 'Testing', $title->getDbKey() );
+		$title = TestingAccessWrapper::newFromObject( $msg )->title;
+		$this->assertInstanceOf( Title::class, $title );
+		$this->assertSame( 'Testing', $title->getFullText() );
 
 		$msg = new Message( 'mainpage' );
 		$msg->inLanguage( 'de' );
@@ -887,8 +896,8 @@ class MessageTest extends MediaWikiLangTestCase {
 
 	public function provideNewFromSpecifier() {
 		$messageSpecifier = $this->getMockForAbstractClass( MessageSpecifier::class );
-		$messageSpecifier->method( 'getKey' )->willReturn( 'mainpage' );
-		$messageSpecifier->method( 'getParams' )->willReturn( [] );
+		$messageSpecifier->expects( $this->any() )->method( 'getKey' )->willReturn( 'mainpage' );
+		$messageSpecifier->expects( $this->any() )->method( 'getParams' )->willReturn( [] );
 
 		return [
 			'string' => [ 'mainpage', 'Main Page' ],

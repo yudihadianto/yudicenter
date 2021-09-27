@@ -55,19 +55,19 @@ class Sqlite {
 			$files = [ $files ];
 		}
 
-		$allowedTypes = array_fill_keys( [
+		$allowedTypes = array_flip( [
 			'integer',
 			'real',
 			'text',
 			'blob',
 			// NULL type is omitted intentionally
-		], true );
+		] );
 
 		$db = DatabaseSqlite::newStandaloneInstance( ':memory:' );
 		try {
 			foreach ( $files as $file ) {
 				$err = $db->sourceFile( $file );
-				if ( $err ) {
+				if ( $err != true ) {
 					return $err;
 				}
 			}

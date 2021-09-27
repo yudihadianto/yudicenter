@@ -20,7 +20,7 @@
  * @file
  */
 
-use MediaWiki\BadFileLookup;
+use MediaWiki\MediaWikiServices;
 
 /**
  * A query action to get image information from temporarily stashed files.
@@ -29,32 +29,8 @@ use MediaWiki\BadFileLookup;
  */
 class ApiQueryStashImageInfo extends ApiQueryImageInfo {
 
-	/** @var RepoGroup */
-	private $repoGroup;
-
-	/**
-	 * @param ApiQuery $query
-	 * @param string $moduleName
-	 * @param RepoGroup $repoGroup
-	 * @param Language $contentLanguage
-	 * @param BadFileLookup $badFileLookup
-	 */
-	public function __construct(
-		ApiQuery $query,
-		$moduleName,
-		RepoGroup $repoGroup,
-		Language $contentLanguage,
-		BadFileLookup $badFileLookup
-	) {
-		parent::__construct(
-			$query,
-			$moduleName,
-			'sii',
-			$repoGroup,
-			$contentLanguage,
-			$badFileLookup
-		);
-		$this->repoGroup = $repoGroup;
+	public function __construct( ApiQuery $query, $moduleName ) {
+		parent::__construct( $query, $moduleName, 'sii' );
 	}
 
 	public function execute() {
@@ -65,7 +41,7 @@ class ApiQueryStashImageInfo extends ApiQueryImageInfo {
 		$params = $this->extractRequestParams();
 		$modulePrefix = $this->getModulePrefix();
 
-		$prop = array_fill_keys( $params['prop'], true );
+		$prop = array_flip( $params['prop'] );
 
 		$scale = $this->getScale( $params );
 
@@ -79,7 +55,8 @@ class ApiQueryStashImageInfo extends ApiQueryImageInfo {
 		}
 
 		try {
-			$stash = $this->repoGroup->getLocalRepo()->getUploadStash( $this->getUser() );
+			$stash = MediaWikiServices::getInstance()->getRepoGroup()
+				->getLocalRepo()->getUploadStash( $this->getUser() );
 
 			foreach ( $params['filekey'] as $filekey ) {
 				$file = $stash->getFile( $filekey );

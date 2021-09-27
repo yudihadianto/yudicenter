@@ -20,7 +20,7 @@ class FileBackendDBRepoWrapperTest extends MediaWikiIntegrationTestCase {
 
 		$dbMock->expects( $dbReadsExpected )
 			->method( 'selectField' )
-			->willReturn( $dbReturnValue );
+			->will( $this->returnValue( $dbReturnValue ) );
 
 		$newPaths = $wrapperMock->getBackendPaths( [ $originalPath ], $latest );
 
@@ -96,11 +96,11 @@ class FileBackendDBRepoWrapperTest extends MediaWikiIntegrationTestCase {
 
 		$dbMock->expects( $this->once() )
 			->method( 'selectField' )
-			->willReturn( '96246614d75ba1703bdfd5d7660bb57407aaf5d9' );
+			->will( $this->returnValue( '96246614d75ba1703bdfd5d7660bb57407aaf5d9' ) );
 
 		$backendMock->expects( $this->once() )
 			->method( 'getFileContentsMulti' )
-			->willReturn( [ $sha1Path => 'foo' ] );
+			->will( $this->returnValue( [ $sha1Path => 'foo' ] ) );
 
 		$result = $wrapperMock->getFileContentsMulti( [ 'srcs' => [ $filenamePath ] ] );
 
@@ -125,7 +125,7 @@ class FileBackendDBRepoWrapperTest extends MediaWikiIntegrationTestCase {
 			->getMock();
 
 		$wrapperMock = $this->getMockBuilder( FileBackendDBRepoWrapper::class )
-			->onlyMethods( [ 'getDB' ] )
+			->setMethods( [ 'getDB' ] )
 			->setConstructorArgs( [ [
 					'backend' => $backendMock,
 					'repoName' => $this->repoName,
@@ -133,7 +133,7 @@ class FileBackendDBRepoWrapperTest extends MediaWikiIntegrationTestCase {
 				] ] )
 			->getMock();
 
-		$wrapperMock->method( 'getDB' )->willReturn( $dbMock );
+		$wrapperMock->expects( $this->any() )->method( 'getDB' )->will( $this->returnValue( $dbMock ) );
 
 		return [ $dbMock, $backendMock, $wrapperMock ];
 	}

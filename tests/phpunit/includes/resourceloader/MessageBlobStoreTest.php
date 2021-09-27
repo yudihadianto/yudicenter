@@ -12,7 +12,7 @@ class MessageBlobStoreTest extends PHPUnit\Framework\TestCase {
 
 	private const NAME = 'test.blobstore';
 
-	protected function setUp(): void {
+	protected function setUp() : void {
 		parent::setUp();
 		// MediaWiki's test wrapper sets $wgMainWANCache to CACHE_NONE.
 		// Use HashBagOStuff here so that we can observe caching.
@@ -81,7 +81,7 @@ class MessageBlobStoreTest extends PHPUnit\Framework\TestCase {
 		// Arrange version 1 of a message
 		$blobStore->expects( $this->once() )
 			->method( 'fetchMessage' )
-			->willReturn( 'First version' );
+			->will( $this->returnValue( 'First version' ) );
 
 		// Assert
 		$blob = $blobStore->getBlob( $module, 'en' );
@@ -91,7 +91,7 @@ class MessageBlobStoreTest extends PHPUnit\Framework\TestCase {
 		$blobStore = $this->makeBlobStore( [ 'fetchMessage' ], $rl );
 		$blobStore->expects( $this->once() )
 			->method( 'fetchMessage' )
-			->willReturn( 'Second version' );
+			->will( $this->returnValue( 'Second version' ) );
 		$this->clock += 20;
 
 		// Assert
@@ -190,7 +190,7 @@ class MessageBlobStoreTest extends PHPUnit\Framework\TestCase {
 				null,
 				$this->wanCache
 			] )
-			->onlyMethods( $methods ?: [] )
+			->setMethods( $methods )
 			->getMock();
 
 		return $blobStore;

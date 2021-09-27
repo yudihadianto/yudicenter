@@ -15,18 +15,16 @@ class GenderCacheTest extends MediaWikiLangTestCase {
 		// ensure the correct default gender
 		$this->mergeMwGlobalArrayValue( 'wgDefaultUserOptions', [ 'gender' => 'unknown' ] );
 
-		$userOptionsManager = $this->getServiceContainer()->getUserOptionsManager();
-
 		$male = $this->getMutableTestUser()->getUser();
-		$userOptionsManager->setOption( $male, 'gender', 'male' );
+		$male->setOption( 'gender', 'male' );
 		$male->saveSettings();
 
 		$female = $this->getMutableTestUser()->getUser();
-		$userOptionsManager->setOption( $female, 'gender', 'female' );
+		$female->setOption( 'gender', 'female' );
 		$female->saveSettings();
 
 		$default = $this->getMutableTestUser()->getUser();
-		$userOptionsManager->setOption( $default, 'gender', null );
+		$default->setOption( 'gender', null );
 		$default->saveSettings();
 
 		self::$nameMap = [
@@ -93,7 +91,7 @@ class GenderCacheTest extends MediaWikiLangTestCase {
 	 * @coversNothing
 	 */
 	public function testWithoutDB() {
-		$this->overrideMwServices();
+		self::overrideMwServices();
 
 		$services = MediaWikiServices::getInstance();
 		$services->disableService( 'DBLoadBalancer' );

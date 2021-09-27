@@ -44,28 +44,19 @@ class SpecialBotPasswords extends FormSpecialPage {
 	private $password = null;
 
 	/** @var Psr\Log\LoggerInterface */
-	private $logger;
+	private $logger = null;
 
 	/** @var PasswordFactory */
 	private $passwordFactory;
 
-	/** @var CentralIdLookup */
-	private $centralIdLookup;
-
 	/**
 	 * @param PasswordFactory $passwordFactory
 	 * @param AuthManager $authManager
-	 * @param CentralIdLookup $centralIdLookup
 	 */
-	public function __construct(
-		PasswordFactory $passwordFactory,
-		AuthManager $authManager,
-		CentralIdLookup $centralIdLookup
-	) {
+	public function __construct( PasswordFactory $passwordFactory, AuthManager $authManager ) {
 		parent::__construct( 'BotPasswords', 'editmyprivateinfo' );
 		$this->logger = LoggerFactory::getInstance( 'authentication' );
 		$this->passwordFactory = $passwordFactory;
-		$this->centralIdLookup = $centralIdLookup;
 		$this->setAuthManager( $authManager );
 	}
 
@@ -107,7 +98,7 @@ class SpecialBotPasswords extends FormSpecialPage {
 			throw new ErrorPageError( 'botpasswords', 'botpasswords-disabled' );
 		}
 
-		$this->userId = $this->centralIdLookup->centralIdFromLocalUser( $this->getUser() );
+		$this->userId = CentralIdLookup::factory()->centralIdFromLocalUser( $this->getUser() );
 		if ( !$this->userId ) {
 			throw new ErrorPageError( 'botpasswords', 'botpasswords-no-central-id' );
 		}
@@ -169,8 +160,7 @@ class SpecialBotPasswords extends FormSpecialPage {
 						static function ( $rights ) use ( $lang ) {
 							return $lang->semicolonList( array_map( [ User::class, 'getRightDescription' ], $rights ) );
 						},
-						array_intersect_key( MWGrants::getRightsByGrant(),
-							array_fill_keys( $showGrants, true ) )
+						array_intersect_key( MWGrants::getRightsByGrant(), array_flip( $showGrants ) )
 					)
 				),
 				'force-options-on' => array_map(

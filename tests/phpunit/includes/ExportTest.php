@@ -1,5 +1,7 @@
 <?php
 
+use MediaWiki\MediaWikiServices;
+
 /**
  * Test class for Export methods.
  *
@@ -9,7 +11,7 @@
  */
 class ExportTest extends MediaWikiLangTestCase {
 
-	protected function setUp(): void {
+	protected function setUp() : void {
 		parent::setUp();
 		$this->setMwGlobals( [
 			'wgCapitalLinks' => true,
@@ -22,10 +24,10 @@ class ExportTest extends MediaWikiLangTestCase {
 	public function testPageByTitle() {
 		$pageTitle = 'UTPage';
 
-		$services = $this->getServiceContainer();
-		$exporter = $services
-			->getWikiExporterFactory()
-			->getWikiExporter( $this->db, WikiExporter::FULL );
+		$exporter = new WikiExporter(
+			$this->db,
+			WikiExporter::FULL
+		);
 
 		$title = Title::newFromText( $pageTitle );
 
@@ -51,7 +53,8 @@ class ExportTest extends MediaWikiLangTestCase {
 		}
 		$xmlNamespaces = str_replace( ' ', '_', $xmlNamespaces );
 
-		$actualNamespaces = (array)$services->getContentLanguage()->getNamespaces();
+		$actualNamespaces = (array)MediaWikiServices::getInstance()->getContentLanguage()->
+			getNamespaces();
 		$actualNamespaces = array_values( $actualNamespaces );
 		$this->assertEquals( $actualNamespaces, $xmlNamespaces );
 

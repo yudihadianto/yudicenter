@@ -1182,7 +1182,7 @@
 						r = tsc[ lower ] ? tsc[ lower ] : tsc[ upper ];
 						r = r.toUpperCase();
 					} else {
-						r = tsc[ lower ];
+						r = tsc[ match.toLowerCase() ];
 					}
 					return r;
 				} );

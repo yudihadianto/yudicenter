@@ -22,8 +22,6 @@
 
 use MediaWiki\Logger\LoggerFactory;
 use MediaWiki\MediaWikiServices;
-use MediaWiki\Preferences\PreferencesFactory;
-use MediaWiki\User\UserOptionsManager;
 
 /**
  * API module that facilitates the changing of user's preferences.
@@ -35,40 +33,12 @@ class ApiOptions extends ApiBase {
 	/** @var User User account to modify */
 	private $userForUpdates;
 
-	/** @var UserOptionsManager */
-	private $userOptionsManager;
-
-	/** @var PreferencesFactory */
-	private $preferencesFactory;
-
-	/**
-	 * @param ApiMain $main
-	 * @param string $action
-	 * @param UserOptionsManager|null $userOptionsManager
-	 * @param PreferencesFactory|null $preferencesFactory
-	 */
-	public function __construct(
-		ApiMain $main,
-		$action,
-		UserOptionsManager $userOptionsManager = null,
-		PreferencesFactory $preferencesFactory = null
-	) {
-		parent::__construct( $main, $action );
-		/**
-		 * This class is extended by GlobalPreferences extension.
-		 * So it falls back to the global state.
-		 */
-		$services = MediaWikiServices::getInstance();
-		$this->userOptionsManager = $userOptionsManager ?? $services->getUserOptionsManager();
-		$this->preferencesFactory = $preferencesFactory ?? $services->getPreferencesFactory();
-	}
-
 	/**
 	 * Changes preferences of the current user.
 	 */
 	public function execute() {
 		$user = $this->getUserForUpdates();
-		if ( !$user || !$user->isRegistered() ) {
+		if ( !$user || $user->isAnon() ) {
 			$this->dieWithError(
 				[ 'apierror-mustbeloggedin', $this->msg( 'action-editmyoptions' ) ], 'notloggedin'
 			);
@@ -112,7 +82,7 @@ class ApiOptions extends ApiBase {
 		}
 
 		$prefs = $this->getPreferences();
-		$prefsKinds = $this->userOptionsManager->getOptionKinds( $user, $this->getContext(), $changes );
+		$prefsKinds = $user->getOptionKinds( $this->getContext(), $changes );
 
 		$htmlForm = null;
 		foreach ( $changes as $key => $value ) {
@@ -129,7 +99,7 @@ class ApiOptions extends ApiBase {
 							$htmlForm = new HTMLForm( [], $this );
 						}
 						$field = HTMLForm::loadInputFromParameters( $key, $prefs[$key], $htmlForm );
-						$validation = $field->validate( $value, $this->userOptionsManager->getOptions( $user ) );
+						$validation = $field->validate( $value, $user->getOptions() );
 					}
 					break;
 				case 'registered-multiselect':
@@ -186,7 +156,7 @@ class ApiOptions extends ApiBase {
 	}
 
 	/**
-	 * Load the user from the primary to reduce CAS errors on double post (T95839)
+	 * Load the user from the master to reduce CAS errors on double post (T95839)
 	 *
 	 * @return User|null
 	 */
@@ -203,15 +173,16 @@ class ApiOptions extends ApiBase {
 	 * @return mixed[][]
 	 */
 	protected function getPreferences() {
-		return $this->preferencesFactory->getFormDescriptor( $this->getUserForUpdates(),
+		$preferencesFactory = MediaWikiServices::getInstance()->getPreferencesFactory();
+		return $preferencesFactory->getFormDescriptor( $this->getUserForUpdates(),
 			$this->getContext() );
 	}
 
 	/**
-	 * @param string[] $kinds One or more types returned by UserOptionsManager::listOptionKinds() or 'all'
+	 * @param string[] $kinds One or more types returned by User::listOptionKinds() or 'all'
 	 */
 	protected function resetPreferences( array $kinds ) {
-		$this->userOptionsManager->resetOptions( $this->getUserForUpdates(), $this->getContext(), $kinds );
+		$this->getUserForUpdates()->resetOptions( $kinds, $this->getContext() );
 	}
 
 	/**
@@ -221,7 +192,7 @@ class ApiOptions extends ApiBase {
 	 * @param mixed $value
 	 */
 	protected function setPreference( $preference, $value ) {
-		$this->userOptionsManager->setOption( $this->getUserForUpdates(), $preference, $value );
+		$this->getUserForUpdates()->setOption( $preference, $value );
 	}
 
 	/**
@@ -240,7 +211,7 @@ class ApiOptions extends ApiBase {
 	}
 
 	public function getAllowedParams() {
-		$optionKinds = $this->userOptionsManager->listOptionKinds();
+		$optionKinds = User::listOptionKinds();
 		$optionKinds[] = 'all';
 
 		return [

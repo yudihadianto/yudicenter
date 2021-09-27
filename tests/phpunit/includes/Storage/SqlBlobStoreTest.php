@@ -6,6 +6,7 @@ use ExternalStoreAccess;
 use ExternalStoreFactory;
 use HashBagOStuff;
 use InvalidArgumentException;
+use LoadBalancer;
 use MediaWiki\MediaWikiServices;
 use MediaWiki\Storage\BlobAccessException;
 use MediaWiki\Storage\SqlBlobStore;
@@ -13,7 +14,6 @@ use MediaWikiIntegrationTestCase;
 use TitleValue;
 use WANObjectCache;
 use Wikimedia\AtEase\AtEase;
-use Wikimedia\Rdbms\LoadBalancer;
 
 /**
  * @covers \MediaWiki\Storage\SqlBlobStore
@@ -177,6 +177,16 @@ class SqlBlobStoreTest extends MediaWikiIntegrationTestCase {
 	}
 
 	/**
+	 * @covers \MediaWiki\Storage\SqlBlobStore::decompressData
+	 */
+	public function testDecompressData_InvalidArgumentException() {
+		$store = $this->getBlobStore();
+
+		$this->expectException( InvalidArgumentException::class );
+		$store->decompressData( false, [] );
+	}
+
+	/**
 	 * @covers \MediaWiki\Storage\SqlBlobStore::compressData
 	 */
 	public function testCompressRevisionTextUtf8() {
@@ -322,18 +332,18 @@ class SqlBlobStoreTest extends MediaWikiIntegrationTestCase {
 	public function testSimpleStorageNonExistentBlobBatch() {
 		$store = $this->getBlobStore();
 		$result = $store->getBlobBatch( [
-			'tt:this_will_not_exist',
-			'tt:0',
-			'tt:-1',
-			'tt:10000',
-			'bla:1001'
+				'tt:this_will_not_exist',
+				'tt:0',
+				'tt:-1',
+				'tt:1000',
+				'bla:1001'
 		] );
 		$resultBlobs = $result->getValue();
 		$expected = [
 			'tt:this_will_not_exist' => null,
 			'tt:0' => null,
 			'tt:-1' => null,
-			'tt:10000' => null,
+			'tt:1000' => null,
 			'bla:1001' => null
 		];
 
@@ -374,7 +384,7 @@ class SqlBlobStoreTest extends MediaWikiIntegrationTestCase {
 				'type' => 'warning',
 				'message' => 'internalerror',
 				'params' => [
-					'Unable to fetch blob at tt:10000. Use findBadBlobs.php to remedy.'
+					'Unable to fetch blob at tt:1000. Use findBadBlobs.php to remedy.'
 				]
 			]
 		], $result->getErrors() );

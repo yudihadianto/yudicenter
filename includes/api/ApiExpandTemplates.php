@@ -20,7 +20,7 @@
  * @file
  */
 
-use MediaWiki\Revision\RevisionStore;
+use MediaWiki\MediaWikiServices;
 
 /**
  * API module that functions as a shortcut to the wikitext preprocessor. Expands
@@ -30,28 +30,6 @@ use MediaWiki\Revision\RevisionStore;
  * @ingroup API
  */
 class ApiExpandTemplates extends ApiBase {
-	/** @var RevisionStore */
-	private $revisionStore;
-
-	/** @var Parser */
-	private $parser;
-
-	/**
-	 * @param ApiMain $main
-	 * @param string $action
-	 * @param RevisionStore $revisionStore
-	 * @param Parser $parser
-	 */
-	public function __construct(
-		ApiMain $main,
-		$action,
-		RevisionStore $revisionStore,
-		Parser $parser
-	) {
-		parent::__construct( $main, $action );
-		$this->revisionStore = $revisionStore;
-		$this->parser = $parser;
-	}
 
 	public function execute() {
 		// Cache may vary on the user because ParserOptions gets data from it
@@ -76,7 +54,7 @@ class ApiExpandTemplates extends ApiBase {
 			);
 			$prop = [];
 		} else {
-			$prop = array_fill_keys( $params['prop'], true );
+			$prop = array_flip( $params['prop'] );
 		}
 
 		$titleObj = Title::newFromText( $title );
@@ -87,7 +65,7 @@ class ApiExpandTemplates extends ApiBase {
 		// Get title and revision ID for parser
 		$revid = $params['revid'];
 		if ( $revid !== null ) {
-			$rev = $this->revisionStore->getRevisionById( $revid );
+			$rev = MediaWikiServices::getInstance()->getRevisionStore()->getRevisionById( $revid );
 			if ( !$rev ) {
 				$this->dieWithError( [ 'apierror-nosuchrevid', $revid ] );
 			}
@@ -117,9 +95,10 @@ class ApiExpandTemplates extends ApiBase {
 
 		$retval = [];
 
+		$parser = MediaWikiServices::getInstance()->getParser();
 		if ( isset( $prop['parsetree'] ) || $params['generatexml'] ) {
-			$this->parser->startExternalParse( $titleObj, $options, Parser::OT_PREPROCESS );
-			$dom = $this->parser->preprocessToDom( $params['text'] );
+			$parser->startExternalParse( $titleObj, $options, Parser::OT_PREPROCESS );
+			$dom = $parser->preprocessToDom( $params['text'] );
 			if ( is_callable( [ $dom, 'saveXML' ] ) ) {
 				// @phan-suppress-next-line PhanUndeclaredMethod
 				$xml = $dom->saveXML();
@@ -140,14 +119,14 @@ class ApiExpandTemplates extends ApiBase {
 		// if they didn't want any output except (probably) the parse tree,
 		// then don't bother actually fully expanding it
 		if ( $prop || $params['prop'] === null ) {
-			$this->parser->startExternalParse( $titleObj, $options, Parser::OT_PREPROCESS );
-			$frame = $this->parser->getPreprocessor()->newFrame();
-			$wikitext = $this->parser->preprocess( $params['text'], $titleObj, $options, $revid, $frame );
+			$parser->startExternalParse( $titleObj, $options, Parser::OT_PREPROCESS );
+			$frame = $parser->getPreprocessor()->newFrame();
+			$wikitext = $parser->preprocess( $params['text'], $titleObj, $options, $revid, $frame );
 			if ( $params['prop'] === null ) {
 				// the old way
 				ApiResult::setContentValue( $retval, 'wikitext', $wikitext );
 			} else {
-				$p_output = $this->parser->getOutput();
+				$p_output = $parser->getOutput();
 				if ( isset( $prop['categories'] ) ) {
 					$categories = $p_output->getCategories();
 					if ( $categories ) {

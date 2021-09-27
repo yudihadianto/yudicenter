@@ -18,7 +18,7 @@ class OldChangesListTest extends MediaWikiLangTestCase {
 	 */
 	private $testRecentChangesHelper;
 
-	protected function setUp(): void {
+	protected function setUp() : void {
 		parent::setUp();
 
 		$this->setMwGlobals( [
@@ -175,10 +175,10 @@ class OldChangesListTest extends MediaWikiLangTestCase {
 
 	public function testRecentChangesLine_prefix() {
 		$mockContext = $this->getMockBuilder( RequestContext::class )
-			->onlyMethods( [ 'getTitle' ] )
+			->setMethods( [ 'getTitle' ] )
 			->getMock();
 		$mockContext->method( 'getTitle' )
-			->willReturn( Title::newFromText( 'Expected Context Title' ) );
+			->will( $this->returnValue( Title::newFromText( 'Expected Context Title' ) ) );
 
 		$oldChangesList = $this->getOldChangesList();
 		$oldChangesList->setContext( $mockContext );

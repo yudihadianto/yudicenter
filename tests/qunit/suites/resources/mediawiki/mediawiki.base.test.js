@@ -1,215 +1,122 @@
 ( function () {
-	QUnit.module( 'mediawiki.base', {
-		beforeEach: function () {
-			this.clock = sinon.useFakeTimers();
-		},
-		afterEach: function () {
-			this.clock.restore();
-		}
-	} );
+	QUnit.module( 'mediawiki.base' );
 
-	QUnit.test( 'mw.hook - add() and fire()', function ( assert ) {
-		mw.hook( 'test.basic' ).add( function () {
-			assert.step( 'call' );
+	QUnit.test( 'mw.hook - basic', function ( assert ) {
+		var q = [];
+		mw.hook( 'test.hook.basic' ).add( function () {
+			q.push( 'basic' );
 		} );
 
-		mw.hook( 'test.basic' ).fire();
-		assert.verifySteps( [ 'call' ] );
+		mw.hook( 'test.hook.basic' ).fire();
+		assert.deepEqual( q, [ 'basic' ], 'Callback' );
 	} );
 
-	QUnit.test( 'mw.hook - "hasOwnProperty" as hook name', function ( assert ) {
+	QUnit.test( 'mw.hook - name', function ( assert ) {
+		var q = [];
 		mw.hook( 'hasOwnProperty' ).add( function () {
-			assert.step( 'call' );
+			q.push( 'prototype' );
 		} );
 
 		mw.hook( 'hasOwnProperty' ).fire();
-		assert.verifySteps( [ 'call' ] );
+		assert.deepEqual( q, [ 'prototype' ], 'Callback' );
 	} );
 
-	QUnit.test( 'mw.hook - Number of arguments', function ( assert ) {
-		// eslint-disable-next-line no-unused-vars
-		mw.hook( 'test.numargs' ).add( function ( one, two ) {
-			assert.step( String( arguments.length ) );
+	QUnit.test( 'mw.hook - data', function ( assert ) {
+		var q;
+
+		mw.hook( 'test.hook.data' ).add( function ( data1, data2 ) {
+			q = [ data1, data2 ];
 		} );
+		mw.hook( 'test.hook.data' ).fire( 'example', [ 'two' ] );
 
-		mw.hook( 'test.numargs' ).fire( 'A' );
-		mw.hook( 'test.numargs' ).fire( 'X', 'Y', 'Z' );
-
-		assert.verifySteps(
-			[ '1', '3' ],
-			'Runs normally when number of arguments on fire() is different to those taken by the handler function'
+		assert.deepEqual( q,
+			[
+				'example',
+				[ 'two' ]
+			],
+			'Data containing a string and an array'
 		);
 	} );
 
-	QUnit.test( 'mw.hook - Variadic firing data and array data type', function ( assert ) {
-		var data;
-		mw.hook( 'test.data' ).add( function ( one, two ) {
-			data = { arg1: one, arg2: two };
-		} );
+	QUnit.test( 'mw.hook - chainable', function ( assert ) {
+		var hook, add, fire, q = [];
 
-		mw.hook( 'test.data' ).fire( 'x', [ 'y', 'z' ] );
-		assert.deepEqual( data, {
-			arg1: 'x',
-			// Make sure variadic arguments (array-like), and actual array values
-			// are not confused with each other
-			arg2: [ 'y', 'z' ]
-		} );
-
-		mw.hook( 'test.data' ).fire( [ '1', '2' ] );
-		// Make sure that an array with two elements is
-		// considered the first argument
-		assert.deepEqual( data, {
-			arg1: [ '1', '2' ],
-			arg2: undefined
-		} );
-	} );
-
-	QUnit.test( 'mw.hook - Chainable', function ( assert ) {
-		var hook, add, fire;
-
-		hook = mw.hook( 'test.chainable' );
+		hook = mw.hook( 'test.hook.chainable' );
 		assert.strictEqual( hook.add(), hook, 'hook.add is chainable' );
 		assert.strictEqual( hook.remove(), hook, 'hook.remove is chainable' );
 		assert.strictEqual( hook.fire(), hook, 'hook.fire is chainable' );
 
-		hook = mw.hook( 'test.detach' );
+		hook = mw.hook( 'test.hook.detach' );
 		add = hook.add;
 		fire = hook.fire;
-		add( function ( data ) {
-			assert.step( data );
+		add( function ( x, y ) {
+			q.push( x, y );
 		} );
-		fire( 'x' );
-		assert.verifySteps( [ 'x' ], 'Data from detached method' );
+		fire( 'x', 'y' );
+		assert.deepEqual( q, [ 'x', 'y' ], 'Contextless firing with data' );
 	} );
 
-	QUnit.test( 'mw.hook - Memory from before', function ( assert ) {
-		mw.hook( 'test.fireBefore' )
-			.fire( 'x' )
-			.add( function ( data ) {
-				assert.step( data );
-			} );
-		assert.verifySteps( [ 'x' ], 'Remember data from earlier firing' );
+	QUnit.test( 'mw.hook - memory before', function ( assert ) {
+		var q;
 
-		mw.hook( 'test.fireTwiceBefore' )
-			.fire( 'x1' )
-			.fire( 'x2' )
-			.add( function ( data ) {
-				assert.step( data );
-			} );
-		assert.verifySteps( [ 'x2' ], 'Remember only the most recent firing' );
+		q = [];
+		mw.hook( 'test.hook.fireBefore' ).fire().add( function () {
+			q.push( 'X' );
+		} );
+		assert.deepEqual( q, [ 'X' ], 'Remember previous firing for newly added handler' );
+
+		q = [];
+		mw.hook( 'test.hook.fireTwiceBefore' ).fire( 'Y1' ).fire( 'Y2' ).add( function ( data ) {
+			q.push( data );
+		} );
+		assert.deepEqual( q, [ 'Y2' ], 'Remember only the most recent firing' );
 	} );
 
-	QUnit.test( 'mw.hook - Multiple consumers with memory between fires', function ( assert ) {
-		mw.hook( 'test.many' )
-			.add( function ( data ) {
-				// Receive each fire as it happens
-				assert.step( 'early ' + data );
+	QUnit.test( 'mw.hook - memory before and after', function ( assert ) {
+		var q1 = [], q2 = [];
+		mw.hook( 'test.hook.many' )
+			.add( function ( chr ) {
+				q1.push( chr );
 			} )
-			.fire( 'x' )
-			.fire( 'y' )
-			.fire( 'z' )
-			.add( function ( data ) {
-				// Receive memory from last fire
-				assert.step( 'late ' + data );
+			.fire( 'x' ).fire( 'y' ).fire( 'z' )
+			.add( function ( chr ) {
+				q2.push( chr );
 			} );
 
-		assert.verifySteps( [
-			'early x',
-			'early y',
-			'early z',
-			'late z'
-		] );
+		assert.deepEqual( q1, [ 'x', 'y', 'z' ], 'Multiple fires after callback addition' );
+		assert.deepEqual( q2, [ 'z' ], 'Last fire applied to new handler' );
 	} );
 
-	QUnit.test( 'mw.hook - Memory is not wiped when consumed.', function ( assert ) {
-		var handler = function ( data ) {
-			assert.step( data + '1' );
-		};
-
-		mw.hook( 'test.memory' ).fire( 'A' );
-		mw.hook( 'test.memory' ).add( handler );
-		mw.hook( 'test.memory' )
-			.add( function ( data ) {
-				assert.step( data + '2' );
-			} );
-
-		mw.hook( 'test.memory' )
-			.remove( handler )
-			.add( handler );
-		assert.verifySteps(
-			[ 'A1', 'A2', 'A1' ],
-			'Consuming a fired hook from the memory does not clear it.'
-		);
-	} );
-
-	QUnit.test( 'mw.hook - Unregistering handler.', function ( assert ) {
-		var handler = function ( data ) {
-			assert.step( data );
-		};
-
-		mw.hook( 'test.remove' )
-			.add( handler )
-			.remove( handler )
-			.fire( 'A' );
-
-		assert.verifySteps( [], 'The handler was unregistered before the fired event.' );
-
-		mw.hook( 'test.remove' )
-			.add( handler )
-			.remove( handler );
-
-		assert.verifySteps( [ 'A' ], 'The handler runs with memory event before it is unregistered.' );
-	} );
-
-	QUnit.test( 'mw.hook - Limit impact of consumer errors T223352', function ( assert ) {
-		mw.hook( 'test.catch' )
-			.add( function callerA( data ) {
-				assert.step( 'A' + data );
-				throw new Error( 'Fail A' );
-			} )
-			.fire( '1' )
-			.add( function callerB( data ) {
-				assert.step( 'B' + data );
-			} )
-			.fire( '2' );
-
-		assert.verifySteps( [ 'A1', 'B1', 'A2', 'B2' ] );
-
-		assert.throws( function () {
-			this.clock.tick( 10 );
-		}, /Fail A/, 'Global error' );
-	} );
-
-	QUnit.test( 'mw.hook - Variadic add and remove', function ( assert ) {
-		function callerA( data ) {
-			assert.step( 'A' + data );
+	QUnit.test( 'mw.hook - data variadic', function ( assert ) {
+		var q = [];
+		function callback( chr ) {
+			q.push( chr );
 		}
 
-		mw.hook( 'test.variadic' )
+		mw.hook( 'test.hook.variadic' )
 			.add(
-				callerA,
-				callerA,
-				function callerB( data ) {
-					assert.step( 'B' + data );
+				callback,
+				callback,
+				function ( chr ) {
+					q.push( chr );
 				},
-				callerA
+				callback
 			)
-			.fire( '1' )
+			.fire( 'x' )
 			.remove(
-				function callerC() {
-					return 'was never here';
+				function () {
+					'not-added';
 				},
-				callerA
+				callback
 			)
-			.fire( '2' )
-			.remove( callerA )
-			.fire( '3' );
+			.fire( 'y' )
+			.remove( callback )
+			.fire( 'z' );
 
-		assert.verifySteps( [
-			'A1', 'A1', 'B1', 'A1',
-			'B2',
-			'B3'
-		], '"add" and "remove" support variadic arguments. ' +
+		assert.deepEqual(
+			q,
+			[ 'x', 'x', 'x', 'x', 'y', 'z' ],
+			'"add" and "remove" support variadic arguments. ' +
 				'"add" does not filter unique. ' +
 				'"remove" removes all equal by reference. ' +
 				'"remove" is silent if the function is not found'

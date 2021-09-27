@@ -42,17 +42,12 @@ class ServiceOptionsTest extends MediaWikiUnitTestCase {
 				[ 'a', 'b' ],
 				new HashConfig( [ 'a' => 'aval', 'b' => 'bval', 'c' => 'cval' ] ),
 			],
-			'Simple ServiceOptions source' => [
-				[ 'a' => 'aval', 'b' => 'bval' ],
-				[ 'a', 'b' ],
-				new ServiceOptions( [ 'a', 'b', 'c' ], [ 'a' => 'aval', 'b' => 'bval', 'c' => 'cval' ] ),
-			],
 			'Three different sources' => [
 				[ 'a' => 'aval', 'b' => 'bval' ],
 				[ 'a', 'b' ],
 				[ 'z' => 'zval' ],
 				new HashConfig( [ 'a' => 'aval', 'c' => 'cval' ] ),
-				new ServiceOptions( [ 'b', 'd' ], [ 'b' => 'bval', 'd' => 'dval' ] ),
+				[ 'b' => 'bval', 'd' => 'dval' ],
 			],
 			'null key' => [
 				[ 'a' => null ],

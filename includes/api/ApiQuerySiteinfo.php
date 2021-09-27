@@ -21,14 +21,8 @@
  */
 
 use MediaWiki\ExtensionInfo;
-use MediaWiki\Interwiki\InterwikiLookup;
-use MediaWiki\Languages\LanguageConverterFactory;
-use MediaWiki\Languages\LanguageFactory;
-use MediaWiki\Languages\LanguageNameUtils;
-use MediaWiki\SpecialPage\SpecialPageFactory;
-use MediaWiki\User\UserGroupManager;
+use MediaWiki\MediaWikiServices;
 use MediaWiki\User\UserOptionsLookup;
-use Wikimedia\Rdbms\ILoadBalancer;
 
 /**
  * A query action to return meta information about the wiki site.
@@ -36,100 +30,23 @@ use Wikimedia\Rdbms\ILoadBalancer;
  * @ingroup API
  */
 class ApiQuerySiteinfo extends ApiQueryBase {
-
-	/** @var UserOptionsLookup */
+	/**
+	 * @var UserOptionsLookup
+	 */
 	private $userOptionsLookup;
-
-	/** @var UserGroupManager */
-	private $userGroupManager;
-
-	/** @var LanguageConverterFactory */
-	private $languageConverterFactory;
-
-	/** @var LanguageFactory */
-	private $languageFactory;
-
-	/** @var LanguageNameUtils */
-	private $languageNameUtils;
-
-	/** @var Language */
-	private $contentLanguage;
-
-	/** @var NamespaceInfo */
-	private $namespaceInfo;
-
-	/** @var InterwikiLookup */
-	private $interwikiLookup;
-
-	/** @var Parser */
-	private $parser;
-
-	/** @var MagicWordFactory */
-	private $magicWordFactory;
-
-	/** @var SpecialPageFactory */
-	private $specialPageFactory;
-
-	/** @var SkinFactory */
-	private $skinFactory;
-
-	/** @var ILoadBalancer */
-	private $loadBalancer;
-
-	/** @var ReadOnlyMode */
-	private $readOnlyMode;
 
 	/**
 	 * @param ApiQuery $query
 	 * @param string $moduleName
 	 * @param UserOptionsLookup $userOptionsLookup
-	 * @param UserGroupManager $userGroupManager
-	 * @param LanguageConverterFactory $languageConverterFactory
-	 * @param LanguageFactory $languageFactory
-	 * @param LanguageNameUtils $languageNameUtils
-	 * @param Language $contentLanguage
-	 * @param NamespaceInfo $namespaceInfo
-	 * @param InterwikiLookup $interwikiLookup
-	 * @param Parser $parser
-	 * @param MagicWordFactory $magicWordFactory
-	 * @param SpecialPageFactory $specialPageFactory
-	 * @param SkinFactory $skinFactory
-	 * @param ILoadBalancer $loadBalancer
-	 * @param ReadOnlyMode $readOnlyMode
 	 */
 	public function __construct(
 		ApiQuery $query,
 		$moduleName,
-		UserOptionsLookup $userOptionsLookup,
-		UserGroupManager $userGroupManager,
-		LanguageConverterFactory $languageConverterFactory,
-		LanguageFactory $languageFactory,
-		LanguageNameUtils $languageNameUtils,
-		Language $contentLanguage,
-		NamespaceInfo $namespaceInfo,
-		InterwikiLookup $interwikiLookup,
-		Parser $parser,
-		MagicWordFactory $magicWordFactory,
-		SpecialPageFactory $specialPageFactory,
-		SkinFactory $skinFactory,
-		ILoadBalancer $loadBalancer,
-		ReadOnlyMode $readOnlyMode
+		UserOptionsLookup $userOptionsLookup
 	) {
 		parent::__construct( $query, $moduleName, 'si' );
 		$this->userOptionsLookup = $userOptionsLookup;
-		$this->userGroupManager = $userGroupManager;
-		$this->languageConverterFactory = $languageConverterFactory;
-		$this->languageFactory = $languageFactory;
-		$this->languageNameUtils = $languageNameUtils;
-		$this->contentLanguage = $contentLanguage;
-		$this->namespaceInfo = $namespaceInfo;
-		$this->interwikiLookup = $interwikiLookup;
-		$this->parser = $parser;
-		$this->magicWordFactory = $magicWordFactory;
-		$this->specialPageFactory = $specialPageFactory;
-		$this->skinFactory = $skinFactory;
-		$this->loadBalancer = $loadBalancer;
-		$this->readOnlyMode = $readOnlyMode;
 	}
 
 	public function execute() {
@@ -258,14 +175,17 @@ class ApiQuerySiteinfo extends ApiQueryBase {
 			ApiResult::setIndexedTagName( $data['externalimages'], 'prefix' );
 		}
 
-		$data['langconversion'] = !$this->languageConverterFactory->isConversionDisabled();
-		$data['linkconversion'] = !$this->languageConverterFactory->isLinkConversionDisabled();
+		$languageConverterFactory = MediaWikiServices::getInstance()->getLanguageConverterFactory();
+		$data['langconversion'] = !$languageConverterFactory->isConversionDisabled();
+		$data['linkconversion'] = !$languageConverterFactory->isLinkConversionDisabled();
 		// For backwards compatibility (soft deprecated since MW 1.36)
 		$data['titleconversion'] = $data['linkconversion'];
 
-		$contLangConverter = $this->languageConverterFactory->getLanguageConverter( $this->contentLanguage );
-		if ( $this->contentLanguage->linkPrefixExtension() ) {
-			$linkPrefixCharset = $this->contentLanguage->linkPrefixCharset();
+		$contLang = MediaWikiServices::getInstance()->getContentLanguage();
+		$contLangConverter = $languageConverterFactory
+			->getLanguageConverter( $contLang );
+		if ( $contLang->linkPrefixExtension() ) {
+			$linkPrefixCharset = $contLang->linkPrefixCharset();
 			$data['linkprefixcharset'] = $linkPrefixCharset;
 			// For backwards compatibility
 			$data['linkprefix'] = "/^((?>.*[^$linkPrefixCharset]|))(.+)$/sDu";
@@ -274,7 +194,7 @@ class ApiQuerySiteinfo extends ApiQueryBase {
 			$data['linkprefix'] = '';
 		}
 
-		$linktrail = $this->contentLanguage->linkTrail();
+		$linktrail = $contLang->linkTrail();
 		$data['linktrail'] = $linktrail ?: '';
 
 		$data['legaltitlechars'] = Title::legalChars();
@@ -297,7 +217,7 @@ class ApiQuerySiteinfo extends ApiQueryBase {
 		$data['lang'] = $config->get( 'LanguageCode' );
 
 		$fallbacks = [];
-		foreach ( $this->contentLanguage->getFallbackLanguages() as $code ) {
+		foreach ( $contLang->getFallbackLanguages() as $code ) {
 			$fallbacks[] = [ 'code' => $code ];
 		}
 		$data['fallback'] = $fallbacks;
@@ -308,19 +228,19 @@ class ApiQuerySiteinfo extends ApiQueryBase {
 			foreach ( $contLangConverter->getVariants() as $code ) {
 				$variants[] = [
 					'code' => $code,
-					'name' => $this->contentLanguage->getVariantname( $code ),
+					'name' => $contLang->getVariantname( $code ),
 				];
 			}
 			$data['variants'] = $variants;
 			ApiResult::setIndexedTagName( $data['variants'], 'lang' );
 		}
 
-		$data['rtl'] = $this->contentLanguage->isRTL();
-		$data['fallback8bitEncoding'] = $this->contentLanguage->fallback8bitEncoding();
+		$data['rtl'] = $contLang->isRTL();
+		$data['fallback8bitEncoding'] = $contLang->fallback8bitEncoding();
 
-		$data['readonly'] = $this->readOnlyMode->isReadOnly();
+		$data['readonly'] = wfReadOnly();
 		if ( $data['readonly'] ) {
-			$data['readonlyreason'] = $this->readOnlyMode->getReason();
+			$data['readonlyreason'] = wfReadOnlyReason();
 		}
 		$data['writeapi'] = true; // Deprecated since MW 1.32
 
@@ -385,25 +305,26 @@ class ApiQuerySiteinfo extends ApiQueryBase {
 		$data = [
 			ApiResult::META_TYPE => 'assoc',
 		];
+		$nsInfo = MediaWikiServices::getInstance()->getNamespaceInfo();
 		foreach (
-			$this->contentLanguage->getFormattedNamespaces()
+			MediaWikiServices::getInstance()->getContentLanguage()->getFormattedNamespaces()
 			as $ns => $title
 		) {
 			$data[$ns] = [
 				'id' => (int)$ns,
-				'case' => $this->namespaceInfo->isCapitalized( $ns ) ? 'first-letter' : 'case-sensitive',
+				'case' => $nsInfo->isCapitalized( $ns ) ? 'first-letter' : 'case-sensitive',
 			];
 			ApiResult::setContentValue( $data[$ns], 'name', $title );
-			$canonical = $this->namespaceInfo->getCanonicalName( $ns );
+			$canonical = $nsInfo->getCanonicalName( $ns );
 
-			$data[$ns]['subpages'] = $this->namespaceInfo->hasSubpages( $ns );
+			$data[$ns]['subpages'] = $nsInfo->hasSubpages( $ns );
 
 			if ( $canonical ) {
 				$data[$ns]['canonical'] = strtr( $canonical, '_', ' ' );
 			}
 
-			$data[$ns]['content'] = $this->namespaceInfo->isContent( $ns );
-			$data[$ns]['nonincludable'] = $this->namespaceInfo->isNonincludable( $ns );
+			$data[$ns]['content'] = $nsInfo->isContent( $ns );
+			$data[$ns]['nonincludable'] = $nsInfo->isNonincludable( $ns );
 
 			if ( isset( $nsProtection[$ns] ) ) {
 				if ( is_array( $nsProtection[$ns] ) ) {
@@ -416,7 +337,7 @@ class ApiQuerySiteinfo extends ApiQueryBase {
 				}
 			}
 
-			$contentmodel = $this->namespaceInfo->getNamespaceContentModel( $ns );
+			$contentmodel = $nsInfo->getNamespaceContentModel( $ns );
 			if ( $contentmodel ) {
 				$data[$ns]['defaultcontentmodel'] = $contentmodel;
 			}
@@ -429,8 +350,9 @@ class ApiQuerySiteinfo extends ApiQueryBase {
 	}
 
 	protected function appendNamespaceAliases( $property ) {
-		$aliases = $this->contentLanguage->getNamespaceAliases();
-		$namespaces = $this->contentLanguage->getNamespaces();
+		$contLang = MediaWikiServices::getInstance()->getContentLanguage();
+		$aliases = $contLang->getNamespaceAliases();
+		$namespaces = $contLang->getNamespaces();
 		$data = [];
 		foreach ( $aliases as $title => $ns ) {
 			if ( $namespaces[$ns] == $title ) {
@@ -453,8 +375,9 @@ class ApiQuerySiteinfo extends ApiQueryBase {
 
 	protected function appendSpecialPageAliases( $property ) {
 		$data = [];
-		$aliases = $this->contentLanguage->getSpecialPageAliases();
-		foreach ( $this->specialPageFactory->getNames() as $specialpage ) {
+		$services = MediaWikiServices::getInstance();
+		$aliases = $services->getContentLanguage()->getSpecialPageAliases();
+		foreach ( $services->getSpecialPageFactory()->getNames() as $specialpage ) {
 			if ( isset( $aliases[$specialpage] ) ) {
 				$arr = [ 'realname' => $specialpage, 'aliases' => $aliases[$specialpage] ];
 				ApiResult::setIndexedTagName( $arr['aliases'], 'alias' );
@@ -469,7 +392,7 @@ class ApiQuerySiteinfo extends ApiQueryBase {
 	protected function appendMagicWords( $property ) {
 		$data = [];
 		foreach (
-			$this->contentLanguage->getMagicWords()
+			MediaWikiServices::getInstance()->getContentLanguage()->getMagicWords()
 			as $magicword => $aliases
 		) {
 			$caseSensitive = array_shift( $aliases );
@@ -498,10 +421,12 @@ class ApiQuerySiteinfo extends ApiQueryBase {
 		$interwikiMagic = $this->getConfig()->get( 'InterwikiMagic' );
 
 		if ( $interwikiMagic ) {
-			$langNames = $this->languageNameUtils->getLanguageNames( $langCode );
+			$langNames = MediaWikiServices::getInstance()
+				->getLanguageNameUtils()
+				->getLanguageNames( $langCode );
 		}
 
-		$getPrefixes = $this->interwikiLookup->getAllPrefixes( $local );
+		$getPrefixes = MediaWikiServices::getInstance()->getInterwikiLookup()->getAllPrefixes( $local );
 		$extraLangPrefixes = $this->getConfig()->get( 'ExtraInterlanguageLinkPrefixes' );
 		$localInterwikis = $this->getConfig()->get( 'LocalInterwikis' );
 		$data = [];
@@ -556,24 +481,25 @@ class ApiQuerySiteinfo extends ApiQueryBase {
 
 	protected function appendDbReplLagInfo( $property, $includeAll ) {
 		$data = [];
+		$lb = MediaWikiServices::getInstance()->getDBLoadBalancer();
 		$showHostnames = $this->getConfig()->get( 'ShowHostnames' );
 		if ( $includeAll ) {
 			if ( !$showHostnames ) {
 				$this->dieWithError( 'apierror-siteinfo-includealldenied', 'includeAllDenied' );
 			}
 
-			$lags = $this->loadBalancer->getLagTimes();
+			$lags = $lb->getLagTimes();
 			foreach ( $lags as $i => $lag ) {
 				$data[] = [
-					'host' => $this->loadBalancer->getServerName( $i ),
+					'host' => $lb->getServerName( $i ),
 					'lag' => $lag
 				];
 			}
 		} else {
-			list( , $lag, $index ) = $this->loadBalancer->getMaxLag();
+			list( , $lag, $index ) = $lb->getMaxLag();
 			$data[] = [
 				'host' => $showHostnames
-						? $this->loadBalancer->getServerName( $index )
+						? $lb->getServerName( $index )
 						: '',
 				'lag' => $lag
 			];
@@ -605,7 +531,7 @@ class ApiQuerySiteinfo extends ApiQueryBase {
 
 		$data = [];
 		$result = $this->getResult();
-		$allGroups = array_values( $this->userGroupManager->listAllGroups() );
+		$allGroups = array_values( User::getAllGroups() );
 		foreach ( $config->get( 'GroupPermissions' ) as $group => $permissions ) {
 			$arr = [
 				'name' => $group,
@@ -814,7 +740,9 @@ class ApiQuerySiteinfo extends ApiQueryBase {
 	public function appendLanguages( $property ) {
 		$params = $this->extractRequestParams();
 		$langCode = $params['inlanguagecode'] ?? '';
-		$langNames = $this->languageNameUtils->getLanguageNames( $langCode );
+		$langNames = MediaWikiServices::getInstance()
+			->getLanguageNameUtils()
+			->getLanguageNames( $langCode );
 
 		$data = [];
 
@@ -835,7 +763,8 @@ class ApiQuerySiteinfo extends ApiQueryBase {
 	// language conversion. (T153341)
 	public function appendLanguageVariants( $property ) {
 		$langNames = LanguageConverter::$languagesWithVariants;
-		if ( $this->languageConverterFactory->isConversionDisabled() ) {
+		$languageConverterFactory = MediaWikiServices::getInstance()->getLanguageConverterFactory();
+		if ( $languageConverterFactory->isConversionDisabled() ) {
 			// Ensure result is empty if language conversion is disabled.
 			$langNames = [];
 		}
@@ -843,8 +772,10 @@ class ApiQuerySiteinfo extends ApiQueryBase {
 
 		$data = [];
 		foreach ( $langNames as $langCode ) {
-			$lang = $this->languageFactory->getLanguage( $langCode );
-			$langConverter = $this->languageConverterFactory->getLanguageConverter( $lang );
+			$lang = MediaWikiServices::getInstance()->getLanguageFactory()
+				->getLanguage( $langCode );
+			$langConverter = $languageConverterFactory
+				->getLanguageConverter( $lang );
 			if ( !$langConverter->hasVariants() ) {
 				// Only languages which have variants should be listed
 				continue;
@@ -853,7 +784,7 @@ class ApiQuerySiteinfo extends ApiQueryBase {
 			ApiResult::setIndexedTagName( $data[$langCode], 'variant' );
 			ApiResult::setArrayType( $data[$langCode], 'kvp', 'code' );
 
-			$variants = $langConverter->getVariants();
+			$variants = $lang->getVariants();
 			sort( $variants );
 			foreach ( $variants as $v ) {
 				$fallbacks = $langConverter->getVariantFallbacks( $v );
@@ -875,15 +806,17 @@ class ApiQuerySiteinfo extends ApiQueryBase {
 	}
 
 	public function appendSkins( $property ) {
+		$services = MediaWikiServices::getInstance();
 		$data = [];
-		$allowed = $this->skinFactory->getAllowedSkins();
+		$allowed = $services->getSkinFactory()->getAllowedSkins();
 		$default = Skin::normalizeKey( 'default' );
-		$skinNames = $this->skinFactory->getInstalledSkins();
+		$languageNameUtils = $services->getLanguageNameUtils();
+		$skinNames = $services->getSkinFactory()->getSkinNames();
 
 		foreach ( $skinNames as $name => $displayName ) {
 			$msg = $this->msg( "skinname-{$name}" );
 			$code = $this->getParameter( 'inlanguagecode' );
-			if ( $code && $this->languageNameUtils->isValidCode( $code ) ) {
+			if ( $code && $languageNameUtils->isValidCode( $code ) ) {
 				$msg->inLanguage( $code );
 			} else {
 				$msg->inContentLanguage();
@@ -911,7 +844,7 @@ class ApiQuerySiteinfo extends ApiQueryBase {
 			static function ( $item ) {
 				return "<$item>";
 			},
-			$this->parser->getTags()
+			MediaWikiServices::getInstance()->getParser()->getTags()
 		);
 		ApiResult::setArrayType( $tags, 'BCarray' );
 		ApiResult::setIndexedTagName( $tags, 't' );
@@ -920,7 +853,7 @@ class ApiQuerySiteinfo extends ApiQueryBase {
 	}
 
 	public function appendFunctionHooks( $property ) {
-		$hooks = $this->parser->getFunctionHooks();
+		$hooks = MediaWikiServices::getInstance()->getParser()->getFunctionHooks();
 		ApiResult::setArrayType( $hooks, 'BCarray' );
 		ApiResult::setIndexedTagName( $hooks, 'h' );
 
@@ -928,7 +861,7 @@ class ApiQuerySiteinfo extends ApiQueryBase {
 	}
 
 	public function appendVariables( $property ) {
-		$variables = $this->magicWordFactory->getVariableIDs();
+		$variables = MediaWikiServices::getInstance()->getMagicWordFactory()->getVariableIDs();
 		ApiResult::setArrayType( $variables, 'BCarray' );
 		ApiResult::setIndexedTagName( $variables, 'v' );
 

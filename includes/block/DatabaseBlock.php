@@ -22,10 +22,10 @@
 
 namespace MediaWiki\Block;
 
+use ActorMigration;
 use CommentStore;
 use Hooks;
 use Html;
-use MediaWiki\Block\Restriction\ActionRestriction;
 use MediaWiki\Block\Restriction\NamespaceRestriction;
 use MediaWiki\Block\Restriction\PageRestriction;
 use MediaWiki\Block\Restriction\Restriction;
@@ -66,7 +66,10 @@ class DatabaseBlock extends AbstractBlock {
 	private $mId;
 
 	/** @var bool */
-	private $mFromPrimary;
+	private $mFromMaster;
+
+	/** @var int Hack for foreign blocking (CentralAuth) */
+	private $forcedTargetID;
 
 	/** @var bool */
 	private $isAutoblocking;
@@ -93,9 +96,9 @@ class DatabaseBlock extends AbstractBlock {
 	 *  - sitewide: (bool) Disallow editing all pages and all contribution actions,
 	 *    except those specifically allowed by other block flags
 	 *  - by: (int|UserIdentity) UserIdentity object or an ID of the blocker.
-	 *      Calling with ID is deprecated since 1.36, hard deprecated since 1.37.
+	 *      Calling with ID is deprecated since 1.36
 	 *  - byText: (string) Username of the blocker (for foreign users)
-	 *      Deprecated since 1.36, hard deprecated since 1.37. Use 'by' parameter instead.
+	 *      Deprecated since 1.36. Use 'by' parameter instead.
 	 *
 	 * @since 1.26 $options array
 	 */
@@ -117,6 +120,11 @@ class DatabaseBlock extends AbstractBlock {
 
 		$options += $defaults;
 
+		if ( $this->target instanceof UserIdentity && $options['user'] ) {
+			# Needed for foreign users
+			$this->forcedTargetID = $options['user'];
+		}
+
 		if ( $options['by'] ) {
 			if ( $options['by'] instanceof UserIdentity ) {
 				$this->setBlocker( $options['by'] );
@@ -124,7 +132,6 @@ class DatabaseBlock extends AbstractBlock {
 				// Local user, passed by ID. Deprecated case,
 				// callers should provide UserIdentity in the 'by'
 				// option.
-				wfDeprecatedMsg( __METHOD__ . ': $options[\'by\'] calling with ID is deprecated', '1.36' );
 				$localBlocker = MediaWikiServices::getInstance()
 					->getUserFactory()
 					->newFromId( $options['by'] );
@@ -133,7 +140,6 @@ class DatabaseBlock extends AbstractBlock {
 		} elseif ( $options['byText'] ) {
 			// Foreign user. Deprecated case, callers should
 			// provide UserIdentity in the 'by' option.
-			wfDeprecatedMsg( __METHOD__ . ': $options[\'byText\'] is deprecated', '1.36' );
 			$foreignBlocker = MediaWikiServices::getInstance()
 				->getActorStore()
 				->getUserIdentityByName( $options['byText'] );
@@ -155,7 +161,7 @@ class DatabaseBlock extends AbstractBlock {
 		$this->isCreateAccountBlocked( (bool)$options['createAccount'] );
 		$this->isUsertalkEditAllowed( (bool)$options['allowUsertalk'] );
 
-		$this->mFromPrimary = false;
+		$this->mFromMaster = false;
 	}
 
 	/**
@@ -185,11 +191,6 @@ class DatabaseBlock extends AbstractBlock {
 	/**
 	 * Return the tables, fields, and join conditions to be selected to create
 	 * a new block object.
-	 *
-	 * Since 1.34, ipb_by and ipb_by_text have not been present in the
-	 * database, but they continue to be available in query results as
-	 * aliases.
-	 *
 	 * @since 1.31
 	 * @return array With three keys:
 	 *   - tables: (string[]) to include in the `$table` to `IDatabase->select()`
@@ -198,11 +199,9 @@ class DatabaseBlock extends AbstractBlock {
 	 */
 	public static function getQueryInfo() {
 		$commentQuery = CommentStore::getStore()->getJoin( 'ipb_reason' );
+		$actorQuery = ActorMigration::newMigration()->getJoin( 'ipb_by' );
 		return [
-			'tables' => [
-				'ipblocks',
-				'ipblocks_actor' => 'actor'
-			] + $commentQuery['tables'],
+			'tables' => [ 'ipblocks' ] + $commentQuery['tables'] + $actorQuery['tables'],
 			'fields' => [
 				'ipb_id',
 				'ipb_address',
@@ -217,13 +216,8 @@ class DatabaseBlock extends AbstractBlock {
 				'ipb_allow_usertalk',
 				'ipb_parent_block_id',
 				'ipb_sitewide',
-				'ipb_by_actor',
-				'ipb_by' => 'ipblocks_actor.actor_user',
-				'ipb_by_text' => 'ipblocks_actor.actor_name'
-			] + $commentQuery['fields'],
-			'joins' => [
-				'ipblocks_actor' => [ 'JOIN', 'actor_id=ipb_by_actor' ]
-			] + $commentQuery['joins'],
+			] + $commentQuery['fields'] + $actorQuery['fields'],
+			'joins' => $commentQuery['joins'] + $actorQuery['joins'],
 		];
 	}
 
@@ -262,7 +256,7 @@ class DatabaseBlock extends AbstractBlock {
 	 *
 	 * @param UserIdentity|string|null $specificTarget
 	 * @param int|null $specificType
-	 * @param bool $fromPrimary
+	 * @param bool $fromMaster
 	 * @param UserIdentity|string|null $vagueTarget Also search for blocks affecting this target.
 	 *     Doesn't make any sense to use TYPE_AUTO / TYPE_ID here. Leave blank to skip IP lookups.
 	 * @throws MWException
@@ -271,10 +265,10 @@ class DatabaseBlock extends AbstractBlock {
 	protected static function newLoad(
 		$specificTarget,
 		$specificType,
-		$fromPrimary,
+		$fromMaster,
 		$vagueTarget = null
 	) {
-		$db = wfGetDB( $fromPrimary ? DB_PRIMARY : DB_REPLICA );
+		$db = wfGetDB( $fromMaster ? DB_MASTER : DB_REPLICA );
 
 		if ( $specificType !== null ) {
 			$conds = [ 'ipb_address' => [ (string)$specificTarget ] ];
@@ -292,7 +286,6 @@ class DatabaseBlock extends AbstractBlock {
 				case self::TYPE_USER:
 					# Slightly weird, but who are we to argue?
 					$conds['ipb_address'][] = (string)$target;
-					$conds = $db->makeList( $conds, LIST_OR );
 					break;
 
 				case self::TYPE_IP:
@@ -364,6 +357,8 @@ class DatabaseBlock extends AbstractBlock {
 	 * blocks. Decreasing order of specificity: user > IP > narrower IP range > wider IP
 	 * range. A range that encompasses one IP address is ranked equally to a singe IP.
 	 *
+	 * Note that DatabaseBlock::chooseBlock chooses blocks in a different way.
+	 *
 	 * This is refactored out from DatabaseBlock::newLoad.
 	 *
 	 * @param DatabaseBlock[] $blocks These should not include autoblocks or ID blocks
@@ -384,7 +379,7 @@ class DatabaseBlock extends AbstractBlock {
 			if ( $block->getType() == self::TYPE_RANGE ) {
 				# This is the number of bits that are allowed to vary in the block, give
 				# or take some floating point errors
-				$target = $block->getTargetName();
+				$target = $block->getTarget();
 				$max = IPUtils::isIPv6( $target ) ? 128 : 32;
 				list( $network, $bits ) = IPUtils::parseCIDR( $target );
 				$size = $max - $bits;
@@ -551,8 +546,6 @@ class DatabaseBlock extends AbstractBlock {
 	 * @return bool
 	 */
 	public static function isWhitelistedFromAutoblocks( $ip ) {
-		// Hard-deprecated since MW 1.37.
-		wfDeprecated( __METHOD__, '1.36' );
 		return self::isExemptedFromAutoblocks( $ip );
 	}
 
@@ -577,6 +570,8 @@ class DatabaseBlock extends AbstractBlock {
 
 				return explode( "\n",
 					wfMessage( 'block-autoblock-exemptionlist' )->inContentLanguage()->plain()
+					// Temporarily still load the old Message
+					. "\n" . wfMessage( 'autoblock_whitelist' )->inContentLanguage()->plain()
 				);
 			}
 		);
@@ -648,13 +643,13 @@ class DatabaseBlock extends AbstractBlock {
 
 		# Make a new block object with the desired properties.
 		$autoblock = new DatabaseBlock;
-		wfDebug( "Autoblocking {$this->getTargetName()}@" . $autoblockIP );
+		wfDebug( "Autoblocking {$this->getTarget()}@" . $autoblockIP );
 		$autoblock->setTarget( $autoblockIP );
 		$autoblock->setBlocker( $this->getBlocker() );
 		$autoblock->setReason(
 			wfMessage(
 				'autoblocker',
-				$this->getTargetName(),
+				(string)$this->getTarget(),
 				$this->getReasonComment()->text
 			)->inContentLanguage()->plain()
 		);
@@ -695,7 +690,11 @@ class DatabaseBlock extends AbstractBlock {
 		$timestamp = wfTimestampNow();
 		wfDebug( __METHOD__ . " checking current " . $timestamp . " vs $this->mExpiry" );
 
-		return $this->getExpiry() && $timestamp > $this->getExpiry();
+		if ( !$this->getExpiry() ) {
+			return false;
+		} else {
+			return $timestamp > $this->getExpiry();
+		}
 	}
 
 	/**
@@ -706,7 +705,7 @@ class DatabaseBlock extends AbstractBlock {
 			$this->setTimestamp( wfTimestamp() );
 			$this->setExpiry( self::getAutoblockExpiry( $this->getTimestamp() ) );
 
-			$dbw = wfGetDB( DB_PRIMARY );
+			$dbw = wfGetDB( DB_MASTER );
 			$dbw->update( 'ipblocks',
 				[ /* SET */
 					'ipb_timestamp' => $dbw->timestamp( $this->getTimestamp() ),
@@ -772,7 +771,7 @@ class DatabaseBlock extends AbstractBlock {
 	/**
 	 * @inheritDoc
 	 */
-	public function getId(): ?int {
+	public function getId() {
 		return $this->mId;
 	}
 
@@ -808,7 +807,7 @@ class DatabaseBlock extends AbstractBlock {
 	 * @param bool|null $x
 	 * @return bool
 	 */
-	public function isHardblock( $x = null ): bool {
+	public function isHardblock( $x = null ) {
 		wfSetVar( $this->isHardblock, $x );
 
 		# You can't *not* hardblock a user
@@ -843,7 +842,7 @@ class DatabaseBlock extends AbstractBlock {
 				wfMessage( 'autoblockid', $this->mId )->text()
 			);
 		} else {
-			return htmlspecialchars( $this->getTargetName() );
+			return htmlspecialchars( $this->getTarget() );
 		}
 	}
 
@@ -883,13 +882,13 @@ class DatabaseBlock extends AbstractBlock {
 	 * @param string|UserIdentity|int|null $vagueTarget As above, but we will search for *any* block which
 	 *     affects that target (so for an IP address, get ranges containing that IP; and also
 	 *     get any relevant autoblocks). Leave empty or blank to skip IP-based lookups.
-	 * @param bool $fromPrimary Whether to use the DB_PRIMARY database
+	 * @param bool $fromMaster Whether to use the DB_MASTER database
 	 * @return DatabaseBlock|null (null if no relevant block could be found). The target and type
 	 *     of the returned block will refer to the actual block which was found, which might
 	 *     not be the same as the target you gave if you used $vagueTarget!
 	 */
-	public static function newFromTarget( $specificTarget, $vagueTarget = null, $fromPrimary = false ) {
-		$blocks = self::newListFromTarget( $specificTarget, $vagueTarget, $fromPrimary );
+	public static function newFromTarget( $specificTarget, $vagueTarget = null, $fromMaster = false ) {
+		$blocks = self::newListFromTarget( $specificTarget, $vagueTarget, $fromMaster );
 		return self::chooseMostSpecificBlock( $blocks );
 	}
 
@@ -899,13 +898,13 @@ class DatabaseBlock extends AbstractBlock {
 	 * @since 1.34
 	 * @param string|UserIdentity|int|null $specificTarget
 	 * @param string|UserIdentity|int|null $vagueTarget
-	 * @param bool $fromPrimary
+	 * @param bool $fromMaster
 	 * @return DatabaseBlock[] Any relevant blocks
 	 */
 	public static function newListFromTarget(
 		$specificTarget,
 		$vagueTarget = null,
-		$fromPrimary = false
+		$fromMaster = false
 	) {
 		list( $target, $type ) = MediaWikiServices::getInstance()
 			->getBlockUtils()
@@ -922,7 +921,7 @@ class DatabaseBlock extends AbstractBlock {
 			$type,
 			[ self::TYPE_USER, self::TYPE_IP, self::TYPE_RANGE, null ] )
 		) {
-			return self::newLoad( $target, $type, $fromPrimary, $vagueTarget );
+			return self::newLoad( $target, $type, $fromMaster, $vagueTarget );
 		}
 		return [];
 	}
@@ -933,11 +932,11 @@ class DatabaseBlock extends AbstractBlock {
 	 * @param array $ipChain List of IPs (strings), usually retrieved from the
 	 *     X-Forwarded-For header of the request
 	 * @param bool $isAnon Exclude anonymous-only blocks if false
-	 * @param bool $fromPrimary Whether to query the primary or replica DB
+	 * @param bool $fromMaster Whether to query the master or replica DB
 	 * @return self[]
 	 * @since 1.22
 	 */
-	public static function getBlocksForIPList( array $ipChain, $isAnon, $fromPrimary = false ) {
+	public static function getBlocksForIPList( array $ipChain, $isAnon, $fromMaster = false ) {
 		if ( $ipChain === [] ) {
 			return [];
 		}
@@ -967,8 +966,8 @@ class DatabaseBlock extends AbstractBlock {
 			return [];
 		}
 
-		if ( $fromPrimary ) {
-			$db = wfGetDB( DB_PRIMARY );
+		if ( $fromMaster ) {
+			$db = wfGetDB( DB_MASTER );
 		} else {
 			$db = wfGetDB( DB_REPLICA );
 		}
@@ -998,12 +997,128 @@ class DatabaseBlock extends AbstractBlock {
 	}
 
 	/**
+	 * From a list of multiple blocks, find the most exact and strongest block.
+	 *
+	 * The logic for finding the "best" block is:
+	 *  - Blocks that match the block's target IP are preferred over ones in a range
+	 *  - Hardblocks are chosen over softblocks that prevent account creation
+	 *  - Softblocks that prevent account creation are chosen over other softblocks
+	 *  - Other softblocks are chosen over autoblocks
+	 *  - If there are multiple exact or range blocks at the same level, the one chosen
+	 *    is random
+	 * This should be used when $blocks were retrieved from the user's IP address
+	 * and $ipChain is populated from the same IP address information.
+	 *
+	 * @deprecated since 1.35 No longer needed in core, since the introduction of
+	 *  CompositeBlock (T206163)
+	 * @param array $blocks Array of DatabaseBlock objects
+	 * @param array $ipChain List of IPs (strings). This is used to determine how "close"
+	 *  a block is to the server, and if a block matches exactly, or is in a range.
+	 *  The order is furthest from the server to nearest e.g., (Browser, proxy1, proxy2,
+	 *  local-cdn, ...)
+	 * @throws MWException
+	 * @return DatabaseBlock|null The "best" block from the list
+	 */
+	public static function chooseBlock( array $blocks, array $ipChain ) {
+		wfDeprecated( __METHOD__, '1.35' );
+		if ( $blocks === [] ) {
+			return null;
+		} elseif ( count( $blocks ) == 1 ) {
+			return $blocks[0];
+		}
+
+		// Sort hard blocks before soft ones and secondarily sort blocks
+		// that disable account creation before those that don't.
+		usort( $blocks, static function ( DatabaseBlock $a, DatabaseBlock $b ) {
+			$aWeight = (int)$a->isHardblock() . (int)$a->appliesToRight( 'createaccount' );
+			$bWeight = (int)$b->isHardblock() . (int)$b->appliesToRight( 'createaccount' );
+			return strcmp( $bWeight, $aWeight ); // highest weight first
+		} );
+
+		$blocksListExact = [
+			'hard' => false,
+			'disable_create' => false,
+			'other' => false,
+			'auto' => false
+		];
+		$blocksListRange = [
+			'hard' => false,
+			'disable_create' => false,
+			'other' => false,
+			'auto' => false
+		];
+		$ipChain = array_reverse( $ipChain );
+
+		foreach ( $blocks as $block ) {
+			// Stop searching if we have already have a "better" block. This
+			// is why the order of the blocks matters
+			if ( !$block->isHardblock() && $blocksListExact['hard'] ) {
+				break;
+			} elseif ( !$block->appliesToRight( 'createaccount' ) && $blocksListExact['disable_create'] ) {
+				break;
+			}
+
+			foreach ( $ipChain as $checkip ) {
+				$checkipHex = IPUtils::toHex( $checkip );
+				if ( (string)$block->getTarget() === $checkip ) {
+					if ( $block->isHardblock() ) {
+						$blocksListExact['hard'] = $blocksListExact['hard'] ?: $block;
+					} elseif ( $block->appliesToRight( 'createaccount' ) ) {
+						$blocksListExact['disable_create'] = $blocksListExact['disable_create'] ?: $block;
+					} elseif ( $block->mAuto ) {
+						$blocksListExact['auto'] = $blocksListExact['auto'] ?: $block;
+					} else {
+						$blocksListExact['other'] = $blocksListExact['other'] ?: $block;
+					}
+					// We found closest exact match in the ip list, so go to the next block
+					break;
+				} elseif ( array_filter( $blocksListExact ) == []
+					&& $block->getRangeStart() <= $checkipHex
+					&& $block->getRangeEnd() >= $checkipHex
+				) {
+					if ( $block->isHardblock() ) {
+						$blocksListRange['hard'] = $blocksListRange['hard'] ?: $block;
+					} elseif ( $block->appliesToRight( 'createaccount' ) ) {
+						$blocksListRange['disable_create'] = $blocksListRange['disable_create'] ?: $block;
+					} elseif ( $block->mAuto ) {
+						$blocksListRange['auto'] = $blocksListRange['auto'] ?: $block;
+					} else {
+						$blocksListRange['other'] = $blocksListRange['other'] ?: $block;
+					}
+					break;
+				}
+			}
+		}
+
+		if ( array_filter( $blocksListExact ) == [] ) {
+			$blocksList = &$blocksListRange;
+		} else {
+			$blocksList = &$blocksListExact;
+		}
+
+		$chosenBlock = null;
+		if ( $blocksList['hard'] ) {
+			$chosenBlock = $blocksList['hard'];
+		} elseif ( $blocksList['disable_create'] ) {
+			$chosenBlock = $blocksList['disable_create'];
+		} elseif ( $blocksList['other'] ) {
+			$chosenBlock = $blocksList['other'];
+		} elseif ( $blocksList['auto'] ) {
+			$chosenBlock = $blocksList['auto'];
+		} else {
+			throw new MWException( "Proxy block found, but couldn't be classified." );
+		}
+
+		return $chosenBlock;
+	}
+
+	/**
 	 * @inheritDoc
 	 *
 	 * Autoblocks have whichever type corresponds to their target, so to detect if a block is an
 	 * autoblock, we have to check the mAuto property instead.
 	 */
-	public function getType(): ?int {
+	public function getType() {
 		return $this->mAuto
 			? self::TYPE_AUTO
 			: parent::getType();
@@ -1042,7 +1157,7 @@ class DatabaseBlock extends AbstractBlock {
 	 * @internal
 	 * @return ?Restriction[]
 	 */
-	public function getRawRestrictions(): ?array {
+	public function getRawRestrictions() : ?array {
 		return $this->restrictions;
 	}
 
@@ -1114,35 +1229,6 @@ class DatabaseBlock extends AbstractBlock {
 	}
 
 	/**
-	 * @inheritDoc
-	 */
-	public function appliesToRight( $right ) {
-		// Temporarily access service container until the feature flag is removed: T280532
-		$config = MediaWikiServices::getInstance()->getMainConfig();
-
-		$res = parent::appliesToRight( $right );
-
-		if ( !$res && $config->get( 'EnablePartialActionBlocks' ) ) {
-			$blockActions = MediaWikiServices::getInstance()->getBlockActionInfo()
-				->getAllBlockActions();
-
-			if ( isset( $blockActions[$right] ) ) {
-				$restriction = $this->findRestriction(
-					ActionRestriction::TYPE,
-					$blockActions[$right]
-				);
-
-				// $res may be null or false. This should be preserved if there is no restriction.
-				if ( $restriction ) {
-					$res = true;
-				}
-			}
-		}
-
-		return $res;
-	}
-
-	/**
 	 * Find Restriction by type and value.
 	 *
 	 * @param string $type
@@ -1169,7 +1255,7 @@ class DatabaseBlock extends AbstractBlock {
 	 *
 	 * @return BlockRestrictionStore
 	 */
-	private function getBlockRestrictionStore(): BlockRestrictionStore {
+	private function getBlockRestrictionStore() : BlockRestrictionStore {
 		return MediaWikiServices::getInstance()->getBlockRestrictionStore();
 	}
 
@@ -1194,6 +1280,16 @@ class DatabaseBlock extends AbstractBlock {
 	 */
 	public function getBlocker(): ?UserIdentity {
 		return $this->blocker;
+	}
+
+	/**
+	 * Get the forcedTargetID if set
+	 *
+	 * @internal
+	 * @return ?int
+	 */
+	public function getForcedTargetID() : ?int {
+		return $this->forcedTargetID;
 	}
 
 	/**

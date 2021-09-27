@@ -74,7 +74,7 @@ abstract class ImageGalleryBase extends ContextSource {
 	protected $mCaptionLength = true;
 
 	/**
-	 * @var bool Hide bad images?
+	 * @var bool Hide blacklisted images?
 	 */
 	protected $mHideBadImages;
 

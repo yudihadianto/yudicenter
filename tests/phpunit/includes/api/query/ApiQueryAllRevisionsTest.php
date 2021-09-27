@@ -8,7 +8,7 @@
  */
 class ApiQueryAllRevisionsTest extends ApiTestCase {
 
-	protected function setUp(): void {
+	protected function setUp() : void {
 		parent::setUp();
 		$this->tablesUsed[] = 'revision';
 	}
@@ -21,14 +21,12 @@ class ApiQueryAllRevisionsTest extends ApiTestCase {
 		$title = Title::newFromText( $pageName );
 		$page = WikiPage::factory( $title );
 
-		$page->doUserEditContent(
+		$page->doEditContent(
 			ContentHandler::makeContent( 'Some text', $page->getTitle() ),
-			$this->getTestSysop()->getUser(),
 			'inserting content'
 		);
-		$page->doUserEditContent(
+		$page->doEditContent(
 			ContentHandler::makeContent( 'Some other text', $page->getTitle() ),
-			$this->getTestSysop()->getUser(),
 			'adding revision'
 		);
 

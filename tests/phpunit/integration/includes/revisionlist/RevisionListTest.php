@@ -1,7 +1,6 @@
 <?php
 
-use MediaWiki\Page\PageIdentity;
-use MediaWiki\Page\PageIdentityValue;
+use MediaWiki\MediaWikiServices;
 use Wikimedia\Rdbms\FakeResultWrapper;
 use Wikimedia\Rdbms\IDatabase;
 
@@ -16,7 +15,7 @@ use Wikimedia\Rdbms\IDatabase;
  */
 class RevisionListTest extends MediaWikiIntegrationTestCase {
 
-	protected function setUp(): void {
+	protected function setUp() : void {
 		parent::setUp();
 
 		$this->tablesUsed[] = 'revision';
@@ -28,8 +27,8 @@ class RevisionListTest extends MediaWikiIntegrationTestCase {
 
 	public function testGetType() {
 		$context = new RequestContext();
-		$page = new PageIdentityValue( 123, NS_MAIN, __METHOD__, PageIdentity::LOCAL );
-		$revisionList = new RevisionList( $context, $page );
+		$title = Title::newFromText( __METHOD__ );
+		$revisionList = new RevisionList( $context, $title );
 
 		$this->assertSame(
 			'revision',
@@ -43,8 +42,12 @@ class RevisionListTest extends MediaWikiIntegrationTestCase {
 	public function testDoQuery( $filterIds ) {
 		$context = new RequestContext();
 
-		$page = new PageIdentityValue( 123, NS_MAIN, __METHOD__, PageIdentity::LOCAL );
-		$revisionList = new RevisionList( $context, $page );
+		$title = $this->createMock( Title::class );
+		$title->expects( $this->once() )
+			->method( 'getArticleID' )
+			->willReturn( 123 );
+
+		$revisionList = new RevisionList( $context, $title );
 
 		$conds = [ 'rev_page' => 123 ];
 		if ( $filterIds !== false ) {
@@ -52,7 +55,7 @@ class RevisionListTest extends MediaWikiIntegrationTestCase {
 			$conds['rev_id'] = $filterIds;
 		}
 
-		$revQuery = $this->getServiceContainer()
+		$revQuery = MediaWikiServices::getInstance()
 			->getRevisionStore()
 			->getQueryInfo( [ 'page', 'user' ] );
 
@@ -60,12 +63,12 @@ class RevisionListTest extends MediaWikiIntegrationTestCase {
 		$db->expects( $this->once() )
 			->method( 'select' )
 			->with(
-				$revQuery['tables'],
-				$revQuery['fields'],
-				$conds,
-				'RevisionList::doQuery',
-				[ 'ORDER BY' => 'rev_id DESC' ],
-				$revQuery['joins']
+				$this->equalTo( $revQuery['tables'] ),
+				$this->equalTo( $revQuery['fields'] ),
+				$this->equalTo( $conds ),
+				$this->equalTo( 'RevisionList::doQuery' ),
+				$this->equalTo( [ 'ORDER BY' => 'rev_id DESC' ] ),
+				$this->equalTo( $revQuery['joins'] )
 			)
 			->willReturn(
 				new FakeResultWrapper( [] )
@@ -86,7 +89,7 @@ class RevisionListTest extends MediaWikiIntegrationTestCase {
 		$wikiPage = $this->getExistingTestPage( __METHOD__ );
 		$currentRevId = $wikiPage->getRevisionRecord()->getId();
 
-		$revQuery = $this->getServiceContainer()
+		$revQuery = MediaWikiServices::getInstance()
 			->getRevisionStore()
 			->getQueryInfo( [ 'page', 'user' ] );
 		$row = $this->db->selectRow(
@@ -101,8 +104,8 @@ class RevisionListTest extends MediaWikiIntegrationTestCase {
 		$context = new RequestContext();
 		$context->setUser( $this->getTestSysop()->getUser() );
 
-		$page = new PageIdentityValue( 123, NS_MAIN, __METHOD__, PageIdentity::LOCAL );
-		$revisionList = new RevisionList( $context, $page );
+		$title = Title::newFromText( __METHOD__ );
+		$revisionList = new RevisionList( $context, $title );
 
 		$revisionItem = $revisionList->newItem( $row );
 		$this->assertInstanceOf( RevisionItem::class, $revisionItem );

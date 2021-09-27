@@ -319,7 +319,7 @@ abstract class UploadBase {
 	/**
 	 * Get the base 36 SHA1 of the file
 	 * @stable to override
-	 * @return string|false
+	 * @return string
 	 */
 	public function getTempFileSha1Base36() {
 		return FSFile::getSha1Base36FromPath( $this->mTempPath );
@@ -447,8 +447,8 @@ abstract class UploadBase {
 		global $wgVerifyMimeType, $wgVerifyMimeTypeIE;
 		if ( $wgVerifyMimeType ) {
 			wfDebug( "mime: <$mime> extension: <{$this->mFinalExtension}>" );
-			global $wgMimeTypeExclusions;
-			if ( self::checkFileExtension( $mime, $wgMimeTypeExclusions ) ) {
+			global $wgMimeTypeBlacklist;
+			if ( $this->checkFileExtension( $mime, $wgMimeTypeBlacklist ) ) {
 				return [ 'filetype-badmime', $mime ];
 			}
 
@@ -463,7 +463,7 @@ abstract class UploadBase {
 					$extMime = $magic->getMimeTypeFromExtensionOrNull( (string)$this->mFinalExtension ) ?? '';
 					$ieTypes = $magic->getIEMimeTypes( $this->mTempPath, $chunk, $extMime );
 					foreach ( $ieTypes as $ieType ) {
-						if ( self::checkFileExtension( $ieType, $wgMimeTypeExclusions ) ) {
+						if ( $this->checkFileExtension( $ieType, $wgMimeTypeBlacklist ) ) {
 							return [ 'filetype-bad-ie-mime', $ieType ];
 						}
 					}
@@ -660,6 +660,9 @@ abstract class UploadBase {
 		$status = PermissionStatus::newEmpty();
 		$performer->authorizeWrite( 'edit', $nt, $status );
 		$performer->authorizeWrite( 'upload', $nt, $status );
+		if ( !$nt->exists() ) {
+			$performer->authorizeWrite( 'create', $nt, $status );
+		}
 		if ( !$status->isGood() ) {
 			return $status->toLegacyErrorArray();
 		}
@@ -832,7 +835,7 @@ abstract class UploadBase {
 
 	/**
 	 * @param LocalFile $localFile
-	 * @param string|false $hash sha1 hash of the file to check
+	 * @param string $hash sha1 hash of the file to check
 	 *
 	 * @return array warnings
 	 */
@@ -844,7 +847,7 @@ abstract class UploadBase {
 			$warnings['exists'] = $exists;
 
 			// check if file is an exact duplicate of current file version
-			if ( $hash !== false && $hash === $localFile->getSha1() ) {
+			if ( $hash === $localFile->getSha1() ) {
 				$warnings['no-change'] = $localFile;
 			}
 
@@ -865,15 +868,12 @@ abstract class UploadBase {
 	}
 
 	/**
-	 * @param string|false $hash sha1 hash of the file to check
+	 * @param string $hash sha1 hash of the file to check
 	 * @param bool $ignoreLocalDupes True to ignore local duplicates
 	 *
 	 * @return File[] Duplicate files, if found.
 	 */
 	private function checkAgainstExistingDupes( $hash, $ignoreLocalDupes ) {
-		if ( $hash === false ) {
-			return [];
-		}
 		$dupes = MediaWikiServices::getInstance()->getRepoGroup()->findBySha1( $hash );
 		$title = $this->getTitle();
 		foreach ( $dupes as $key => $dupe ) {
@@ -890,19 +890,16 @@ abstract class UploadBase {
 	}
 
 	/**
-	 * @param string|false $hash sha1 hash of the file to check
-	 * @param Authority $performer
+	 * @param string $hash sha1 hash of the file to check
+	 * @param User $user
 	 *
 	 * @return string|null Name of the dupe or empty string if discovered (depending on visibility)
 	 *                     null if the check discovered no dupes.
 	 */
-	private function checkAgainstArchiveDupes( $hash, Authority $performer ) {
-		if ( $hash === false ) {
-			return null;
-		}
+	private function checkAgainstArchiveDupes( $hash, User $user ) {
 		$archivedFile = new ArchivedFile( null, 0, '', $hash );
 		if ( $archivedFile->getID() > 0 ) {
-			if ( $archivedFile->userCan( File::DELETED_FILE, $performer ) ) {
+			if ( $archivedFile->userCan( File::DELETED_FILE, $user ) ) {
 				return $archivedFile->getName();
 			} else {
 				return '';
@@ -957,9 +954,10 @@ abstract class UploadBase {
 
 		if ( $status->isGood() ) {
 			if ( $watch ) {
-				MediaWikiServices::getInstance()->getWatchlistManager()->addWatchIgnoringRights(
-					$user,
+				WatchAction::doWatch(
 					$this->getLocalFile()->getTitle(),
+					$user,
+					User::IGNORE_USER_RIGHTS,
 					$watchlistExpiry
 				);
 			}
@@ -1064,11 +1062,11 @@ abstract class UploadBase {
 			}
 		}
 
-		// Don't allow users to override the list of prohibited file extensions (check file extension)
+		/* Don't allow users to override the blacklist (check file extension) */
 		global $wgCheckFileExtensions, $wgStrictFileExtensions;
-		global $wgFileExtensions, $wgProhibitedFileExtensions;
+		global $wgFileExtensions, $wgFileBlacklist;
 
-		$blackListedExtensions = self::checkFileExtensionList( $ext, $wgProhibitedFileExtensions );
+		$blackListedExtensions = $this->checkFileExtensionList( $ext, $wgFileBlacklist );
 
 		if ( $this->mFinalExtension == '' ) {
 			$this->mTitleError = self::FILETYPE_MISSING;
@@ -1184,6 +1182,31 @@ abstract class UploadBase {
 	}
 
 	/**
+	 * If the user does not supply all necessary information in the first upload
+	 * form submission (either by accident or by design) then we may want to
+	 * stash the file temporarily, get more information, and publish the file
+	 * later.
+	 *
+	 * This method will stash a file in a temporary directory for later
+	 * processing, and save the necessary descriptive info into the database.
+	 * This method returns the file object, which also has a 'fileKey' property
+	 * which can be passed through a form or API request to find this stashed
+	 * file again.
+	 *
+	 * @deprecated since 1.28 Use tryStashFile() instead
+	 * @param User|null $user
+	 * @return UploadStashFile Stashed file
+	 * @throws UploadStashBadPathException
+	 * @throws UploadStashFileException
+	 * @throws UploadStashNotLoggedInException
+	 */
+	public function stashFile( User $user = null ) {
+		wfDeprecated( __METHOD__, '1.28' );
+
+		return $this->doStashFile( $user );
+	}
+
+	/**
 	 * Implementation for stashFile() and tryStashFile().
 	 *
 	 * @stable to override
@@ -1291,7 +1314,7 @@ abstract class UploadBase {
 
 				return true;
 			}
-		} elseif ( $match ) {
+		} elseif ( $match === true ) {
 			wfDebug( __METHOD__ . ": mime type $mime matches extension $extension, passing file" );
 
 			/** @todo If it's a bitmap, make sure PHP or ImageMagick resp. can handle it! */
@@ -2016,7 +2039,9 @@ abstract class UploadBase {
 			return false;
 		}
 
-		return $performer->getUser()->equals( $img->getUploader( File::RAW ) );
+		$img->load();
+
+		return $performer->getUser()->getId() == $img->getUser( 'id' );
 	}
 
 	/**
@@ -2039,7 +2064,7 @@ abstract class UploadBase {
 			return [ 'warning' => 'page-exists', 'file' => $file ];
 		}
 
-		if ( !strpos( $file->getName(), '.' ) ) {
+		if ( strpos( $file->getName(), '.' ) == false ) {
 			$partname = $file->getName();
 			$extension = '';
 		} else {
@@ -2176,10 +2201,10 @@ abstract class UploadBase {
 		// In fact, calling API modules here at all is less than optimal. Maybe it should be refactored.
 		if ( $stashFile ) {
 			$imParam = ApiQueryStashImageInfo::getPropertyNames();
-			$info = ApiQueryStashImageInfo::getInfo( $stashFile, array_fill_keys( $imParam, true ), $result );
+			$info = ApiQueryStashImageInfo::getInfo( $stashFile, array_flip( $imParam ), $result );
 		} else {
 			$imParam = ApiQueryImageInfo::getPropertyNames();
-			$info = ApiQueryImageInfo::getInfo( $localFile, array_fill_keys( $imParam, true ), $result );
+			$info = ApiQueryImageInfo::getInfo( $localFile, array_flip( $imParam ), $result );
 		}
 
 		return $info;
@@ -2241,11 +2266,11 @@ abstract class UploadBase {
 	 *
 	 * The value will be read from cache.
 	 *
-	 * @param UserIdentity $user
+	 * @param User $user
 	 * @param string $statusKey
 	 * @return Status[]|bool
 	 */
-	public static function getSessionStatus( UserIdentity $user, $statusKey ) {
+	public static function getSessionStatus( User $user, $statusKey ) {
 		$store = self::getUploadSessionStore();
 		$key = self::getUploadSessionKey( $store, $user, $statusKey );
 
@@ -2259,12 +2284,12 @@ abstract class UploadBase {
 	 *
 	 * Avoid triggering this method on HTTP GET/HEAD requests
 	 *
-	 * @param UserIdentity $user
+	 * @param User $user
 	 * @param string $statusKey
 	 * @param array|bool $value
 	 * @return void
 	 */
-	public static function setSessionStatus( UserIdentity $user, $statusKey, $value ) {
+	public static function setSessionStatus( User $user, $statusKey, $value ) {
 		$store = self::getUploadSessionStore();
 		$key = self::getUploadSessionKey( $store, $user, $statusKey );
 

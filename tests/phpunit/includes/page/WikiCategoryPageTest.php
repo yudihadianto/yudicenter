@@ -24,7 +24,7 @@ class WikiCategoryPageTest extends MediaWikiLangTestCase {
 		$pageProps->expects( $this->once() )
 			->method( 'getProperties' )
 			->with( $title, 'hiddencat' )
-			->willReturn( [] );
+			->will( $this->returnValue( [] ) );
 
 		$this->setService( 'PageProps', $pageProps );
 
@@ -50,7 +50,7 @@ class WikiCategoryPageTest extends MediaWikiLangTestCase {
 		$pageProps->expects( $this->once() )
 			->method( 'getProperties' )
 			->with( $categoryTitle, 'hiddencat' )
-			->willReturn( $isHidden ? [ $categoryTitle->getArticleID() => '' ] : [] );
+			->will( $this->returnValue( $isHidden ? [ $categoryTitle->getArticleID() => '' ] : [] ) );
 
 		$this->setService( 'PageProps', $pageProps );
 
@@ -68,7 +68,7 @@ class WikiCategoryPageTest extends MediaWikiLangTestCase {
 		$pageProps->expects( $this->once() )
 			->method( 'getProperties' )
 			->with( $title, 'expectunusedcategory' )
-			->willReturn( [] );
+			->will( $this->returnValue( [] ) );
 
 		$this->setService( 'PageProps', $pageProps );
 
@@ -88,7 +88,7 @@ class WikiCategoryPageTest extends MediaWikiLangTestCase {
 		$pageProps->expects( $this->once() )
 			->method( 'getProperties' )
 			->with( $categoryTitle, 'expectunusedcategory' )
-			->willReturn( $returnValue );
+			->will( $this->returnValue( $returnValue ) );
 
 		$this->setService( 'PageProps', $pageProps );
 

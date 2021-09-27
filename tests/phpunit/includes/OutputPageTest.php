@@ -3,9 +3,6 @@
 use MediaWiki\Languages\LanguageConverterFactory;
 use MediaWiki\MediaWikiServices;
 use MediaWiki\Page\PageIdentity;
-use MediaWiki\Page\PageReference;
-use MediaWiki\Page\PageReferenceValue;
-use MediaWiki\Page\PageStoreRecord;
 use MediaWiki\Permissions\Authority;
 use MediaWiki\Tests\Unit\Permissions\MockAuthorityTrait;
 use PHPUnit\Framework\MockObject\MockObject;
@@ -20,7 +17,6 @@ use Wikimedia\TestingAccessWrapper;
  */
 class OutputPageTest extends MediaWikiIntegrationTestCase {
 	use MockAuthorityTrait;
-	use MockTitleTrait;
 
 	private const SCREEN_MEDIA_QUERY = 'screen and (min-width: 982px)';
 	private const SCREEN_ONLY_MEDIA_QUERY = 'only screen and (min-width: 982px)';
@@ -34,12 +30,12 @@ class OutputPageTest extends MediaWikiIntegrationTestCase {
 	// phpcs:enable
 
 	// Ensure that we don't affect the global ResourceLoader state.
-	protected function setUp(): void {
+	protected function setUp() : void {
 		parent::setUp();
 		ResourceLoader::clearCache();
 	}
 
-	protected function tearDown(): void {
+	protected function tearDown() : void {
 		ResourceLoader::clearCache();
 		parent::tearDown();
 	}
@@ -73,7 +69,7 @@ class OutputPageTest extends MediaWikiIntegrationTestCase {
 		];
 	}
 
-	private function setupFeedLinks( $feed, $types ): OutputPage {
+	private function setupFeedLinks( $feed, $types ) : OutputPage {
 		$outputPage = $this->newInstance( [
 			'AdvertisedFeedTypes' => $types,
 			'Feed' => $feed,
@@ -704,7 +700,7 @@ class OutputPageTest extends MediaWikiIntegrationTestCase {
 	public function testSetRedirectedFrom() {
 		$op = $this->newInstance();
 
-		$op->setRedirectedFrom( new PageReferenceValue( NS_TALK, 'Some page', PageReference::LOCAL ) );
+		$op->setRedirectedFrom( Title::newFromText( 'Talk:Some page' ) );
 		$this->assertSame( 'Talk:Some_page', $op->getJSVars()['wgRedirectedFrom'] );
 	}
 
@@ -801,8 +797,11 @@ class OutputPageTest extends MediaWikiIntegrationTestCase {
 			return;
 		}
 
-		$title = $titles[0];
+		$title = Title::newFromText( $titles[0] );
 		$query = $queries[0];
+
+		$this->editPage( 'Page 1', '' );
+		$this->editPage( 'Page 2', '#REDIRECT [[Page 1]]' );
 
 		$str = OutputPage::buildBacklinkSubtitle( $title, $query )->text();
 
@@ -822,9 +821,12 @@ class OutputPageTest extends MediaWikiIntegrationTestCase {
 	 * @covers OutputPage::getSubtitle
 	 */
 	public function testAddBacklinkSubtitle( $titles, $queries, $contains, $notContains ) {
+		$this->editPage( 'Page 1', '' );
+		$this->editPage( 'Page 2', '#REDIRECT [[Page 1]]' );
+
 		$op = $this->newInstance();
 		foreach ( $titles as $i => $unused ) {
-			$op->addBacklinkSubtitle( $titles[$i], $queries[$i] );
+			$op->addBacklinkSubtitle( Title::newFromText( $titles[$i] ), $queries[$i] );
 		}
 
 		$str = $op->getSubtitle();
@@ -839,50 +841,27 @@ class OutputPageTest extends MediaWikiIntegrationTestCase {
 	}
 
 	public function provideBacklinkSubtitle() {
-		$page1title = $this->makeMockTitle( 'Page 1', [ 'redirect' => true ] );
-		$page1ref = new PageReferenceValue( NS_MAIN, 'Page 1', PageReference::LOCAL );
-
-		$row = [
-			'page_id' => 28,
-			'page_namespace' => NS_MAIN,
-			'page_title' => 'Page 2',
-			'page_latest' => 75,
-			'page_is_redirect' => true,
-			'page_is_new' => true,
-			'page_touched' => '20200101221133',
-			'page_lang' => 'en',
-		];
-		$page2rec = new PageStoreRecord( (object)$row, PageReference::LOCAL );
-
-		$special = new PageReferenceValue( NS_SPECIAL, 'BlankPage', PageReference::LOCAL );
-
 		return [
 			[
-				[ $page1title ],
+				[ 'Page 1' ],
 				[ [] ],
 				[ 'Page 1' ],
 				[ 'redirect', 'Page 2' ],
 			],
 			[
-				[ $page2rec ],
+				[ 'Page 2' ],
 				[ [] ],
 				[ 'redirect=no' ],
 				[ 'Page 1' ],
 			],
 			[
-				[ $special ],
-				[ [] ],
-				[ 'Special:BlankPage' ],
-				[ 'redirect=no' ],
-			],
-			[
-				[ $page1ref ],
+				[ 'Page 1' ],
 				[ [ 'action' => 'edit' ] ],
 				[ 'action=edit' ],
 				[],
 			],
 			[
-				[ $page1ref, $page2rec ],
+				[ 'Page 1', 'Page 2' ],
 				[ [], [] ],
 				[ 'Page 1', 'Page 2', "<br />\n\t\t\t\t" ],
 				[],
@@ -1215,12 +1194,13 @@ class OutputPageTest extends MediaWikiIntegrationTestCase {
 
 	private function setupCategoryTests(
 		array $fakeResults, callable $variantLinkCallback = null
-	): OutputPage {
+	) : OutputPage {
 		$this->setMwGlobals( 'wgUsePigLatinVariant', true );
 
 		if ( $variantLinkCallback ) {
 			$mockContLang = $this->createMock( Language::class );
 			$mockContLang
+				->expects( $this->any() )
 				->method( 'convertHtml' )
 				->will( $this->returnCallback( static function ( $arg ) {
 					return $arg;
@@ -1229,12 +1209,14 @@ class OutputPageTest extends MediaWikiIntegrationTestCase {
 			$mockLanguageConverter = $this
 				->createMock( ILanguageConverter::class );
 			$mockLanguageConverter
+				->expects( $this->any() )
 				->method( 'findVariantLink' )
 				->will( $this->returnCallback( $variantLinkCallback ) );
 
 			$languageConverterFactory = $this
 				->createMock( LanguageConverterFactory::class );
 			$languageConverterFactory
+				->expects( $this->any() )
 				->method( 'getLanguageConverter' )
 				->willReturn( $mockLanguageConverter );
 			$this->setService(
@@ -1245,14 +1227,16 @@ class OutputPageTest extends MediaWikiIntegrationTestCase {
 
 		$op = $this->getMockBuilder( OutputPage::class )
 			->setConstructorArgs( [ new RequestContext() ] )
-			->onlyMethods( [ 'addCategoryLinksToLBAndGetResult', 'getTitle' ] )
+			->setMethods( [ 'addCategoryLinksToLBAndGetResult', 'getTitle' ] )
 			->getMock();
 
 		$title = Title::newFromText( 'My test page' );
-		$op->method( 'getTitle' )
-			->willReturn( $title );
+		$op->expects( $this->any() )
+			->method( 'getTitle' )
+			->will( $this->returnValue( $title ) );
 
-		$op->method( 'addCategoryLinksToLBAndGetResult' )
+		$op->expects( $this->any() )
+			->method( 'addCategoryLinksToLBAndGetResult' )
 			->will( $this->returnCallback( static function ( array $categories ) use ( $fakeResults ) {
 				$return = [];
 				foreach ( $categories as $category => $unused ) {
@@ -1503,7 +1487,7 @@ class OutputPageTest extends MediaWikiIntegrationTestCase {
 	 * @param mixed ...$args
 	 * @return ParserOutput
 	 */
-	private function createParserOutputStub( ...$args ): ParserOutput {
+	private function createParserOutputStub( ...$args ) : ParserOutput {
 		if ( count( $args ) === 0 ) {
 			$retVals = [];
 		} elseif ( count( $args ) === 1 ) {
@@ -1653,8 +1637,6 @@ class OutputPageTest extends MediaWikiIntegrationTestCase {
 	}
 
 	public function provideAddWikiText() {
-		$somePageRef = new PageReferenceValue( NS_TALK, 'Some page', PageReference::LOCAL );
-
 		$tests = [
 			'addWikiTextAsInterface' => [
 				'Simple wikitext' => [
@@ -1675,11 +1657,11 @@ class OutputPageTest extends MediaWikiIntegrationTestCase {
 				], 'With title at start' => [
 					[ '* {{PAGENAME}}', true, Title::newFromText( 'Talk:Some page' ) ],
 					"<ul><li>Some page</li></ul>\n",
-				], 'With title not at start' => [
-					[ '* {{PAGENAME}}', false, Title::newFromText( 'Talk:Some page' ) ],
+				], 'With title at start' => [
+					[ '* {{PAGENAME}}', false, Title::newFromText( 'Talk:Some page' ), false ],
 					"<p>* Some page</p>",
 				], 'Untidy input' => [
-					[ '<b>{{PAGENAME}}', true, $somePageRef ],
+					[ '<b>{{PAGENAME}}', true, Title::newFromText( 'Talk:Some page' ) ],
 					"<p><b>Some page\n</b></p>",
 				],
 			],
@@ -1695,12 +1677,12 @@ class OutputPageTest extends MediaWikiIntegrationTestCase {
 					'<p>* <b>Not a list</b></p>',
 				], 'With title at start' => [
 					[ '* {{PAGENAME}}', true, Title::newFromText( 'Talk:Some page' ) ],
-					"<ul><li>Some page</li></ul>",
-				], 'With title not at start' => [
-					[ '* {{PAGENAME}}', false, Title::newFromText( 'Talk:Some page' ) ],
+					"<ul><li>Some page</li></ul>\n",
+				], 'With title at start' => [
+					[ '* {{PAGENAME}}', false, Title::newFromText( 'Talk:Some page' ), false ],
 					"<p>* Some page</p>",
 				], 'EditPage' => [
-					[ "<div class='mw-editintro'>{{PAGENAME}}", true, $somePageRef ],
+					[ "<div class='mw-editintro'>{{PAGENAME}}", true, Title::newFromText( 'Talk:Some page' ) ],
 					'<div class="mw-editintro">' . "Some page</div>"
 				],
 			],
@@ -2216,10 +2198,11 @@ class OutputPageTest extends MediaWikiIntegrationTestCase {
 		// Get rid of default Vary fields
 		$op = $this->getMockBuilder( OutputPage::class )
 			->setConstructorArgs( [ new RequestContext() ] )
-			->onlyMethods( [ 'getCacheVaryCookies' ] )
+			->setMethods( [ 'getCacheVaryCookies' ] )
 			->getMock();
-		$op->method( 'getCacheVaryCookies' )
-			->willReturn( $cookies );
+		$op->expects( $this->any() )
+			->method( 'getCacheVaryCookies' )
+			->will( $this->returnValue( $cookies ) );
 		TestingAccessWrapper::newFromObject( $op )->mVaryHeader = [];
 
 		$this->filterDeprecated( '/The \$option parameter to addVaryHeader is ignored/' );
@@ -2391,6 +2374,7 @@ class OutputPageTest extends MediaWikiIntegrationTestCase {
 			$languageConverterFactory = $this
 				->createMock( LanguageConverterFactory::class );
 			$languageConverterFactory
+				->expects( $this->any() )
 				->method( 'getLanguageConverter' )
 				->willReturn( $mockLanguageConverter );
 			$this->setService(
@@ -2654,7 +2638,7 @@ class OutputPageTest extends MediaWikiIntegrationTestCase {
 		$ctx->setLanguage( 'en' );
 		$op = $this->getMockBuilder( OutputPage::class )
 			->setConstructorArgs( [ $ctx ] )
-			->onlyMethods( [ 'buildCssLinksArray' ] )
+			->setMethods( [ 'buildCssLinksArray' ] )
 			->getMock();
 		$op->method( 'buildCssLinksArray' )
 			->willReturn( [] );
@@ -2760,7 +2744,7 @@ class OutputPageTest extends MediaWikiIntegrationTestCase {
 			[
 				'baseDir' => $baseDir, 'basePath' => '/w',
 				'/w/unknown.png',
-				'/w/unknown.png'
+				'/w/unknown.png?'
 			],
 			// File not matching basePath. Ignored.
 			[
@@ -2962,13 +2946,11 @@ class OutputPageTest extends MediaWikiIntegrationTestCase {
 	 * @covers ResourceLoaderSkinModule::getPreloadLinks
 	 * @covers ResourceLoaderSkinModule::getLogoPreloadlinks
 	 */
-	public function testPreloadLinkHeaders( $config, $result, $installPath = null ) {
-		if ( $installPath ) {
-			$this->setMwGlobals( [ 'IP' => $installPath ] );
-		}
-		$ctx = $this->createMock( ResourceLoaderContext::class );
+	public function testPreloadLinkHeaders( $config, $result ) {
+		$this->setMwGlobals( $config );
+		$ctx = $this->getMockBuilder( ResourceLoaderContext::class )
+			->disableOriginalConstructor()->getMock();
 		$module = new ResourceLoaderSkinModule();
-		$module->setConfig( new HashConfig( $config + ResourceLoaderTestCase::getSettings() ) );
 
 		$this->assertEquals( [ $result ], $module->getHeaders( $ctx ) );
 	}
@@ -2977,9 +2959,9 @@ class OutputPageTest extends MediaWikiIntegrationTestCase {
 		return [
 			[
 				[
-					'ResourceBasePath' => '/w',
-					'Logo' => '/img/default.png',
-					'Logos' => [
+					'wgResourceBasePath' => '/w',
+					'wgLogo' => '/img/default.png',
+					'wgLogos' => [
 						'1.5x' => '/img/one-point-five.png',
 						'2x' => '/img/two-x.png',
 					],
@@ -2992,8 +2974,8 @@ class OutputPageTest extends MediaWikiIntegrationTestCase {
 			],
 			[
 				[
-					'ResourceBasePath' => '/w',
-					'Logos' => [
+					'wgResourceBasePath' => '/w',
+					'wgLogos' => [
 						'1x' => '/img/default.png',
 					],
 				],
@@ -3001,8 +2983,8 @@ class OutputPageTest extends MediaWikiIntegrationTestCase {
 			],
 			[
 				[
-					'ResourceBasePath' => '/w',
-					'Logos' => [
+					'wgResourceBasePath' => '/w',
+					'wgLogos' => [
 						'1x' => '/img/default.png',
 						'2x' => '/img/two-x.png',
 					],
@@ -3013,8 +2995,8 @@ class OutputPageTest extends MediaWikiIntegrationTestCase {
 			],
 			[
 				[
-					'ResourceBasePath' => '/w',
-					'Logos' => [
+					'wgResourceBasePath' => '/w',
+					'wgLogos' => [
 						'1x' => '/img/default.png',
 						'svg' => '/img/vector.svg',
 					],
@@ -3024,14 +3006,14 @@ class OutputPageTest extends MediaWikiIntegrationTestCase {
 			],
 			[
 				[
-					'ResourceBasePath' => '/w',
-					'Logos' => [
+					'wgResourceBasePath' => '/w',
+					'wgLogos' => [
 						'1x' => '/w/test.jpg',
 					],
-					'UploadPath' => '/w/images',
+					'wgUploadPath' => '/w/images',
+					'IP' => dirname( __DIR__ ) . '/data/media',
 				],
 				'Link: </w/test.jpg?edcf2>;rel=preload;as=image',
-				dirname( __DIR__ ) . '/data/media',
 			],
 		];
 	}
@@ -3045,7 +3027,8 @@ class OutputPageTest extends MediaWikiIntegrationTestCase {
 	 */
 	public function testIsRevisionCurrent( $titleLastRevision, $outputRevision, $expectedResult ) {
 		$titleMock = $this->createMock( Title::class );
-		$titleMock->method( 'getLatestRevID' )
+		$titleMock->expects( $this->any() )
+			->method( 'getLatestRevID' )
 			->willReturn( $titleLastRevision );
 
 		$output = $this->newInstance( [], null );
@@ -3177,7 +3160,7 @@ class OutputPageTest extends MediaWikiIntegrationTestCase {
 			]
 		];
 		yield 'only can edit relevant title' => [
-			'performer' => $this->mockAnonAuthority( static function (
+			'performer' => $this->mockAnonAuthority( function (
 				string $permission,
 				PageIdentity $page
 			) {
@@ -3198,7 +3181,7 @@ class OutputPageTest extends MediaWikiIntegrationTestCase {
 
 	/**
 	 * @dataProvider provideGetJsVarsEditable
-	 * @covers OutputPage::getJSVars
+	 * @covers OutputPage::performerCanEditOrCreate
 	 */
 	public function testGetJsVarsEditable( Authority $performer, array $expectedEditableConfig ) {
 		$op = $this->newInstance( [], null, null, $performer );
@@ -3283,7 +3266,7 @@ class OutputPageTest extends MediaWikiIntegrationTestCase {
 		WebRequest $request = null,
 		$option = null,
 		Authority $performer = null
-	): OutputPage {
+	) : OutputPage {
 		$context = new RequestContext();
 
 		$context->setConfig( new MultiConfig( [

@@ -68,18 +68,13 @@ $.position = {
 			height: hasOverflowY ? $.position.scrollbarWidth() : 0
 		};
 	},
-	isWindow: function( obj ) {
-		return obj != null && obj === obj.window;
-	},
 	getWithinInfo: function( element ) {
 		var withinElement = $( element || window ),
-			isWindow = this.isWindow( withinElement[0] ),
-			isDocument = !!withinElement[ 0 ] && withinElement[ 0 ].nodeType === 9,
-			hasOffset = !isWindow && !isDocument;
+			isWindow = $.isWindow( withinElement[0] );
 		return {
 			element: withinElement,
 			isWindow: isWindow,
-			offset: hasOffset ? $( element ).offset() : { left: 0, top: 0 },
+			offset: withinElement.offset() || { left: 0, top: 0 },
 			scrollLeft: withinElement.scrollLeft(),
 			scrollTop: withinElement.scrollTop(),
 			width: isWindow ? withinElement.width() : withinElement.outerWidth(),
@@ -108,7 +103,7 @@ $.fn.position = function( options ) {
 		targetWidth = target.width();
 		targetHeight = target.height();
 		targetOffset = { top: 0, left: 0 };
-	} else if ( $.position.isWindow( targetElem ) ) {
+	} else if ( $.isWindow( targetElem ) ) {
 		targetWidth = target.width();
 		targetHeight = target.height();
 		targetOffset = { top: target.scrollTop(), left: target.scrollLeft() };

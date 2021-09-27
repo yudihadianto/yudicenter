@@ -138,7 +138,7 @@ class ChangesListStringOptionsFilterGroup extends ChangesListFilterGroup {
 	/**
 	 * Gets default of filter group
 	 *
-	 * @return string
+	 * @return string $defaultValue
 	 */
 	public function getDefault() {
 		return $this->defaultValue;

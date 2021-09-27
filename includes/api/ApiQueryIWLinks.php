@@ -40,7 +40,7 @@ class ApiQueryIWLinks extends ApiQueryBase {
 		}
 
 		$params = $this->extractRequestParams();
-		$prop = array_fill_keys( (array)$params['prop'], true );
+		$prop = array_flip( (array)$params['prop'] );
 
 		if ( isset( $params['title'] ) && !isset( $params['prefix'] ) ) {
 			$this->dieWithError(

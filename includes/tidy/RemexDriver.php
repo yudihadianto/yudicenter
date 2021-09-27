@@ -3,13 +3,12 @@
 namespace MediaWiki\Tidy;
 
 use MediaWiki\Config\ServiceOptions;
-use Wikimedia\RemexHtml\HTMLData;
-use Wikimedia\RemexHtml\Serializer\Serializer;
-use Wikimedia\RemexHtml\Serializer\SerializerWithTracer;
-use Wikimedia\RemexHtml\Tokenizer\Tokenizer;
-use Wikimedia\RemexHtml\TreeBuilder\Dispatcher;
-use Wikimedia\RemexHtml\TreeBuilder\TreeBuilder;
-use Wikimedia\RemexHtml\TreeBuilder\TreeMutationTracer;
+use RemexHtml\Serializer\Serializer;
+use RemexHtml\Serializer\SerializerWithTracer;
+use RemexHtml\Tokenizer\Tokenizer;
+use RemexHtml\TreeBuilder\Dispatcher;
+use RemexHtml\TreeBuilder\TreeBuilder;
+use RemexHtml\TreeBuilder\TreeMutationTracer;
 
 class RemexDriver extends TidyDriverBase {
 	private $treeMutationTrace;
@@ -80,7 +79,7 @@ class RemexDriver extends TidyDriverBase {
 		] );
 
 		$tokenizer->execute( [
-			'fragmentNamespace' => HTMLData::NS_HTML,
+			'fragmentNamespace' => \RemexHtml\HTMLData::NS_HTML,
 			'fragmentName' => 'body'
 		] );
 		return $serializer->getResult();

@@ -40,7 +40,6 @@ class RightsLogFormatter extends LogFormatter {
 			$parts = explode( $wgUserrightsInterwikiDelimiter, $text, 2 );
 
 			if ( count( $parts ) === 2 ) {
-				// @phan-suppress-next-line SecurityCheck-DoubleEscaped
 				$titleLink = WikiMap::foreignUserLink(
 					$parts[1],
 					$parts[0],

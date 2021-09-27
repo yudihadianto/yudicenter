@@ -37,6 +37,7 @@ class SpecialUncategorizedImages extends ImageQueryPage {
 	 */
 	public function __construct( ILoadBalancer $loadBalancer ) {
 		parent::__construct( 'Uncategorizedimages' );
+		$this->addHelpLink( 'Help:Categories' );
 		$this->setDBLoadBalancer( $loadBalancer );
 	}
 
@@ -54,11 +55,6 @@ class SpecialUncategorizedImages extends ImageQueryPage {
 
 	protected function getOrderFields() {
 		return [ 'title' ];
-	}
-
-	public function execute( $par ) {
-		$this->addHelpLink( 'Help:Categories' );
-		parent::execute( $par );
 	}
 
 	public function getQueryInfo() {

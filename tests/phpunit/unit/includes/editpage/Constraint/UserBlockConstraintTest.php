@@ -39,8 +39,8 @@ class UserBlockConstraintTest extends MediaWikiUnitTestCase {
 		$permissionManager->expects( $this->once() )
 			->method( 'isBlockedFrom' )
 			->with(
-				$user,
-				$title
+				$this->equalTo( $user ),
+				$this->equalTo( $title )
 			)
 			->willReturn( false );
 
@@ -55,8 +55,8 @@ class UserBlockConstraintTest extends MediaWikiUnitTestCase {
 		$permissionManager->expects( $this->once() )
 			->method( 'isBlockedFrom' )
 			->with(
-				$user,
-				$title
+				$this->equalTo( $user ),
+				$this->equalTo( $title )
 			)
 			->willReturn( true );
 

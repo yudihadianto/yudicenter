@@ -24,8 +24,7 @@ class SpecialEditWatchlistTest extends SpecialPageTestBase {
 			$services->getGenderCache(),
 			$services->getLinkBatchFactory(),
 			$services->getNamespaceInfo(),
-			$services->getWikiPageFactory(),
-			$services->getWatchlistManager()
+			$services->getWikiPageFactory()
 		);
 	}
 

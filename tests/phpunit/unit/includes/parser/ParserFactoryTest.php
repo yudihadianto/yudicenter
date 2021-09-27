@@ -2,13 +2,13 @@
 
 use MediaWiki\BadFileLookup;
 use MediaWiki\Config\ServiceOptions;
-use MediaWiki\Http\HttpRequestFactory;
 use MediaWiki\Languages\LanguageConverterFactory;
 use MediaWiki\Linker\LinkRendererFactory;
 use MediaWiki\SpecialPage\SpecialPageFactory;
 use MediaWiki\Tidy\TidyDriverBase;
 use MediaWiki\User\UserFactory;
 use MediaWiki\User\UserOptionsLookup;
+use Psr\Log\LoggerInterface;
 use Wikimedia\TestingAccessWrapper;
 
 /**
@@ -18,7 +18,7 @@ class ParserFactoryTest extends MediaWikiUnitTestCase {
 	private function createFactory() {
 		$options = $this->getMockBuilder( ServiceOptions::class )
 		->disableOriginalConstructor()
-		->onlyMethods( [ 'assertRequiredOptions', 'get' ] )->getMock();
+		->setMethods( [ 'assertRequiredOptions', 'get' ] )->getMock();
 
 		$options->expects( $this->never() )
 			->method( $this->anythingBut( 'assertRequiredOptions', 'get' ) );
@@ -29,13 +29,13 @@ class ParserFactoryTest extends MediaWikiUnitTestCase {
 		// function hooks when it is created.
 		$mwFactory = $this->getMockBuilder( MagicWordFactory::class )
 			->disableOriginalConstructor()
-			->onlyMethods( [ 'get', 'getVariableIDs' ] )
+			->setMethods( [ 'get', 'getVariableIDs' ] )
 			->getMock();
 		$mwFactory
 			->method( 'get' )->will( $this->returnCallback( function ( $arg ) {
 				$mw = $this->getMockBuilder( MagicWord::class )
 				->disableOriginalConstructor()
-				->onlyMethods( [ 'getSynonyms' ] )
+				->setMethods( [ 'getSynonyms' ] )
 				->getMock();
 				$mw->method( 'getSynonyms' )->willReturn( [] );
 				return $mw;
@@ -51,16 +51,14 @@ class ParserFactoryTest extends MediaWikiUnitTestCase {
 			$this->createNoOpMock( SpecialPageFactory::class ),
 			$this->createNoOpMock( LinkRendererFactory::class ),
 			$this->createNoOpMock( NamespaceInfo::class ),
-			new TestLogger(),
+			$this->createNoOpMock( LoggerInterface::class ),
 			$this->createNoOpMock( BadFileLookup::class ),
 			$this->createNoOpMock( LanguageConverterFactory::class ),
 			$this->createHookContainer(),
 			$this->createNoOpMock( TidyDriverBase::class ),
 			$this->createNoOpMock( WANObjectCache::class ),
 			$this->createNoOpMock( UserOptionsLookup::class ),
-			$this->createNoOpMock( UserFactory::class ),
-			$this->createNoOpMock( TitleFormatter::class ),
-			$this->createNoOpMock( HttpRequestFactory::class )
+			$this->createNoOpMock( UserFactory::class )
 		);
 		return $factory;
 	}

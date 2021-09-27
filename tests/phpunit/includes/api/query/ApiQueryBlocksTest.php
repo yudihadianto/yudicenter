@@ -34,7 +34,7 @@ class ApiQueryBlocksTest extends ApiTestCase {
 		$block = new DatabaseBlock( [
 			'address' => $badActor->getName(),
 			'user' => $badActor->getId(),
-			'by' => $sysop,
+			'by' => $sysop->getId(),
 			'expiry' => 'infinity',
 		] );
 
@@ -62,7 +62,7 @@ class ApiQueryBlocksTest extends ApiTestCase {
 		$block = new DatabaseBlock( [
 			'address' => $badActor->getName(),
 			'user' => $badActor->getId(),
-			'by' => $sysop,
+			'by' => $sysop->getId(),
 			'ipb_expiry' => 'infinity',
 			'ipb_sitewide' => 1,
 		] );
@@ -86,16 +86,13 @@ class ApiQueryBlocksTest extends ApiTestCase {
 	}
 
 	public function testExecuteRestrictions() {
-		$this->setMwGlobals( [
-			'wgEnablePartialActionBlocks' => true,
-		] );
 		$badActor = $this->getTestUser()->getUser();
 		$sysop = $this->getTestSysop()->getUser();
 
 		$block = new DatabaseBlock( [
 			'address' => $badActor->getName(),
 			'user' => $badActor->getId(),
-			'by' => $sysop,
+			'by' => $sysop->getId(),
 			'expiry' => 'infinity',
 			'sitewide' => 0,
 		] );
@@ -128,17 +125,10 @@ class ApiQueryBlocksTest extends ApiTestCase {
 			'ir_type' => NamespaceRestriction::TYPE_ID,
 			'ir_value' => NS_USER_TALK,
 		] );
-		// Invalid type
-		$this->db->insert( 'ipblocks_restrictions', [
-			'ir_ipb_id' => $block->getId(),
-			'ir_type' => 127,
-			'ir_value' => 4,
-		] );
-		// Action (upload)
 		$this->db->insert( 'ipblocks_restrictions', [
 			'ir_ipb_id' => $block->getId(),
 			'ir_type' => 3,
-			'ir_value' => 1,
+			'ir_value' => 4,
 		] );
 
 		// Test without requesting restrictions.
@@ -176,9 +166,6 @@ class ApiQueryBlocksTest extends ApiTestCase {
 				'namespaces' => [
 					NS_USER_TALK,
 				],
-				'actions' => [
-					'upload'
-				]
 			],
 		] );
 		$this->assertArraySubmapSame( $restrictionsSubset, $data['query']['blocks'][0] );

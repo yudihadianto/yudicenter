@@ -38,47 +38,36 @@ abstract class DiffOp {
 
 	/**
 	 * @var string
-	 * @private Please use {@see getType}
 	 */
 	public $type;
 
 	/**
-	 * @var string[]|false The left ("old") side of the diff, or false when it's an "add"
-	 * @private Please use {@see getOrig}
+	 * @var string[]|false
 	 */
 	public $orig;
 
 	/**
-	 * @var string[]|false The right ("new") side of the diff, or false when it's a "delete"
-	 * @private Please use {@see getClosing}
+	 * @var string[]|false
 	 */
 	public $closing;
 
 	/**
-	 * @return string Either "add", "change", "copy", or "delete"
+	 * @return string
 	 */
 	public function getType() {
 		return $this->type;
 	}
 
 	/**
-	 * Returns either all lines on the left ("old") side of the diff, or false when it's an add
-	 * operation.
-	 *
-	 * @return string[]|false
+	 * @return string[]
 	 */
 	public function getOrig() {
 		return $this->orig;
 	}
 
 	/**
-	 * Without a line number this returns either all lines on the right ("new") side of the diff, or
-	 * false when it's a delete operation.
-	 *
-	 * With a line number this returns either the line or null if the line doesn't exist.
-	 *
-	 * @param int|null $i Line number, or null for all lines in the operation
-	 * @return string[]|false|string|null
+	 * @param int|null $i
+	 * @return string[]|string|null
 	 */
 	public function getClosing( $i = null ) {
 		if ( $i === null ) {
@@ -91,19 +80,19 @@ abstract class DiffOp {
 	}
 
 	/**
-	 * @return self Inverted operation (a.k.a. revert or undo), e.g. "delete" becomes "add"
+	 * @return self
 	 */
 	abstract public function reverse();
 
 	/**
-	 * @return int Number of lines on the left ("old") side of the diff, {@see getOrig}
+	 * @return int
 	 */
 	public function norig() {
 		return $this->orig ? count( $this->orig ) : 0;
 	}
 
 	/**
-	 * @return int Number of lines on the right ("new") side of the diff, see {@see getClosing}
+	 * @return int
 	 */
 	public function nclosing() {
 		return $this->closing ? count( $this->closing ) : 0;

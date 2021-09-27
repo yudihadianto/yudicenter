@@ -20,8 +20,6 @@
  * @author Roan Kattouw
  */
 
-use MediaWiki\MediaWikiServices;
-
 /**
  * Module for user customizations styles.
  *
@@ -55,9 +53,7 @@ class ResourceLoaderUserStylesModule extends ResourceLoaderWikiModule {
 
 		// User group pages are maintained site-wide and enabled with site JS/CSS.
 		if ( $config->get( 'UseSiteCss' ) ) {
-			$effectiveGroups = MediaWikiServices::getInstance()->getUserGroupManager()
-				->getUserEffectiveGroups( $user );
-			foreach ( $effectiveGroups as $group ) {
+			foreach ( $user->getEffectiveGroups() as $group ) {
 				if ( $group == '*' ) {
 					continue;
 				}

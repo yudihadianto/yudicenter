@@ -16,19 +16,19 @@ class SanitizerUnitTest extends MediaWikiUnitTestCase {
 	public function provideDecodeCharReferences() {
 		return [
 			'decode named entities' => [
-				"\u{00E9}cole",
+				"\xc3\xa9cole",
 				'&eacute;cole',
 			],
 			'decode numeric entities' => [
-				"\u{0108}io bonas dans l'\u{00E9}cole!",
+				"\xc4\x88io bonas dans l'\xc3\xa9cole!",
 				"&#x108;io bonas dans l'&#233;cole!",
 			],
 			'decode mixed numeric/named entities' => [
-				"\u{0108}io bonas dans l'\u{00E9}cole!",
+				"\xc4\x88io bonas dans l'\xc3\xa9cole!",
 				"&#x108;io bonas dans l'&eacute;cole!",
 			],
 			'decode mixed complex entities' => [
-				"\u{0108}io bonas dans l'\u{00E9}cole! (mais pas &#x108;io dans l'&eacute;cole)",
+				"\xc4\x88io bonas dans l'\xc3\xa9cole! (mais pas &#x108;io dans l'&eacute;cole)",
 				"&#x108;io bonas dans l'&eacute;cole! (mais pas &amp;#x108;io dans l'&#38;eacute;cole)",
 			],
 			'Invalid ampersand' => [

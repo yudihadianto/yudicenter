@@ -23,7 +23,7 @@
  *
  * This is a wrapper that will call the EditPage class or a custom editor from an extension.
  *
- * @stable to extend
+ * @stable for subclasssing
  * @ingroup Actions
  */
 class EditAction extends FormlessAction {

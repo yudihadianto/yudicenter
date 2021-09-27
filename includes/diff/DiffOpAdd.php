@@ -37,7 +37,7 @@ class DiffOpAdd extends DiffOp {
 	public $type = 'add';
 
 	/**
-	 * @param string[] $lines
+	 * @param string[]|false $lines
 	 */
 	public function __construct( $lines ) {
 		$this->closing = $lines;

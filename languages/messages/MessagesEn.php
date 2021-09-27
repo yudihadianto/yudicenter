@@ -22,6 +22,12 @@ $fallback = false;
 $rtl = false;
 
 /**
+ * Should all nouns (not just proper ones) be capitalized?
+ * Enabling this property will add the capitalize-all-nouns class to the <body> tag
+ */
+$capitalizeAllNouns = false;
+
+/**
  * Optional array mapping ASCII digits 0-9 to local digits.
  */
 $digitTransformTable = null;

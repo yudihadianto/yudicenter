@@ -71,7 +71,7 @@ $.widget = function( name, base, prototype ) {
 	// inheriting from
 	basePrototype.options = $.widget.extend( {}, basePrototype.options );
 	$.each( prototype, function( prop, value ) {
-		if ( typeof value === "function" ) {
+		if ( $.isFunction( value ) ) {
 			prototype[ prop ] = (function() {
 				var _super = function() {
 						return base.prototype[ prop ].apply( this, arguments );
@@ -179,7 +179,7 @@ $.widget.bridge = function( name, object ) {
 					return $.error( "cannot call methods on " + name + " prior to initialization; " +
 						"attempted to call method '" + options + "'" );
 				}
-				if ( typeof instance[options] !== "function" || options.charAt( 0 ) === "_" ) {
+				if ( !$.isFunction( instance[options] ) || options.charAt( 0 ) === "_" ) {
 					return $.error( "no such method '" + options + "' for " + name + " widget instance" );
 				}
 				methodValue = instance[ options ].apply( instance, args );
@@ -266,7 +266,7 @@ $.Widget.prototype = {
 		// we can probably remove the unbind calls in 2.0
 		// all event bindings should go through this._on()
 		this.element
-			.off( this.eventNamespace )
+			.unbind( this.eventNamespace )
 			// 1.9 BC for #7810
 			// TODO remove dual storage
 			.removeData( this.widgetName )
@@ -275,14 +275,14 @@ $.Widget.prototype = {
 			// http://bugs.jquery.com/ticket/9413
 			.removeData( $.camelCase( this.widgetFullName ) );
 		this.widget()
-			.off( this.eventNamespace )
+			.unbind( this.eventNamespace )
 			.removeAttr( "aria-disabled" )
 			.removeClass(
 				this.widgetFullName + "-disabled " +
 				"ui-state-disabled" );
 
 		// clean up events and states
-		this.bindings.off( this.eventNamespace );
+		this.bindings.unbind( this.eventNamespace );
 		this.hoverable.removeClass( "ui-state-hover" );
 		this.focusable.removeClass( "ui-state-focus" );
 	},
@@ -407,7 +407,7 @@ $.Widget.prototype = {
 				eventName = match[1] + instance.eventNamespace,
 				selector = match[2];
 			if ( selector ) {
-				delegateElement.on( eventName, selector, handlerProxy );
+				delegateElement.delegate( selector, eventName, handlerProxy );
 			} else {
 				element.on( eventName, handlerProxy );
 			}
@@ -416,7 +416,7 @@ $.Widget.prototype = {
 
 	_off: function( element, eventName ) {
 		eventName = (eventName || "").split( " " ).join( this.eventNamespace + " " ) + this.eventNamespace;
-		element.off( eventName );
+		element.unbind( eventName ).undelegate( eventName );
 	},
 
 	_delay: function( handler, delay ) {
@@ -476,7 +476,7 @@ $.Widget.prototype = {
 		}
 
 		this.element.trigger( event, data );
-		return !( typeof callback === 'function' &&
+		return !( $.isFunction( callback ) &&
 			callback.apply( this.element[0], [ event ].concat( data ) ) === false ||
 			event.isDefaultPrevented() );
 	}

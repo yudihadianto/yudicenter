@@ -22,11 +22,7 @@
  * @ingroup FileRepo
  */
 
-use MediaWiki\Linker\LinkTarget;
 use MediaWiki\MediaWikiServices;
-use MediaWiki\Page\PageIdentity;
-use MediaWiki\Permissions\Authority;
-use MediaWiki\Storage\BlobStore;
 use Wikimedia\Rdbms\Database;
 use Wikimedia\Rdbms\IDatabase;
 use Wikimedia\Rdbms\IResultWrapper;
@@ -57,24 +53,6 @@ class LocalRepo extends FileRepo {
 	/** @var bool Whether shared cache keys are exposed/accessible */
 	protected $hasAccessibleSharedCache;
 
-	/** @var BlobStore */
-	protected $blobStore;
-
-	/** @var bool */
-	protected $useJsonMetadata = false;
-
-	/** @var bool */
-	protected $useSplitMetadata = false;
-
-	/** @var int|null */
-	protected $splitMetadataThreshold = 1000;
-
-	/** @var bool */
-	protected $updateCompatibleMetadata = false;
-
-	/** @var bool */
-	protected $reserializeMetadata = false;
-
 	public function __construct( array $info = null ) {
 		parent::__construct( $info );
 
@@ -89,20 +67,6 @@ class LocalRepo extends FileRepo {
 				'repoName'        => $this->name,
 				'dbHandleFactory' => $this->getDBFactory()
 			] );
-		}
-
-		foreach (
-			[
-				'useJsonMetadata',
-				'useSplitMetadata',
-				'splitMetadataThreshold',
-				'updateCompatibleMetadata',
-				'reserializeMetadata',
-			] as $option
-		) {
-			if ( isset( $info[$option] ) ) {
-				$this->$option = $info[$option];
-			}
 		}
 	}
 
@@ -122,12 +86,11 @@ class LocalRepo extends FileRepo {
 	}
 
 	/**
-	 * @param PageIdentity|LinkTarget|string $title
+	 * @param Title $title
 	 * @param string $archiveName
 	 * @return OldLocalFile
 	 */
 	public function newFromArchiveName( $title, $archiveName ) {
-		$title = File::normalizeTitle( $title );
 		return OldLocalFile::newFromArchiveName( $title, $this, $archiveName );
 	}
 
@@ -149,7 +112,7 @@ class LocalRepo extends FileRepo {
 
 		$backend = $this->backend; // convenience
 		$root = $this->getZonePath( 'deleted' );
-		$dbw = $this->getPrimaryDB();
+		$dbw = $this->getMasterDB();
 		$status = $this->newGood();
 		$storageKeys = array_unique( $storageKeys );
 		foreach ( $storageKeys as $key ) {
@@ -185,11 +148,13 @@ class LocalRepo extends FileRepo {
 	 * @return bool File with this key is in use
 	 */
 	protected function deletedFileHasKey( $key, $lock = null ) {
-		$dbw = $this->getPrimaryDB();
+		$options = ( $lock === 'lock' ) ? [ 'FOR UPDATE' ] : [];
+
+		$dbw = $this->getMasterDB();
+
 		return (bool)$dbw->selectField( 'filearchive', '1',
 			[ 'fa_storage_group' => 'deleted', 'fa_storage_key' => $key ],
-			__METHOD__,
-			$lock === 'lock' ? [ 'FOR UPDATE' ] : []
+			__METHOD__, $options
 		);
 	}
 
@@ -201,18 +166,18 @@ class LocalRepo extends FileRepo {
 	 * @return bool File with this key is in use
 	 */
 	protected function hiddenFileHasKey( $key, $lock = null ) {
+		$options = ( $lock === 'lock' ) ? [ 'FOR UPDATE' ] : [];
+
 		$sha1 = self::getHashFromKey( $key );
 		$ext = File::normalizeExtension( substr( $key, strcspn( $key, '.' ) + 1 ) );
 
-		$dbw = $this->getPrimaryDB();
+		$dbw = $this->getMasterDB();
+
 		return (bool)$dbw->selectField( 'oldimage', '1',
-			[
-				'oi_sha1' => $sha1,
+			[ 'oi_sha1' => $sha1,
 				'oi_archive_name ' . $dbw->buildLike( $dbw->anyString(), ".$ext" ),
-				$dbw->bitAnd( 'oi_deleted', File::DELETED_FILE ) => File::DELETED_FILE,
-			],
-			__METHOD__,
-			$lock === 'lock' ? [ 'FOR UPDATE' ] : []
+				$dbw->bitAnd( 'oi_deleted', File::DELETED_FILE ) => File::DELETED_FILE ],
+			__METHOD__, $options
 		);
 	}
 
@@ -233,10 +198,10 @@ class LocalRepo extends FileRepo {
 	/**
 	 * Checks if there is a redirect named as $title
 	 *
-	 * @param PageIdentity|LinkTarget $title Title of file
+	 * @param Title $title Title of file
 	 * @return bool|Title
 	 */
-	public function checkRedirect( $title ) {
+	public function checkRedirect( Title $title ) {
 		$title = File::normalizeTitle( $title, 'exception' );
 
 		$memcKey = $this->getSharedCacheKey( 'file-redirect', md5( $title->getDBkey() ) );
@@ -307,10 +272,10 @@ class LocalRepo extends FileRepo {
 			// Fallback to RequestContext::getMain should be replaced with a better
 			// way of setting the user that should be used; currently it needs to be
 			// set for each file individually. See T263033#6477586
-			$contextPerformer = RequestContext::getMain()->getAuthority();
-			$performer = ( !empty( $search['private'] ) && $search['private'] instanceof Authority )
+			$contextUser = RequestContext::getMain()->getUser();
+			$user = ( !empty( $search['private'] ) && $search['private'] instanceof User )
 				? $search['private']
-				: $contextPerformer;
+				: $contextUser;
 
 			return (
 				$file->exists() &&
@@ -319,7 +284,7 @@ class LocalRepo extends FileRepo {
 					( !empty( $search['time'] ) && $search['time'] === $file->getTimestamp() )
 				) &&
 				( !empty( $search['private'] ) || !$file->isDeleted( File::DELETED_FILE ) ) &&
-				$file->userCan( File::DELETED_FILE, $performer )
+				$file->userCan( File::DELETED_FILE, $user )
 			);
 		};
 
@@ -518,26 +483,15 @@ class LocalRepo extends FileRepo {
 	}
 
 	/**
-	 * Get a connection to the primary DB
-	 * @return IDatabase
-	 * @since 1.37
-	 */
-	public function getPrimaryDB() {
-		return wfGetDB( DB_PRIMARY );
-	}
-
-	/**
-	 * Get a connection to the primary DB
-	 * @deprecated since 1.37
+	 * Get a connection to the master DB
 	 * @return IDatabase
 	 */
 	public function getMasterDB() {
-		wfDeprecated( __METHOD__, '1.37' );
-		return $this->getPrimaryDB();
+		return wfGetDB( DB_MASTER );
 	}
 
 	/**
-	 * Get a callback to get a DB handle given an index (DB_REPLICA/DB_PRIMARY)
+	 * Get a callback to get a DB handle given an index (DB_REPLICA/DB_MASTER)
 	 * @return Closure
 	 */
 	protected function getDBFactory() {
@@ -570,13 +524,13 @@ class LocalRepo extends FileRepo {
 	/**
 	 * Invalidates image redirect cache related to that image
 	 *
-	 * @param PageIdentity|LinkTarget $title Title of page
+	 * @param Title $title Title of page
 	 * @return void
 	 */
-	public function invalidateImageRedirect( $title ) {
+	public function invalidateImageRedirect( Title $title ) {
 		$key = $this->getSharedCacheKey( 'file-redirect', md5( $title->getDBkey() ) );
 		if ( $key ) {
-			$this->getPrimaryDB()->onTransactionPreCommitOrIdle(
+			$this->getMasterDB()->onTransactionPreCommitOrIdle(
 				function () use ( $key ) {
 					$this->wanCache->delete( $key );
 				},
@@ -649,60 +603,5 @@ class LocalRepo extends FileRepo {
 		} else {
 			return parent::$function( ...$args );
 		}
-	}
-
-	/**
-	 * Returns true if files should store metadata in JSON format. This
-	 * requires metadata from all handlers to be JSON-serializable.
-	 *
-	 * To avoid breaking existing metadata, reading JSON metadata is always
-	 * enabled regardless of this setting.
-	 *
-	 * @return bool
-	 */
-	public function isJsonMetadataEnabled() {
-		return $this->useJsonMetadata;
-	}
-
-	/**
-	 * Returns true if files should split up large metadata, storing parts of
-	 * it in the BlobStore.
-	 *
-	 * @return bool
-	 */
-	public function isSplitMetadataEnabled() {
-		return $this->isJsonMetadataEnabled() && $this->useSplitMetadata;
-	}
-
-	/**
-	 * Get the threshold above which metadata items should be split into
-	 * separate storage, or null if no splitting should be done.
-	 *
-	 * @return int
-	 */
-	public function getSplitMetadataThreshold() {
-		return $this->splitMetadataThreshold;
-	}
-
-	public function isMetadataUpdateEnabled() {
-		return $this->updateCompatibleMetadata;
-	}
-
-	public function isMetadataReserializeEnabled() {
-		return $this->reserializeMetadata;
-	}
-
-	/**
-	 * Get a BlobStore for storing and retrieving large metadata, or null if
-	 * that can't be done.
-	 *
-	 * @return ?BlobStore
-	 */
-	public function getBlobStore(): ?BlobStore {
-		if ( !$this->blobStore ) {
-			$this->blobStore = MediaWikiServices::getInstance()->getBlobStoreFactory()
-				->newBlobStore( $this->dbDomain );
-		}
-		return $this->blobStore;
 	}
 }

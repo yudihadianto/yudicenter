@@ -22,6 +22,7 @@
  */
 
 use MediaWiki\Auth\AuthManager;
+use MediaWiki\MediaWikiServices;
 
 /**
  * A query action to return meta information about AuthManager state.
@@ -30,34 +31,22 @@ use MediaWiki\Auth\AuthManager;
  */
 class ApiQueryAuthManagerInfo extends ApiQueryBase {
 
-	/** @var AuthManager */
-	private $authManager;
-
-	/**
-	 * @param ApiQuery $query
-	 * @param string $moduleName
-	 * @param AuthManager $authManager
-	 */
-	public function __construct(
-		ApiQuery $query,
-		$moduleName,
-		AuthManager $authManager
-	) {
+	public function __construct( ApiQuery $query, $moduleName ) {
 		parent::__construct( $query, $moduleName, 'ami' );
-		$this->authManager = $authManager;
 	}
 
 	public function execute() {
 		$params = $this->extractRequestParams();
-		$helper = new ApiAuthManagerHelper( $this, $this->authManager );
+		$manager = MediaWikiServices::getInstance()->getAuthManager();
+		$helper = new ApiAuthManagerHelper( $this, $manager );
 		$ret = [
-			'canauthenticatenow' => $this->authManager->canAuthenticateNow(),
-			'cancreateaccounts' => $this->authManager->canCreateAccounts(),
-			'canlinkaccounts' => $this->authManager->canLinkAccounts(),
+			'canauthenticatenow' => $manager->canAuthenticateNow(),
+			'cancreateaccounts' => $manager->canCreateAccounts(),
+			'canlinkaccounts' => $manager->canLinkAccounts(),
 		];
 
 		if ( $params['securitysensitiveoperation'] !== null ) {
-			$ret['securitysensitiveoperationstatus'] = $this->authManager->securitySensitiveOperationStatus(
+			$ret['securitysensitiveoperationstatus'] = $manager->securitySensitiveOperationStatus(
 				$params['securitysensitiveoperation']
 			);
 		}
@@ -80,7 +69,7 @@ class ApiQueryAuthManagerInfo extends ApiQueryBase {
 				];
 			}
 
-			$reqs = $this->authManager->getAuthenticationRequests( $action, $this->getUser() );
+			$reqs = $manager->getAuthenticationRequests( $action, $this->getUser() );
 
 			// Filter out blacklisted requests, depending on the action
 			switch ( $action ) {

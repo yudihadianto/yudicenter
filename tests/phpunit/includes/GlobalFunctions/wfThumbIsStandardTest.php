@@ -1,7 +1,6 @@
 <?php
 
 use MediaWiki\MediaWikiServices;
-use Psr\Log\NullLogger;
 
 /**
  * @group GlobalFunctions
@@ -9,7 +8,7 @@ use Psr\Log\NullLogger;
  */
 class WfThumbIsStandardTest extends MediaWikiIntegrationTestCase {
 
-	protected function setUp(): void {
+	protected function setUp() : void {
 		parent::setUp();
 
 		$this->setMwGlobals( [
@@ -96,10 +95,7 @@ class WfThumbIsStandardTest extends MediaWikiIntegrationTestCase {
 	 */
 	public function testIsStandard( $message, $expected, $params ) {
 		$handlers = MediaWikiServices::getInstance()->getMainConfig()->get( 'ParserTestMediaHandlers' );
-		$this->setService(
-			'MediaHandlerFactory',
-			new MediaHandlerFactory( new NullLogger(), $handlers )
-		);
+		$this->setService( 'MediaHandlerFactory', new MediaHandlerFactory( $handlers ) );
 		$this->assertSame(
 			$expected,
 			wfThumbIsStandard( new FakeDimensionFile( [ 2000, 1800 ], 'image/jpeg' ), $params ),

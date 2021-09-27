@@ -236,6 +236,15 @@ class RevisionStoreRecordTest extends MediaWikiIntegrationTestCase {
 			'page_latest' => '18',
 		];
 
+		yield 'not a row' => [
+			new PageIdentityValue( 17, NS_MAIN, 'Dummy', 'acmewiki' ),
+			$user,
+			$comment,
+			'not a row',
+			$slots,
+			'acmewiki'
+		];
+
 		$row = $protoRow;
 		$row['rev_page'] = 99;
 
@@ -290,7 +299,7 @@ class RevisionStoreRecordTest extends MediaWikiIntegrationTestCase {
 		$this->expectException( TimestampException::class );
 		new RevisionStoreRecord(
 			$this->createMock( PageIdentity::class ),
-			new UserIdentityValue( 11, __CLASS__ ),
+			new UserIdentityValue( 11, 'Tester', 0 ),
 			$this->createMock( CommentStoreComment::class ),
 			$row,
 			$this->createMock( RevisionSlots::class ),

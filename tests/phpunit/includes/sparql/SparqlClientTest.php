@@ -2,6 +2,7 @@
 
 namespace MediaWiki\Sparql;
 
+use Http;
 use MediaWiki\Http\HttpRequestFactory;
 use MWHttpRequest;
 
@@ -100,7 +101,7 @@ JSON;
 				],
 				[
 					'method' => 'GET',
-					'userAgent' => 'testOptions SparqlClient',
+					'userAgent' => Http::userAgent() . " SparqlClient",
 					'timeout' => 30
 				]
 			],
@@ -155,7 +156,6 @@ JSON;
 	 */
 	public function testOptions( $sparql, $options, $timeout, $expectedUrl, $expectedOptions ) {
 		$requestFactory = $this->createMock( HttpRequestFactory::class );
-		$requestFactory->method( 'getUserAgent' )->willReturn( 'testOptions' );
 		$client = new SparqlClient( 'http://acme.test/', $requestFactory );
 
 		$request = $this->getRequestMock( '{}' );

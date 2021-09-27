@@ -68,7 +68,7 @@ class UploadFromUrl extends UploadBase {
 
 	/**
 	 * Checks whether the URL is for an allowed host
-	 * The domains in the allowlist can include wildcard characters (*) in place
+	 * The domains in the whitelist can include wildcard characters (*) in place
 	 * of any of the domain levels, e.g. '*.flickr.com' or 'upload.*.gov.uk'.
 	 *
 	 * @param string $url
@@ -85,7 +85,7 @@ class UploadFromUrl extends UploadBase {
 		}
 		$valid = false;
 		foreach ( $wgCopyUploadsDomains as $domain ) {
-			// See if the domain for the upload matches this allowed domain
+			// See if the domain for the upload matches this whitelisted domain
 			$domainPieces = explode( '.', $domain );
 			$uploadDomainPieces = explode( '.', $parsedUrl['host'] );
 			if ( count( $domainPieces ) === count( $uploadDomainPieces ) ) {
@@ -163,14 +163,14 @@ class UploadFromUrl extends UploadBase {
 	 * @return bool
 	 */
 	public static function isValidRequest( $request ) {
-		$user = RequestContext::getMain()->getUser();
+		global $wgUser;
 
 		$url = $request->getVal( 'wpUploadFileURL' );
 
 		return !empty( $url )
 			&& MediaWikiServices::getInstance()
-				->getPermissionManager()
-				->userHasRight( $user, 'upload_by_url' );
+				   ->getPermissionManager()
+				   ->userHasRight( $wgUser, 'upload_by_url' );
 	}
 
 	/**
@@ -188,7 +188,7 @@ class UploadFromUrl extends UploadBase {
 	 * @return Status
 	 */
 	public function fetchFile( $httpOptions = [] ) {
-		if ( !MWHttpRequest::isValidURI( $this->mUrl ) ) {
+		if ( !Http::isValidURI( $this->mUrl ) ) {
 			return Status::newFatal( 'http-invalid-url', $this->mUrl );
 		}
 
@@ -283,9 +283,8 @@ class UploadFromUrl extends UploadBase {
 		// capturing the redirect response as part of the file.
 		$attemptsLeft = $options['maxRedirects'] ?? 5;
 		$targetUrl = $this->mUrl;
-		$requestFactory = MediaWikiServices::getInstance()->getHttpRequestFactory();
 		while ( $attemptsLeft > 0 ) {
-			$req = $requestFactory->create( $targetUrl, $options, __METHOD__ );
+			$req = MWHttpRequest::factory( $targetUrl, $options, __METHOD__ );
 			$req->setCallback( [ $this, 'saveTempFileChunk' ] );
 			$status = $req->execute();
 			if ( !$req->isRedirect() ) {

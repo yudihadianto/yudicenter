@@ -2,8 +2,7 @@
 	"@metadata": {
 		"authors": [
 			"Baloch Afghanistan",
-			"Mostafadaneshvar",
-			"Sultanselim baloch"
+			"Mostafadaneshvar"
 		]
 	},
 	"exif-imagewidth": "پهنات",
@@ -90,7 +89,7 @@
 	"exif-subjectdistancerange": "محدوده فاصله شی",
 	"exif-imageuniqueid": "شناسگ یکی عکس",
 	"exif-gpsversionid": "برچسپ نسخه جی پی اس",
-	"exif-gpslatituderef": "گۏریچی یا زرباری پھنات",
+	"exif-gpslatituderef": "عرض جنوبی یا شمالی",
 	"exif-gpslatitude": "عرض جغرافیایی",
 	"exif-gpslongituderef": "طول غربی یا شرقی",
 	"exif-gpslongitude": "طول جغرافیایی",

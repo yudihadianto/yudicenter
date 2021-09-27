@@ -289,7 +289,7 @@ class JobQueueFederated extends JobQueue {
 
 				return $job;
 			} else {
-				unset( $partitionsTry[$partition] );
+				unset( $partitionsTry[$partition] ); // blacklist partition
 			}
 		}
 		$this->throwErrorIfAllPartitionsDown( $failed );

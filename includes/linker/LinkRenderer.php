@@ -16,7 +16,7 @@
  * http://www.gnu.org/copyleft/gpl.html
  *
  * @file
- * @author Kunal Mehta <legoktm@debian.org>
+ * @author Kunal Mehta <legoktm@member.fsf.org>
  */
 namespace MediaWiki\Linker;
 
@@ -25,14 +25,12 @@ use HtmlArmor;
 use LinkCache;
 use MediaWiki\HookContainer\HookContainer;
 use MediaWiki\HookContainer\HookRunner;
-use MediaWiki\Page\PageReference;
 use MediaWiki\SpecialPage\SpecialPageFactory;
 use NamespaceInfo;
 use Sanitizer;
 use Title;
 use TitleFormatter;
 use TitleValue;
-use Wikimedia\Assert\Assert;
 
 /**
  * Class that generates HTML <a> links for pages.
@@ -55,6 +53,11 @@ class LinkRenderer {
 	 * @var string|bool|int
 	 */
 	private $expandUrls = false;
+
+	/**
+	 * @var int
+	 */
+	private $stubThreshold = 0;
 
 	/**
 	 * @var TitleFormatter
@@ -134,44 +137,41 @@ class LinkRenderer {
 	}
 
 	/**
-	 * @deprecated since 1.37. Stub threshold feature was removed. See T284917
 	 * @param int $threshold
 	 */
 	public function setStubThreshold( $threshold ) {
-		wfDeprecated( __METHOD__, '1.37' );
+		$this->stubThreshold = $threshold;
 	}
 
 	/**
-	 * @deprecated since 1.37. Stub threshold feature was removed. See T284917
 	 * @return int
 	 */
 	public function getStubThreshold() {
-		wfDeprecated( __METHOD__, '1.37' );
-		return 0;
+		return $this->stubThreshold;
 	}
 
 	/**
-	 * @param LinkTarget|PageReference $target
+	 * @param LinkTarget $target
 	 * @param string|HtmlArmor|null $text
 	 * @param array $extraAttribs
 	 * @param array $query
 	 * @return string HTML
 	 */
 	public function makeLink(
-		$target, $text = null, array $extraAttribs = [], array $query = []
+		LinkTarget $target, $text = null, array $extraAttribs = [], array $query = []
 	) {
-		Assert::parameterType( [ LinkTarget::class, PageReference::class ], $target, '$target' );
-		if ( $this->castToTitle( $target )->isKnown() ) {
+		$title = Title::newFromLinkTarget( $target );
+		if ( $title->isKnown() ) {
 			return $this->makeKnownLink( $target, $text, $extraAttribs, $query );
 		} else {
 			return $this->makeBrokenLink( $target, $text, $extraAttribs, $query );
 		}
 	}
 
-	private function runBeginHook( $target, &$text, &$extraAttribs, &$query, $isKnown ) {
+	private function runBeginHook( LinkTarget $target, &$text, &$extraAttribs, &$query, $isKnown ) {
 		$ret = null;
 		if ( !$this->hookRunner->onHtmlPageLinkRendererBegin(
-			$this, $this->castToTitle( $target ), $text, $extraAttribs, $query, $ret )
+			$this, $target, $text, $extraAttribs, $query, $ret )
 		) {
 			return $ret;
 		}
@@ -181,7 +181,7 @@ class LinkRenderer {
 	 * If you have already looked up the proper CSS classes using LinkRenderer::getLinkClasses()
 	 * or some other method, use this to avoid looking it up again.
 	 *
-	 * @param LinkTarget|PageReference $target
+	 * @param LinkTarget $target
 	 * @param string|HtmlArmor|null $text
 	 * @param string $classes CSS classes to add
 	 * @param array $extraAttribs
@@ -189,10 +189,8 @@ class LinkRenderer {
 	 * @return string
 	 */
 	public function makePreloadedLink(
-		$target, $text = null, $classes = '', array $extraAttribs = [], array $query = []
+		LinkTarget $target, $text = null, $classes = '', array $extraAttribs = [], array $query = []
 	) {
-		Assert::parameterType( [ LinkTarget::class, PageReference::class ], $target, '$target' );
-
 		// Run begin hook
 		$ret = $this->runBeginHook( $target, $text, $extraAttribs, $query, true );
 		if ( $ret !== null ) {
@@ -218,25 +216,17 @@ class LinkRenderer {
 	}
 
 	/**
-	 * @param LinkTarget|PageReference $target
+	 * @param LinkTarget $target
 	 * @param string|HtmlArmor|null $text
 	 * @param array $extraAttribs
 	 * @param array $query
 	 * @return string HTML
 	 */
 	public function makeKnownLink(
-		$target, $text = null, array $extraAttribs = [], array $query = []
+		LinkTarget $target, $text = null, array $extraAttribs = [], array $query = []
 	) {
-		Assert::parameterType( [ LinkTarget::class, PageReference::class ], $target, '$target' );
-		if ( $target instanceof LinkTarget ) {
-			$isExternal = $target->isExternal();
-		} else {
-			// $target instanceof PageReference
-			// treat all PageReferences as local for now
-			$isExternal = false;
-		}
 		$classes = [];
-		if ( $isExternal ) {
+		if ( $target->isExternal() ) {
 			$classes[] = 'extiw';
 		}
 		$colour = $this->getLinkClasses( $target );
@@ -254,7 +244,7 @@ class LinkRenderer {
 	}
 
 	/**
-	 * @param LinkTarget|PageReference $target
+	 * @param LinkTarget $target
 	 * @param-taint $target none
 	 * @param string|HtmlArmor|null $text
 	 * @param array $extraAttribs
@@ -262,21 +252,18 @@ class LinkRenderer {
 	 * @return string
 	 */
 	public function makeBrokenLink(
-		$target, $text = null, array $extraAttribs = [], array $query = []
+		LinkTarget $target, $text = null, array $extraAttribs = [], array $query = []
 	) {
-		Assert::parameterType( [ LinkTarget::class, PageReference::class ], $target, '$target' );
 		// Run legacy hook
 		$ret = $this->runBeginHook( $target, $text, $extraAttribs, $query, false );
 		if ( $ret !== null ) {
 			return $ret;
 		}
 
-		if ( $target instanceof LinkTarget ) {
-			# We don't want to include fragments for broken links, because they
-			# generally make no sense.
-			if ( $target->hasFragment() ) {
-				$target = $target->createFragmentTarget( '' );
-			}
+		# We don't want to include fragments for broken links, because they
+		# generally make no sense.
+		if ( $target->hasFragment() ) {
+			$target = $target->createFragmentTarget( '' );
 		}
 		$target = $this->normalizeTarget( $target );
 
@@ -309,16 +296,16 @@ class LinkRenderer {
 	/**
 	 * Builds the final <a> element
 	 *
-	 * @param LinkTarget|PageReference $target
+	 * @param LinkTarget $target
 	 * @param string|HtmlArmor $text
 	 * @param array $attribs
 	 * @param bool $isKnown
 	 * @return null|string
 	 */
-	private function buildAElement( $target, $text, array $attribs, $isKnown ) {
+	private function buildAElement( LinkTarget $target, $text, array $attribs, $isKnown ) {
 		$ret = null;
 		if ( !$this->hookRunner->onHtmlPageLinkRendererEnd(
-			$this, $this->castToLinkTarget( $target ), $isKnown, $text, $attribs, $ret )
+			$this, $target, $isKnown, $text, $attribs, $ret )
 		) {
 			return $ret;
 		}
@@ -327,33 +314,30 @@ class LinkRenderer {
 	}
 
 	/**
-	 * @param LinkTarget|PageReference $target
-	 * @return string
+	 * @param LinkTarget $target
+	 * @return string non-escaped text
 	 */
-	private function getLinkText( $target ) {
+	private function getLinkText( LinkTarget $target ) {
 		$prefixedText = $this->titleFormatter->getPrefixedText( $target );
 		// If the target is just a fragment, with no title, we return the fragment
 		// text.  Otherwise, we return the title text itself.
-		if ( $prefixedText === '' && $target instanceof LinkTarget && $target->hasFragment() ) {
+		if ( $prefixedText === '' && $target->hasFragment() ) {
 			return $target->getFragment();
 		}
 
 		return $prefixedText;
 	}
 
-	/**
-	 * @param LinkTarget|PageReference $target
-	 * @param array $query
-	 * @return string non-escaped text
-	 */
-	private function getLinkURL( $target, $query = [] ) {
+	private function getLinkURL( LinkTarget $target, array $query = [] ) {
+		// TODO: Use a LinkTargetResolver service instead of Title
+		$title = Title::newFromLinkTarget( $target );
 		if ( $this->forceArticlePath ) {
 			$realQuery = $query;
 			$query = [];
 		} else {
 			$realQuery = [];
 		}
-		$url = $this->castToTitle( $target )->getLinkURL( $query, false, $this->expandUrls );
+		$url = $title->getLinkURL( $query, false, $this->expandUrls );
 
 		if ( $this->forceArticlePath && $realQuery ) {
 			$url = wfAppendQuery( $url, $realQuery );
@@ -367,11 +351,10 @@ class LinkRenderer {
 	 *
 	 * @internal For use by deprecated Linker & DummyLinker
 	 *     ::normaliseSpecialPage() methods
-	 * @param LinkTarget|PageReference $target
+	 * @param LinkTarget $target
 	 * @return LinkTarget
 	 */
-	public function normalizeTarget( $target ) {
-		$target = $this->castToLinkTarget( $target );
+	public function normalizeTarget( LinkTarget $target ) {
 		if ( $target->getNamespace() === NS_SPECIAL && !$target->isExternal() ) {
 			list( $name, $subpage ) = $this->specialPageFactory->resolveAlias(
 				$target->getDBkey()
@@ -416,16 +399,10 @@ class LinkRenderer {
 	/**
 	 * Return the CSS classes of a known link
 	 *
-	 * @param LinkTarget|PageReference $target
+	 * @param LinkTarget $target
 	 * @return string CSS class
 	 */
-	public function getLinkClasses( $target ) {
-		Assert::parameterType( [ LinkTarget::class, PageReference::class ], $target, '$target' );
-		$target = $this->castToLinkTarget( $target );
-		// Don't call LinkCache if the target is "non-proper"
-		if ( $target->isExternal() || $target->getText() === '' || $target->getNamespace() < 0 ) {
-			return '';
-		}
+	public function getLinkClasses( LinkTarget $target ) {
 		// Make sure the target is in the cache
 		$id = $this->linkCache->addLinkObj( $target );
 		if ( $id == 0 ) {
@@ -436,32 +413,14 @@ class LinkRenderer {
 		if ( $this->linkCache->getGoodLinkFieldObj( $target, 'redirect' ) ) {
 			# Page is a redirect
 			return 'mw-redirect';
+		} elseif (
+			$this->stubThreshold > 0 && $this->nsInfo->isContent( $target->getNamespace() ) &&
+			$this->linkCache->getGoodLinkFieldObj( $target, 'length' ) < $this->stubThreshold
+		) {
+			# Page is a stub
+			return 'stub';
 		}
 
 		return '';
-	}
-
-	/**
-	 * @param LinkTarget|PageReference $target
-	 * @return Title
-	 */
-	private function castToTitle( $target ): Title {
-		if ( $target instanceof LinkTarget ) {
-			return Title::newFromLinkTarget( $target );
-		}
-		// $target instanceof PageReference
-		return Title::castFromPageReference( $target );
-	}
-
-	/**
-	 * @param LinkTarget|PageReference $target
-	 * @return LinkTarget
-	 */
-	private function castToLinkTarget( $target ): LinkTarget {
-		if ( $target instanceof PageReference ) {
-			return Title::castFromPageReference( $target );
-		}
-		// $target instanceof LinkTarget
-		return $target;
 	}
 }

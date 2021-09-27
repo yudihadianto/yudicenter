@@ -4,9 +4,7 @@ namespace MediaWiki\Session;
 
 use MediaWiki\MediaWikiServices;
 use MediaWikiIntegrationTestCase;
-use MultiConfig;
 use Psr\Log\LogLevel;
-use RequestContext;
 use Wikimedia\TestingAccessWrapper;
 
 /**
@@ -15,7 +13,6 @@ use Wikimedia\TestingAccessWrapper;
  * @covers MediaWiki\Session\BotPasswordSessionProvider
  */
 class BotPasswordSessionProviderTest extends MediaWikiIntegrationTestCase {
-	use SessionProviderTestTrait;
 
 	private $config;
 
@@ -45,7 +42,7 @@ class BotPasswordSessionProviderTest extends MediaWikiIntegrationTestCase {
 			] );
 		}
 		$manager = new SessionManager( [
-			'config' => new MultiConfig( [ $this->config, RequestContext::getMain()->getConfig() ] ),
+			'config' => new \MultiConfig( [ $this->config, \RequestContext::getMain()->getConfig() ] ),
 			'logger' => new \Psr\Log\NullLogger,
 			'store' => new TestBagOStuff,
 		] );
@@ -53,7 +50,7 @@ class BotPasswordSessionProviderTest extends MediaWikiIntegrationTestCase {
 		return $manager->getProvider( BotPasswordSessionProvider::class );
 	}
 
-	protected function setUp(): void {
+	protected function setUp() : void {
 		parent::setUp();
 
 		$this->setMwGlobals( [
@@ -71,12 +68,9 @@ class BotPasswordSessionProviderTest extends MediaWikiIntegrationTestCase {
 		$passwordHash = $passwordFactory->newFromPlaintext( 'foobaz' );
 
 		$sysop = static::getTestSysop()->getUser();
-		$userId = $this->getServiceContainer()
-			->getCentralIdLookupFactory()
-			->getLookup( 'local' )
-			->centralIdFromName( $sysop->getName() );
+		$userId = \CentralIdLookup::factory( 'local' )->centralIdFromName( $sysop->getName() );
 
-		$dbw = wfGetDB( DB_PRIMARY );
+		$dbw = wfGetDB( DB_MASTER );
 		$dbw->delete(
 			'bot_passwords',
 			[ 'bp_user' => $userId, 'bp_app_id' => 'BotPasswordSessionProvider' ],
@@ -191,9 +185,9 @@ class BotPasswordSessionProviderTest extends MediaWikiIntegrationTestCase {
 		$provider = $this->getProvider();
 		$user = static::getTestSysop()->getUser();
 		$request = $this->getMockBuilder( \FauxRequest::class )
-			->onlyMethods( [ 'getIP' ] )->getMock();
-		$request->method( 'getIP' )
-			->willReturn( '127.0.0.1' );
+			->setMethods( [ 'getIP' ] )->getMock();
+		$request->expects( $this->any() )->method( 'getIP' )
+			->will( $this->returnValue( '127.0.0.1' ) );
 		$bp = \BotPassword::newFromUser( $user, 'BotPasswordSessionProvider' );
 
 		$session = $provider->newSessionForRequest( $user, $bp, $request );
@@ -215,13 +209,13 @@ class BotPasswordSessionProviderTest extends MediaWikiIntegrationTestCase {
 	public function testCheckSessionInfo() {
 		$logger = new \TestLogger( true );
 		$provider = $this->getProvider();
-		$this->initProvider( $provider, $logger );
+		$provider->setLogger( $logger );
 
 		$user = static::getTestSysop()->getUser();
 		$request = $this->getMockBuilder( \FauxRequest::class )
-			->onlyMethods( [ 'getIP' ] )->getMock();
-		$request->method( 'getIP' )
-			->willReturn( '127.0.0.1' );
+			->setMethods( [ 'getIP' ] )->getMock();
+		$request->expects( $this->any() )->method( 'getIP' )
+			->will( $this->returnValue( '127.0.0.1' ) );
 		$bp = \BotPassword::newFromUser( $user, 'BotPasswordSessionProvider' );
 
 		$data = [
@@ -271,9 +265,9 @@ class BotPasswordSessionProviderTest extends MediaWikiIntegrationTestCase {
 		$logger->clearBuffer();
 
 		$request2 = $this->getMockBuilder( \FauxRequest::class )
-			->onlyMethods( [ 'getIP' ] )->getMock();
-		$request2->method( 'getIP' )
-			->willReturn( '10.0.0.1' );
+			->setMethods( [ 'getIP' ] )->getMock();
+		$request2->expects( $this->any() )->method( 'getIP' )
+			->will( $this->returnValue( '10.0.0.1' ) );
 		$data['metadata'] = $dataMD;
 		$info = new SessionInfo( SessionInfo::MIN_PRIORITY, $data );
 		$metadata = $info->getProviderMetadata();
@@ -293,7 +287,7 @@ class BotPasswordSessionProviderTest extends MediaWikiIntegrationTestCase {
 	public function testGetAllowedUserRights() {
 		$logger = new \TestLogger( true );
 		$provider = $this->getProvider();
-		$this->initProvider( $provider, $logger );
+		$provider->setLogger( $logger );
 
 		$backend = TestUtils::getDummySessionBackend();
 		$backendPriv = TestingAccessWrapper::newFromObject( $backend );

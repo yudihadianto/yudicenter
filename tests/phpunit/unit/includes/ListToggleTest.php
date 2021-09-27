@@ -31,7 +31,8 @@ class ListToggleTest extends MediaWikiUnitTestCase {
 			} );
 
 		$output = $this->createMock( OutputPage::class );
-		$output->method( 'msg' )
+		$output->expects( $this->any() )
+			->method( 'msg' )
 			->will( $this->returnCallback( static function ( $key ) {
 				return new class( $key ) extends Message {
 					protected function fetchMessage() {

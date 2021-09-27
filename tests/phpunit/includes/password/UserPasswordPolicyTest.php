@@ -32,10 +32,12 @@ class UserPasswordPolicyTest extends MediaWikiIntegrationTestCase {
 		'checkuser' => [
 			'MinimalPasswordLength' => [ 'value' => 10, 'forceChange' => true ],
 			'MinimumPasswordLengthToLogin' => 6,
+			'PasswordCannotMatchUsername' => true,
 		],
 		'sysop' => [
 			'MinimalPasswordLength' => [ 'value' => 8, 'suggestChangeOnLogin' => true ],
 			'MinimumPasswordLengthToLogin' => 1,
+			'PasswordCannotMatchUsername' => true,
 		],
 		'bureaucrat' => [
 			'MinimalPasswordLength' => [
@@ -43,12 +45,15 @@ class UserPasswordPolicyTest extends MediaWikiIntegrationTestCase {
 				'suggestChangeOnLogin' => false,
 				'forceChange' => true,
 			],
+			'PasswordCannotMatchUsername' => true,
 		],
 		'default' => [
 			'MinimalPasswordLength' => 4,
 			'MinimumPasswordLengthToLogin' => 1,
 			'PasswordCannotMatchDefaults' => true,
 			'MaximalPasswordLength' => 4096,
+			// test null handling
+			'PasswordCannotMatchUsername' => null,
 			'PasswordCannotBeSubstringInUsername' => true,
 		],
 	];
@@ -56,6 +61,7 @@ class UserPasswordPolicyTest extends MediaWikiIntegrationTestCase {
 	protected $checks = [
 		'MinimalPasswordLength' => 'PasswordPolicyChecks::checkMinimalPasswordLength',
 		'MinimumPasswordLengthToLogin' => 'PasswordPolicyChecks::checkMinimumPasswordLengthToLogin',
+		'PasswordCannotMatchUsername' => 'PasswordPolicyChecks::checkPasswordCannotMatchUsername',
 		'PasswordCannotBeSubstringInUsername' =>
 			'PasswordPolicyChecks::checkPasswordCannotBeSubstringInUsername',
 		'PasswordCannotMatchDefaults' => 'PasswordPolicyChecks::checkPasswordCannotMatchDefaults',
@@ -74,8 +80,9 @@ class UserPasswordPolicyTest extends MediaWikiIntegrationTestCase {
 			[
 				'MinimalPasswordLength' => [ 'value' => 8, 'suggestChangeOnLogin' => true ],
 				'MinimumPasswordLengthToLogin' => 1,
+				'PasswordCannotMatchUsername' => true,
 				'PasswordCannotBeSubstringInUsername' => true,
-				'PasswordCannotMatchDefaults' => true,
+				'PasswordCannotMatchBlacklist' => true,
 				'MaximalPasswordLength' => 4096,
 			],
 			$upp->getPoliciesForUser( $user )
@@ -90,6 +97,7 @@ class UserPasswordPolicyTest extends MediaWikiIntegrationTestCase {
 					'suggestChangeOnLogin' => true
 				],
 				'MinimumPasswordLengthToLogin' => 6,
+				'PasswordCannotMatchUsername' => true,
 				'PasswordCannotBeSubstringInUsername' => true,
 				'PasswordCannotMatchDefaults' => true,
 				'MaximalPasswordLength' => 4096,
@@ -113,6 +121,7 @@ class UserPasswordPolicyTest extends MediaWikiIntegrationTestCase {
 					'suggestChangeOnLogin' => true
 				],
 				'MinimumPasswordLengthToLogin' => 6,
+				'PasswordCannotMatchUsername' => true,
 				'PasswordCannotBeSubstringInUsername' => true,
 				'PasswordCannotMatchDefaults' => true,
 				'MaximalPasswordLength' => 4096,
@@ -225,16 +234,19 @@ class UserPasswordPolicyTest extends MediaWikiIntegrationTestCase {
 				], // p1
 				[
 					'MinimalPasswordLength' => 2,
+					'PasswordCannotMatchUsername' => 1,
 					'PasswordCannotBeSubstringInUsername' => 1,
 				], // p2
 				[
 					'MinimalPasswordLength' => 8,
+					'PasswordCannotMatchUsername' => 1,
 					'PasswordCannotBeSubstringInUsername' => 1,
 				], // max
 			],
 			'Missing items in p2' => [
 				[
 					'MinimalPasswordLength' => 8,
+					'PasswordCannotMatchUsername' => 1,
 					'PasswordCannotBeSubstringInUsername' => 1,
 				], // p1
 				[
@@ -242,6 +254,7 @@ class UserPasswordPolicyTest extends MediaWikiIntegrationTestCase {
 				], // p2
 				[
 					'MinimalPasswordLength' => 8,
+					'PasswordCannotMatchUsername' => 1,
 					'PasswordCannotBeSubstringInUsername' => 1,
 				], // max
 			],

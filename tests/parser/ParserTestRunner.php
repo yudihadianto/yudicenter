@@ -31,7 +31,6 @@ use MediaWiki\MediaWikiServices;
 use MediaWiki\Revision\MutableRevisionRecord;
 use MediaWiki\Revision\RevisionRecord;
 use MediaWiki\Revision\SlotRecord;
-use Psr\Log\NullLogger;
 use Wikimedia\Parsoid\ParserTests\ParserHook as ParsoidParserHook;
 use Wikimedia\Parsoid\ParserTests\RawHTML as ParsoidRawHTML;
 use Wikimedia\Parsoid\ParserTests\StyleTag as ParsoidStyleTag;
@@ -46,6 +45,8 @@ use Wikimedia\TestingAccessWrapper;
  */
 class ParserTestRunner {
 
+	use MediaWikiTestCaseTrait;
+
 	/**
 	 * MediaWiki core parser test files, paths
 	 * will be prefixed with __DIR__ . '/'
@@ -57,7 +58,6 @@ class ParserTestRunner {
 		'pfeqParserTests.txt',
 		'extraParserTests.txt',
 		'legacyMediaParserTests.txt',
-		'mediaParserTests.txt',
 	];
 
 	/**
@@ -356,16 +356,14 @@ class ParserTestRunner {
 		$setup['wgSVGConverters'] = [ 'null' => 'echo "1">$output' ];
 
 		// Fake constant timestamp
-		MediaWikiServices::getInstance()->getHookContainer()->register(
-			'ParserGetVariableValueTs',
-			function ( $parser, &$ts ) {
-				$ts = $this->getFakeTimestamp();
-				return true;
-			}
-		);
+		Hooks::register( 'ParserGetVariableValueTs', function ( $parser, &$ts ) {
+			$ts = $this->getFakeTimestamp();
+			return true;
+		} );
 
+		$this->hideDeprecated( 'Hooks::clear' );
 		$teardown[] = static function () {
-			MediaWikiServices::getInstance()->getHookContainer()->clear( 'ParserGetVariableValueTs' );
+			Hooks::clear( 'ParserGetVariableValueTs' );
 		};
 
 		$this->appendNamespaceSetup( $setup, $teardown );
@@ -379,10 +377,7 @@ class ParserTestRunner {
 			'MediaHandlerFactory',
 			static function ( MediaWikiServices $services ) {
 				$handlers = $services->getMainConfig()->get( 'ParserTestMediaHandlers' );
-				return new MediaHandlerFactory(
-					new NullLogger(),
-					$handlers
-				);
+				return new MediaHandlerFactory( $handlers );
 			}
 		);
 		$teardown[] = static function () {
@@ -467,7 +462,6 @@ class ParserTestRunner {
 			] );
 		}
 
-		$services = MediaWikiServices::getInstance();
 		return new RepoGroup(
 			[
 				'class' => MockLocalRepo::class,
@@ -478,8 +472,7 @@ class ParserTestRunner {
 				'backend' => $backend
 			],
 			[],
-			$services->getMainWANObjectCache(),
-			$services->getMimeAnalyzer()
+			MediaWikiServices::getInstance()->getMainWANObjectCache()
 		);
 	}
 
@@ -967,7 +960,7 @@ class ParserTestRunner {
 		}
 
 		if ( isset( $opts['pst'] ) ) {
-			$out = $parser->preSaveTransform( $test['input'], $title, $options->getUserIdentity(), $options );
+			$out = $parser->preSaveTransform( $test['input'], $title, $options->getUser(), $options );
 			$output = $parser->getOutput();
 		} elseif ( isset( $opts['msg'] ) ) {
 			$out = $parser->transformMsg( $test['input'], $options, $title );
@@ -1084,12 +1077,11 @@ class ParserTestRunner {
 		// Skip tests targetting features Parsoid doesn't (yet) support
 		// @todo T270312
 		if ( isset( $opts['styletag'] ) || isset( $opts['pst'] ) ||
-			isset( $opts['msg'] ) || isset( $opts['section'] ) ||
-			isset( $opts['replace'] ) || isset( $opts['comment'] ) ||
-			isset( $opts['preload'] ) || isset( $opts['showtitle'] ) ||
-			isset( $opts['showindicators'] ) || isset( $opts['ill'] ) ||
-			isset( $opts['cat'] ) || isset( $opts['showflags'] )
-		) {
+			 isset( $opts['msg'] ) || isset( $opts['section'] ) ||
+			 isset( $opts['replace'] ) || isset( $opts['comment'] ) ||
+			 isset( $opts['preload'] ) || isset( $opts['showtitle'] ) ||
+			 isset( $opts['showindicators'] ) || isset( $opts['ill'] ) ||
+			 isset( $opts['cat'] ) || isset( $opts['showflags'] ) ) {
 			return false; // skip test
 		}
 		$parsoidHtml = $test->sections['html/parsoid+integrated'] ??
@@ -1285,14 +1277,13 @@ class ParserTestRunner {
 		$setup[] = $reset;
 		$teardown[] = $reset;
 
-		$userOptionsManager = MediaWikiServices::getInstance()->getUserOptionsManager();
 		// Make a user object with the same language
 		$user = new User;
-		$userOptionsManager->setOption( $user, 'language', $langCode );
+		$user->setOption( 'language', $langCode );
 		$setup['wgLang'] = $lang;
 
 		// We (re)set $wgThumbLimits to a single-element array above.
-		$userOptionsManager->setOption( $user, 'thumbsize', 0 );
+		$user->setOption( 'thumbsize', 0 );
 
 		$setup['wgUser'] = $user;
 
@@ -1317,7 +1308,7 @@ class ParserTestRunner {
 			Wikimedia\restoreWarnings();
 
 			// Reset context to the restored globals
-			$context->setUser( StubGlobalUser::getRealUser( $GLOBALS['wgUser'] ) );
+			$context->setUser( $GLOBALS['wgUser'] );
 			$context->setSkin( $oldSkin );
 			$context->setOutput( $GLOBALS['wgOut'] );
 		};
@@ -1346,7 +1337,7 @@ class ParserTestRunner {
 		global $wgDBprefix;
 
 		$lb = MediaWikiServices::getInstance()->getDBLoadBalancer();
-		$this->db = $lb->getConnection( DB_PRIMARY );
+		$this->db = $lb->getConnection( DB_MASTER );
 
 		$suspiciousPrefixes = [ self::DB_PREFIX, MediaWikiIntegrationTestCase::DB_PREFIX ];
 		if ( in_array( $wgDBprefix, $suspiciousPrefixes ) ) {
@@ -1424,7 +1415,7 @@ class ParserTestRunner {
 				'bits' => 8,
 				'media_type' => MEDIATYPE_BITMAP,
 				'mime' => 'image/jpeg',
-				'metadata' => [],
+				'metadata' => serialize( [] ),
 				'sha1' => Wikimedia\base_convert( '1', 16, 36, 31 ),
 				'fileExists' => true
 			],
@@ -1445,7 +1436,7 @@ class ParserTestRunner {
 				'bits' => 8,
 				'media_type' => MEDIATYPE_BITMAP,
 				'mime' => 'image/png',
-				'metadata' => [],
+				'metadata' => serialize( [] ),
 				'sha1' => Wikimedia\base_convert( '2', 16, 36, 31 ),
 				'fileExists' => true
 			],
@@ -1465,7 +1456,7 @@ class ParserTestRunner {
 				'bits'        => 0,
 				'media_type'  => MEDIATYPE_DRAWING,
 				'mime'        => 'image/svg+xml',
-				'metadata'    => [
+				'metadata'    => serialize( [
 					'version'        => SvgHandler::SVG_METADATA_VERSION,
 					'width'          => 240,
 					'height'         => 180,
@@ -1475,7 +1466,7 @@ class ParserTestRunner {
 						'en' => SVGReader::LANG_FULL_MATCH,
 						'ru' => SVGReader::LANG_FULL_MATCH,
 					],
-				],
+				] ),
 				'sha1'        => Wikimedia\base_convert( '', 16, 36, 31 ),
 				'fileExists'  => true
 			],
@@ -1496,7 +1487,7 @@ class ParserTestRunner {
 				'bits' => 24,
 				'media_type' => MEDIATYPE_BITMAP,
 				'mime' => 'image/jpeg',
-				'metadata' => [],
+				'metadata' => serialize( [] ),
 				'sha1' => Wikimedia\base_convert( '3', 16, 36, 31 ),
 				'fileExists' => true
 			],
@@ -1516,7 +1507,7 @@ class ParserTestRunner {
 				'bits' => 0,
 				'media_type' => MEDIATYPE_VIDEO,
 				'mime' => 'application/ogg',
-				'metadata' => [],
+				'metadata' => serialize( [] ),
 				'sha1' => Wikimedia\base_convert( '', 16, 36, 31 ),
 				'fileExists' => true
 			],
@@ -1536,7 +1527,7 @@ class ParserTestRunner {
 				'bits' => 0,
 				'media_type' => MEDIATYPE_AUDIO,
 				'mime' => 'application/ogg',
-				'metadata' => [],
+				'metadata' => serialize( [] ),
 				'sha1' => Wikimedia\base_convert( '', 16, 36, 31 ),
 				'fileExists' => true
 			],
@@ -1557,7 +1548,7 @@ class ParserTestRunner {
 				'bits' => 0,
 				'media_type' => MEDIATYPE_OFFICE,
 				'mime' => 'image/vnd.djvu',
-				'metadata' => [ 'xml' => '<?xml version="1.0" ?>
+				'metadata' => '<?xml version="1.0" ?>
 <!DOCTYPE DjVuXML PUBLIC "-//W3C//DTD DjVuXML 1.1//EN" "pubtext/DjVuXML-s.dtd">
 <DjVuXML>
 <HEAD></HEAD>
@@ -1582,7 +1573,7 @@ class ParserTestRunner {
 <PARAM name="GAMMA" value="2.2" />
 </OBJECT>
 </BODY>
-</DjVuXML>' ],
+</DjVuXML>',
 				'sha1' => Wikimedia\base_convert( '', 16, 36, 31 ),
 				'fileExists' => true
 			],
@@ -1820,11 +1811,12 @@ class ParserTestRunner {
 			$restore = false;
 		}
 		try {
-			$status = $page->doUserEditContent(
+			$status = $page->doEditContent(
 				$newContent,
-				$user,
 				'',
-				EDIT_NEW | EDIT_SUPPRESS_RC | EDIT_INTERNAL
+				EDIT_NEW | EDIT_SUPPRESS_RC | EDIT_INTERNAL,
+				false,
+				$user
 			);
 		} finally {
 			if ( $restore ) {

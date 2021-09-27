@@ -1,13 +1,4 @@
-/*!
- * @author Ori Livneh <ori@wikimedia.org>
- */
 ( function () {
-	/**
-	 * Provides an API for bucketing users in experiments.
-	 *
-	 * @class mw.experiments
-	 * @singleton
-	 */
 
 	var CONTROL_BUCKET = 'control',
 		MAX_INT32_UNSIGNED = 4294967295;
@@ -15,11 +6,14 @@
 	/**
 	 * An implementation of Jenkins' one-at-a-time hash.
 	 *
-	 * See <https://en.wikipedia.org/wiki/Jenkins_hash_function>.
+	 * @see https://en.wikipedia.org/wiki/Jenkins_hash_function
 	 *
-	 * @private
 	 * @param {string} string String to hash
 	 * @return {number} The hash as a 32-bit unsigned integer
+	 * @ignore
+	 *
+	 * @author Ori Livneh <ori@wikimedia.org>
+	 * @see https://jsbin.com/kejewi/4/watch?js,console
 	 */
 	function hashString( string ) {
 		/* eslint-disable no-bitwise */
@@ -39,6 +33,12 @@
 		/* eslint-enable no-bitwise */
 	}
 
+	/**
+	 * Provides an API for bucketing users in experiments.
+	 *
+	 * @class mw.experiments
+	 * @singleton
+	 */
 	mw.experiments = {
 
 		/**

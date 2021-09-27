@@ -1,7 +1,4 @@
 <?php
-
-use Wikimedia\NormalizedException\NormalizedException;
-
 /**
  * @author Antoine Musso
  * @copyright Copyright © 2013, Antoine Musso
@@ -13,14 +10,14 @@ class MWExceptionHandlerTest extends \MediaWikiUnitTestCase {
 
 	private $oldSettingValue;
 
-	protected function setUp(): void {
+	protected function setUp() : void {
 		parent::setUp();
 		// We need to make sure the traces have function arguments as we're testing
 		// their handling.
 		$this->oldSettingValue = ini_set( 'zend.exception_ignore_args', 0 );
 	}
 
-	protected function tearDown(): void {
+	protected function tearDown() : void {
 		ini_set( 'zend.exception_ignore_args', $this->oldSettingValue );
 		parent::tearDown();
 	}
@@ -105,40 +102,6 @@ TEXT;
 		}
 
 		$this->assertEquals( 'value', $refvar, 'Reference variable' );
-	}
-
-	/**
-	 * @covers MWExceptionHandler::getLogNormalMessage
-	 */
-	public function testGetLogNormalMessage() {
-		$this->assertSame(
-			'[{reqId}] {exception_url}   Exception: message',
-			MWExceptionHandler::getLogNormalMessage( new Exception( 'message' ) )
-		);
-		$this->assertSame(
-			'[{reqId}] {exception_url}   message',
-			MWExceptionHandler::getLogNormalMessage( new ErrorException( 'message' ) )
-		);
-		$this->assertSame(
-			'[{reqId}] {exception_url}   ' . NormalizedException::class . ': {placeholder}',
-			MWExceptionHandler::getLogNormalMessage(
-				new NormalizedException( '{placeholder}', [ 'placeholder' => 'message' ] )
-			)
-		);
-	}
-
-	/**
-	 * @covers MWExceptionHandler::getLogContext
-	 */
-	public function testGetLogContext() {
-		$e = new Exception( 'message' );
-		$context = MWExceptionHandler::getLogContext( $e );
-		$this->assertSame( $e, $context['exception'] );
-
-		$e = new NormalizedException( 'message', [ 'param' => 'value' ] );
-		$context = MWExceptionHandler::getLogContext( $e );
-		$this->assertSame( $e, $context['exception'] );
-		$this->assertSame( 'value', $context['param'] );
 	}
 
 	/**

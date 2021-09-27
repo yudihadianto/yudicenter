@@ -1,13 +1,13 @@
 <?php
 
-use MediaWiki\User\StaticUserOptionsLookup;
 use MediaWiki\User\UserIdentityValue;
+use MediaWiki\User\UserOptionsLookup;
 
 /**
  * Tests timestamp parsing and output.
  */
 class MWTimestampTest extends MediaWikiLangTestCase {
-	protected function setUp(): void {
+	protected function setUp() : void {
 		parent::setUp();
 
 		// Avoid 'GetHumanTimestamp' hook and others
@@ -17,13 +17,27 @@ class MWTimestampTest extends MediaWikiLangTestCase {
 	private function setMockUserOptions( array $options ) {
 		$defaults = $this->getServiceContainer()->getMainConfig()->get( 'DefaultUserOptions' );
 
-		// $options are set as the options for "Pamela", the name used in the tests
-		$userOptionsLookup = new StaticUserOptionsLookup(
-			[ 'Pamela' => $options ],
-			$defaults
+		$mock = $this->createNoOpMock(
+			UserOptionsLookup::class,
+			[ 'getOption', 'getIntOption', 'getDefaultOption' ]
+		);
+		$mock->method( 'getOption' )
+			->willReturnCallback( function ( $user, $name ) use ( $options, $defaults ) {
+				return $options[$name] ?? $defaults[ $name ];
+			}
+		);
+		$mock->method( 'getIntOption' )
+			->willReturnCallback( function ( $user, $name ) use ( $options, $defaults ) {
+				return $options[$name] ?? $defaults[ $name ];
+			}
+		);
+		$mock->method( 'getDefaultOption' )
+			->willReturnCallback( function ( $name ) use ( $defaults ) {
+				return $defaults[$name];
+			}
 		);
 
-		$this->setService( 'UserOptionsLookup', $userOptionsLookup );
+		$this->setService( 'UserOptionsLookup', $mock );
 	}
 
 	/**

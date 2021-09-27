@@ -164,9 +164,8 @@ class SpecialSearchTest extends MediaWikiIntegrationTestCase {
 		if ( $opt === null ) {
 			return $u;
 		}
-		$userOptionsManager = $this->getServiceContainer()->getUserOptionsManager();
 		foreach ( $opt as $name => $value ) {
-			$userOptionsManager->setOption( $u, $name, $value );
+			$u->setOption( $name, $value );
 		}
 
 		return $u;
@@ -285,10 +284,11 @@ class SpecialSearchTest extends MediaWikiIntegrationTestCase {
 				$services->getUserOptionsManager(),
 				$services->getLanguageConverterFactory()
 			] )
-			->onlyMethods( [ 'getSearchEngine' ] )
+			->setMethods( [ 'getSearchEngine' ] )
 			->getMock();
-		$search->method( 'getSearchEngine' )
-			->willReturn( $mockSearchEngine );
+		$search->expects( $this->any() )
+			->method( 'getSearchEngine' )
+			->will( $this->returnValue( $mockSearchEngine ) );
 
 		$search->getContext()->setTitle( Title::makeTitle( NS_SPECIAL, 'Search' ) );
 		$search->getContext()->setLanguage( 'en' );
@@ -303,21 +303,24 @@ class SpecialSearchTest extends MediaWikiIntegrationTestCase {
 
 	protected function mockSearchEngine( SpecialSearchTestMockResultSet $results ) {
 		$mock = $this->getMockBuilder( SearchEngine::class )
-			->onlyMethods( [ 'searchText', 'searchTitle', 'getNearMatcher' ] )
+			->setMethods( [ 'searchText', 'searchTitle', 'getNearMatcher' ] )
 			->getMock();
 
-		$mock->method( 'searchText' )
-			->willReturn( $results );
+		$mock->expects( $this->any() )
+			->method( 'searchText' )
+			->will( $this->returnValue( $results ) );
 
 		$nearMatcherMock = $this->getMockBuilder( SearchNearMatcher::class )
 			->disableOriginalConstructor()
-			->onlyMethods( [ 'getNearMatch' ] )
+			->setMethods( [ 'getNearMatch' ] )
 			->getMock();
 
-		$nearMatcherMock->method( 'getNearMatch' )
+		$nearMatcherMock->expects( $this->any() )
+			->method( 'getNearMatch' )
 			->willReturn( $results->getFirstResult() );
 
-		$mock->method( 'getNearMatcher' )
+		$mock->expects( $this->any() )
+			->method( 'getNearMatcher' )
 			->willReturn( $nearMatcherMock );
 
 		$mock->setHookContainer( MediaWikiServices::getInstance()->getHookContainer() );
@@ -392,10 +395,11 @@ class SpecialSearchTest extends MediaWikiIntegrationTestCase {
 				$services->getUserOptionsManager(),
 				$services->getLanguageConverterFactory()
 			] )
-			->onlyMethods( [ 'getSearchEngine' ] )
+			->setMethods( [ 'getSearchEngine' ] )
 			->getMock();
-		$search->method( 'getSearchEngine' )
-			->willReturn( $mockSearchEngine );
+		$search->expects( $this->any() )
+			->method( 'getSearchEngine' )
+			->will( $this->returnValue( $mockSearchEngine ) );
 
 		// set up a mock user with 'search-match-redirect' set to true
 		$context = new RequestContext;

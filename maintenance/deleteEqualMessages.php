@@ -174,15 +174,15 @@ class DeleteEqualMessages extends Maintenance {
 		if ( !$user ) {
 			$this->fatalError( "Invalid username" );
 		}
-		StubGlobalUser::setUser( $user );
+		global $wgUser;
+		$wgUser = $user;
 
 		// Hide deletions from RecentChanges
-		$userGroupManager = $services->getUserGroupManager();
-		$userGroupManager->addUserToGroup( $user, 'bot' );
+		$user->addGroup( 'bot' );
 
 		// Handle deletion
 		$this->output( "\n...deleting equal messages (this may take a long time!)..." );
-		$dbw = $this->getDB( DB_PRIMARY );
+		$dbw = $this->getDB( DB_MASTER );
 		$lbFactory = $services->getDBLoadBalancerFactory();
 		$wikiPageFactory = $services->getWikiPageFactory();
 		foreach ( $messageInfo['results'] as $result ) {

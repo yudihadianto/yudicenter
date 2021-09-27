@@ -25,6 +25,7 @@ use MediaWiki\Auth\AuthenticationRequest;
 use MediaWiki\Auth\AuthenticationResponse;
 use MediaWiki\Auth\AuthManager;
 use MediaWiki\Logger\LoggerFactory;
+use MediaWiki\MediaWikiServices;
 
 /**
  * Unit to authenticate log-in attempts to the current wiki.
@@ -33,21 +34,8 @@ use MediaWiki\Logger\LoggerFactory;
  */
 class ApiLogin extends ApiBase {
 
-	/** @var AuthManager */
-	private $authManager;
-
-	/**
-	 * @param ApiMain $main
-	 * @param string $action
-	 * @param AuthManager $authManager
-	 */
-	public function __construct(
-		ApiMain $main,
-		$action,
-		AuthManager $authManager
-	) {
+	public function __construct( ApiMain $main, $action ) {
 		parent::__construct( $main, $action, 'lg' );
-		$this->authManager = $authManager;
 	}
 
 	protected function getExtendedDescription() {
@@ -161,11 +149,9 @@ class ApiLogin extends ApiBase {
 
 		if ( $authRes === false ) {
 			// Simplified AuthManager login, for backwards compatibility
+			$manager = MediaWikiServices::getInstance()->getAuthManager();
 			$reqs = AuthenticationRequest::loadRequestsFromSubmission(
-				$this->authManager->getAuthenticationRequests(
-					AuthManager::ACTION_LOGIN,
-					$this->getUser()
-				),
+				$manager->getAuthenticationRequests( AuthManager::ACTION_LOGIN, $this->getUser() ),
 				[
 					'username' => $params['name'],
 					'password' => $params['password'],
@@ -173,7 +159,7 @@ class ApiLogin extends ApiBase {
 					'rememberMe' => true,
 				]
 			);
-			$res = $this->authManager->beginAuthentication( $reqs, 'null:' );
+			$res = $manager->beginAuthentication( $reqs, 'null:' );
 			switch ( $res->status ) {
 				case AuthenticationResponse::PASS:
 					if ( $this->getConfig()->get( 'EnableBotPasswords' ) ) {
@@ -207,6 +193,8 @@ class ApiLogin extends ApiBase {
 		switch ( $authRes ) {
 			case 'Success':
 				$user = $session->getUser();
+
+				ApiQueryInfo::resetTokenCache();
 
 				// Deprecated hook
 				$injected_html = '';
@@ -263,11 +251,6 @@ class ApiLogin extends ApiBase {
 
 	public function isReadMode() {
 		return false;
-	}
-
-	public function isWriteMode() {
-		// (T283394) Logging in triggers some database writes, so should be marked appropriately.
-		return true;
 	}
 
 	public function getAllowedParams() {

@@ -27,7 +27,6 @@ use MediaWiki\MediaWikiServices;
 use MediaWiki\ParamValidator\TypeDef\UserDef;
 use MediaWiki\Rest\HeaderParser\Origin;
 use MediaWiki\Session\SessionManager;
-use MediaWiki\User\UserFactory;
 use Wikimedia\Timestamp\TimestampException;
 
 /**
@@ -61,51 +60,14 @@ class ApiMain extends ApiBase {
 	 * List of available modules: action name => module class
 	 */
 	private const MODULES = [
-		'login' => [
-			'class' => ApiLogin::class,
-			'services' => [
-				'AuthManager',
-			],
-		],
-		'clientlogin' => [
-			'class' => ApiClientLogin::class,
-			'services' => [
-				'AuthManager',
-			],
-		],
-		'logout' => [
-			'class' => ApiLogout::class,
-		],
-		'createaccount' => [
-			'class' => ApiAMCreateAccount::class,
-			'services' => [
-				'AuthManager',
-			],
-		],
-		'linkaccount' => [
-			'class' => ApiLinkAccount::class,
-			'services' => [
-				'AuthManager',
-			],
-		],
-		'unlinkaccount' => [
-			'class' => ApiRemoveAuthenticationData::class,
-			'services' => [
-				'AuthManager',
-			],
-		],
-		'changeauthenticationdata' => [
-			'class' => ApiChangeAuthenticationData::class,
-			'services' => [
-				'AuthManager',
-			],
-		],
-		'removeauthenticationdata' => [
-			'class' => ApiRemoveAuthenticationData::class,
-			'services' => [
-				'AuthManager',
-			],
-		],
+		'login' => ApiLogin::class,
+		'clientlogin' => ApiClientLogin::class,
+		'logout' => ApiLogout::class,
+		'createaccount' => ApiAMCreateAccount::class,
+		'linkaccount' => ApiLinkAccount::class,
+		'unlinkaccount' => ApiRemoveAuthenticationData::class,
+		'changeauthenticationdata' => ApiChangeAuthenticationData::class,
+		'removeauthenticationdata' => ApiRemoveAuthenticationData::class,
 		'resetpassword' => [
 			'class' => ApiResetPassword::class,
 			'services' => [
@@ -113,27 +75,8 @@ class ApiMain extends ApiBase {
 			]
 		],
 		'query' => ApiQuery::class,
-		'expandtemplates' => [
-			'class' => ApiExpandTemplates::class,
-			'services' => [
-				'RevisionStore',
-				'Parser',
-			]
-		],
-		'parse' => [
-			'class' => ApiParse::class,
-			'services' => [
-				'RevisionLookup',
-				'SkinFactory',
-				'LanguageNameUtils',
-				'LinkBatchFactory',
-				'LinkCache',
-				'ContentHandlerFactory',
-				'Parser',
-				'WikiPageFactory',
-				'ContentTransformer',
-			]
-		],
+		'expandtemplates' => ApiExpandTemplates::class,
+		'parse' => ApiParse::class,
 		'stashedit' => [
 			'class' => ApiStashEdit::class,
 			'services' => [
@@ -141,73 +84,24 @@ class ApiMain extends ApiBase {
 				'PageEditStash',
 				'RevisionLookup',
 				'StatsdDataFactory',
-				'WikiPageFactory',
 			]
 		],
-		'opensearch' => [
-			'class' => ApiOpenSearch::class,
-			'services' => [
-				'LinkBatchFactory',
-				'SearchEngineConfig',
-				'SearchEngineFactory',
-			]
-		],
-		'feedcontributions' => [
-			'class' => ApiFeedContributions::class,
-			'services' => [
-				'RevisionStore',
-				'TitleParser',
-				'LinkRenderer',
-				'LinkBatchFactory',
-				'HookContainer',
-				'DBLoadBalancer',
-				'NamespaceInfo',
-				'ActorMigration',
-				'UserFactory',
-			]
-		],
+		'opensearch' => ApiOpenSearch::class,
+		'feedcontributions' => ApiFeedContributions::class,
 		'feedrecentchanges' => [
 			'class' => ApiFeedRecentChanges::class,
 			'services' => [
 				'SpecialPageFactory',
 			]
 		],
-		'feedwatchlist' => [
-			'class' => ApiFeedWatchlist::class,
-			'services' => [
-				'Parser',
-			]
-		],
-		'help' => [
-			'class' => ApiHelp::class,
-			'services' => [
-				'SkinFactory',
-			]
-		],
-		'paraminfo' => [
-			'class' => ApiParamInfo::class,
-			'services' => [
-				'UserFactory',
-			],
-		],
-		'rsd' => [
-			'class' => ApiRsd::class,
-		],
-		'compare' => [
-			'class' => ApiComparePages::class,
-			'services' => [
-				'RevisionStore',
-				'SlotRoleRegistry',
-				'ContentHandlerFactory',
-				'ContentTransformer',
-			]
-		],
-		'checktoken' => [
-			'class' => ApiCheckToken::class,
-		],
-		'cspreport' => [
-			'class' => ApiCSPReport::class,
-		],
+		'feedwatchlist' => ApiFeedWatchlist::class,
+		'help' => ApiHelp::class,
+		'paraminfo' => ApiParamInfo::class,
+		'rsd' => ApiRsd::class,
+		'compare' => ApiComparePages::class,
+		'tokens' => ApiTokens::class,
+		'checktoken' => ApiCheckToken::class,
+		'cspreport' => ApiCSPReport::class,
 		'validatepassword' => [
 			'class' => ApiValidatePassword::class,
 			'services' => [
@@ -217,12 +111,7 @@ class ApiMain extends ApiBase {
 		],
 
 		// Write modules
-		'purge' => [
-			'class' => ApiPurge::class,
-			'services' => [
-				'WikiPageFactory',
-			],
-		],
+		'purge' => ApiPurge::class,
 		'setnotificationtimestamp' => [
 			'class' => ApiSetNotificationTimestamp::class,
 			'services' => [
@@ -231,48 +120,19 @@ class ApiMain extends ApiBase {
 				'WatchedItemStore',
 			]
 		],
-		'rollback' => [
-			'class' => ApiRollback::class,
-			'services' => [
-				'RollbackPageFactory',
-				'WatchlistManager',
-				'UserOptionsLookup',
-			]
-		],
-		'delete' => [
-			'class' => ApiDelete::class,
-			'services' => [
-				'RepoGroup',
-				'WatchlistManager',
-				'UserOptionsLookup',
-			]
-		],
-		'undelete' => [
-			'class' => ApiUndelete::class,
-			'services' => [
-				'WatchlistManager',
-				'UserOptionsLookup',
-			]
-		],
-		'protect' => [
-			'class' => ApiProtect::class,
-			'services' => [
-				'WatchlistManager',
-				'UserOptionsLookup',
-			]
-		],
+		'rollback' => ApiRollback::class,
+		'delete' => ApiDelete::class,
+		'undelete' => ApiUndelete::class,
+		'protect' => ApiProtect::class,
 		'block' => [
 			'class' => ApiBlock::class,
 			'services' => [
 				'BlockPermissionCheckerFactory',
 				'BlockUserFactory',
 				'TitleFactory',
-				'UserIdentityLookup',
+				'UserFactory',
 				'WatchedItemStore',
-				'BlockUtils',
-				'BlockActionInfo',
-				'WatchlistManager',
-				'UserOptionsLookup',
+				'BlockUtils'
 			]
 		],
 		'unblock' => [
@@ -280,116 +140,36 @@ class ApiMain extends ApiBase {
 			'services' => [
 				'BlockPermissionCheckerFactory',
 				'UnblockUserFactory',
-				'UserIdentityLookup',
+				'UserCache',
 			]
 		],
 		'move' => [
 			'class' => ApiMove::class,
 			'services' => [
 				'MovePageFactory',
-				'RepoGroup',
-				'WatchlistManager',
-				'UserOptionsLookup',
 			]
 		],
-		'edit' => [
-			'class' => ApiEditPage::class,
-			'services' => [
-				'ContentHandlerFactory',
-				'RevisionLookup',
-				'WatchedItemStore',
-				'WikiPageFactory',
-				'WatchlistManager',
-				'UserOptionsLookup',
-			]
-		],
-		'upload' => [
-			'class' => ApiUpload::class,
-			'services' => [
-				'JobQueueGroup',
-				'WatchlistManager',
-				'UserOptionsLookup',
-			]
-		],
-		'filerevert' => [
-			'class' => ApiFileRevert::class,
-			'services' => [
-				'RepoGroup',
-			]
-		],
-		'emailuser' => [
-			'class' => ApiEmailUser::class,
-		],
-		'watch' => [
-			'class' => ApiWatch::class,
-			'services' => [
-				'WatchlistManager',
-			]
-		],
-		'patrol' => [
-			'class' => ApiPatrol::class,
-			'services' => [
-				'RevisionStore',
-			]
-		],
-		'import' => [
-			'class' => ApiImport::class,
-			'services' => [
-				'WikiImporterFactory',
-			]
-		],
+		'edit' => ApiEditPage::class,
+		'upload' => ApiUpload::class,
+		'filerevert' => ApiFileRevert::class,
+		'emailuser' => ApiEmailUser::class,
+		'watch' => ApiWatch::class,
+		'patrol' => ApiPatrol::class,
+		'import' => ApiImport::class,
 		'clearhasmsg' => [
 			'class' => ApiClearHasMsg::class,
 			'services' => [
 				'TalkPageNotificationManager',
 			]
 		],
-		'userrights' => [
-			'class' => ApiUserrights::class,
-			'services' => [
-				'UserGroupManager',
-			]
-		],
-		'options' => [
-			'class' => ApiOptions::class,
-			'services' => [
-				'UserOptionsManager',
-				'PreferencesFactory',
-			],
-		],
-		'imagerotate' => [
-			'class' => ApiImageRotate::class,
-			'services' => [
-				'RepoGroup',
-				'TempFSFileFactory',
-			]
-		],
-		'revisiondelete' => [
-			'class' => ApiRevisionDelete::class,
-		],
-		'managetags' => [
-			'class' => ApiManageTags::class,
-		],
-		'tag' => [
-			'class' => ApiTag::class,
-			'services' => [
-				'DBLoadBalancer',
-				'RevisionStore',
-			]
-		],
-		'mergehistory' => [
-			'class' => ApiMergeHistory::class,
-			'services' => [
-				'MergeHistoryFactory',
-			],
-		],
-		'setpagelanguage' => [
-			'class' => ApiSetPageLanguage::class,
-			'services' => [
-				'DBLoadBalancer',
-				'LanguageNameUtils',
-			]
-		],
+		'userrights' => ApiUserrights::class,
+		'options' => ApiOptions::class,
+		'imagerotate' => ApiImageRotate::class,
+		'revisiondelete' => ApiRevisionDelete::class,
+		'managetags' => ApiManageTags::class,
+		'tag' => ApiTag::class,
+		'mergehistory' => ApiMergeHistory::class,
+		'setpagelanguage' => ApiSetPageLanguage::class,
 		'changecontentmodel' => [
 			'class' => ApiChangeContentModel::class,
 			'services' => [
@@ -403,30 +183,14 @@ class ApiMain extends ApiBase {
 	 * List of available formats: format name => format class
 	 */
 	private const FORMATS = [
-		'json' => [
-			'class' => ApiFormatJson::class,
-		],
-		'jsonfm' => [
-			'class' => ApiFormatJson::class,
-		],
-		'php' => [
-			'class' => ApiFormatPhp::class,
-		],
-		'phpfm' => [
-			'class' => ApiFormatPhp::class,
-		],
-		'xml' => [
-			'class' => ApiFormatXml::class,
-		],
-		'xmlfm' => [
-			'class' => ApiFormatXml::class,
-		],
-		'rawfm' => [
-			'class' => ApiFormatJson::class,
-		],
-		'none' => [
-			'class' => ApiFormatNone::class,
-		],
+		'json' => ApiFormatJson::class,
+		'jsonfm' => ApiFormatJson::class,
+		'php' => ApiFormatPhp::class,
+		'phpfm' => ApiFormatPhp::class,
+		'xml' => ApiFormatXml::class,
+		'xmlfm' => ApiFormatXml::class,
+		'rawfm' => ApiFormatJson::class,
+		'none' => ApiFormatNone::class,
 	];
 
 	/**
@@ -446,7 +210,7 @@ class ApiMain extends ApiBase {
 		]
 	];
 
-	/** @var ApiFormatBase|null */
+	/** @var ApiFormatBase */
 	private $mPrinter;
 
 	/** @var ApiModuleManager */
@@ -528,9 +292,10 @@ class ApiMain extends ApiBase {
 			// If we're in a mode that breaks the same-origin policy, strip
 			// user credentials for security.
 			if ( $this->lacksSameOriginSecurity() ) {
+				global $wgUser;
 				wfDebug( "API: stripping user credentials when the same-origin policy is not applied" );
 				$user = new User();
-				StubGlobalUser::setUser( $user );
+				$wgUser = $user;
 				$derivativeContext->setUser( $user );
 				$request->response()->header( 'MediaWiki-Login-Suppressed: true' );
 			}
@@ -691,7 +456,7 @@ class ApiMain extends ApiBase {
 	 * Get the parameter validator
 	 * @return ApiParamValidator
 	 */
-	public function getParamValidator(): ApiParamValidator {
+	public function getParamValidator() : ApiParamValidator {
 		return $this->mParamValidator;
 	}
 
@@ -810,7 +575,6 @@ class ApiMain extends ApiBase {
 			);
 		}
 
-		// @phan-suppress-next-line PhanTypeMismatchReturnSuperType
 		return $printer;
 	}
 
@@ -899,7 +663,7 @@ class ApiMain extends ApiBase {
 		// T65145: Rollback any open database transactions
 		if ( !$e instanceof ApiUsageException ) {
 			// ApiUsageExceptions are intentional, so don't rollback if that's the case
-			MWExceptionHandler::rollbackPrimaryChangesAndLog(
+			MWExceptionHandler::rollbackMasterChangesAndLog(
 				$e,
 				MWExceptionHandler::CAUGHT_BY_ENTRYPOINT
 			);
@@ -1062,6 +826,12 @@ class ApiMain extends ApiBase {
 			$requestedMethod = $request->getHeader( 'Access-Control-Request-Method' );
 			$preflight = $request->getMethod() === 'OPTIONS' && $requestedMethod !== false;
 			if ( $preflight ) {
+				// This is a CORS preflight request
+				if ( $requestedMethod !== 'POST' && $requestedMethod !== 'GET' ) {
+					// If method is not a case-sensitive match, do not set any additional headers and terminate.
+					$response->header( 'MediaWiki-CORS-Rejection: Unsupported method requested in preflight' );
+					return true;
+				}
 				// We allow the actual request to send the following headers
 				$requestedHeaders = $request->getHeader( 'Access-Control-Request-Headers' );
 				$allowedHeaders = $this->getConfig()->get( 'AllowedCorsHeaders' );
@@ -1073,8 +843,14 @@ class ApiMain extends ApiBase {
 					$response->header( 'Access-Control-Allow-Headers: ' . $requestedHeaders );
 				}
 
-				// We only allow the actual request to be GET, POST, or HEAD
-				$response->header( 'Access-Control-Allow-Methods: POST, GET, HEAD' );
+				// We only allow the actual request to be GET or POST
+				$response->header( 'Access-Control-Allow-Methods: POST, GET' );
+			} elseif ( $request->getMethod() !== 'POST' && $request->getMethod() !== 'GET' ) {
+				// Unsupported non-preflight method, don't handle it as CORS
+				$response->header(
+					'MediaWiki-CORS-Rejection: Unsupported method for simple request or actual request'
+				);
+				return true;
 			}
 
 			$response->header( "Access-Control-Allow-Origin: $allowOrigin" );
@@ -1114,8 +890,7 @@ class ApiMain extends ApiBase {
 			return true;
 		}
 		$requestedHeaders = explode( ',', $requestedHeaders );
-		$allowedHeaders = array_change_key_case(
-			array_fill_keys( $allowedHeaders, true ), CASE_LOWER );
+		$allowedHeaders = array_change_key_case( array_flip( $allowedHeaders ), CASE_LOWER );
 		foreach ( $requestedHeaders as $rHeader ) {
 			$rHeader = strtolower( trim( $rHeader ) );
 			if ( !isset( $allowedHeaders[$rHeader] ) ) {
@@ -1768,12 +1543,12 @@ class ApiMain extends ApiBase {
 			$user = $this->getUser();
 			switch ( $params['assert'] ) {
 				case 'anon':
-					if ( $user->isRegistered() ) {
+					if ( !$user->isAnon() ) {
 						$this->dieWithError( 'apierror-assertanonfailed' );
 					}
 					break;
 				case 'user':
-					if ( !$user->isRegistered() ) {
+					if ( $user->isAnon() ) {
 						$this->dieWithError( 'apierror-assertuserfailed' );
 					}
 					break;
@@ -1785,9 +1560,7 @@ class ApiMain extends ApiBase {
 			}
 		}
 		if ( isset( $params['assertuser'] ) ) {
-			// TODO inject stuff, see T265644
-			$assertUser = MediaWikiServices::getInstance()->getUserFactory()
-				->newFromName( $params['assertuser'], UserFactory::RIGOR_NONE );
+			$assertUser = User::newFromName( $params['assertuser'], false );
 			if ( !$assertUser || !$this->getUser()->equals( $assertUser ) ) {
 				$this->dieWithError(
 					[ 'apierror-assertnameduserfailed', wfEscapeWikiText( $params['assertuser'] ) ]
@@ -1909,16 +1682,9 @@ class ApiMain extends ApiBase {
 	protected function logRequest( $time, Throwable $e = null ) {
 		$request = $this->getRequest();
 
-		$user = $this->getUser();
-		$performer = [
-			'user_text' => $user->getName(),
-		];
-		if ( $user->isRegistered() ) {
-			$performer['user_id'] = $user->getId();
-		}
 		$logCtx = [
 			// https://gerrit.wikimedia.org/g/mediawiki/event-schemas/+/master/jsonschema/mediawiki/api/request
-			'$schema' => '/mediawiki/api/request/1.0.0',
+			'$schema' => '/mediawiki/api/request/0.0.1',
 			'meta' => [
 				'request_id' => WebRequest::getRequestId(),
 				'id' => MediaWikiServices::getInstance()
@@ -1933,7 +1699,6 @@ class ApiMain extends ApiBase {
 				'method' => $request->getMethod(),
 				'client_ip' => $request->getIP()
 			],
-			'performer' => $performer,
 			'database' => WikiMap::getCurrentWikiDbDomain()->getId(),
 			'backend_time_ms' => (int)round( $time * 1000 ),
 		];
@@ -1960,7 +1725,7 @@ class ApiMain extends ApiBase {
 			" {$logCtx['http']['client_ip']} " .
 			"T={$logCtx['backend_time_ms']}ms";
 
-		$sensitive = array_fill_keys( $this->getSensitiveParams(), true );
+		$sensitive = array_flip( $this->getSensitiveParams() );
 		foreach ( $this->getParamsUsed() as $name ) {
 			$value = $request->getVal( $name );
 			if ( $value === null ) {
@@ -2186,7 +1951,6 @@ class ApiMain extends ApiBase {
 			'errorformat' => [
 				ApiBase::PARAM_TYPE => [ 'plaintext', 'wikitext', 'html', 'raw', 'none', 'bc' ],
 				ApiBase::PARAM_DFLT => 'bc',
-				ApiBase::PARAM_HELP_MSG_PER_VALUE => [],
 			],
 			'errorlang' => [
 				ApiBase::PARAM_DFLT => 'uselang',
@@ -2236,8 +2000,6 @@ class ApiMain extends ApiBase {
 			);
 		}
 		$help['permissions'] .= Html::openElement( 'dl' );
-		// TODO inject stuff, see T265644
-		$groupPermissionsLookup = MediaWikiServices::getInstance()->getGroupPermissionsLookup();
 		foreach ( self::RIGHTS_MAP as $right => $rightMsg ) {
 			$help['permissions'] .= Html::element( 'dt', null, $right );
 
@@ -2246,7 +2008,7 @@ class ApiMain extends ApiBase {
 
 			$groups = array_map( static function ( $group ) {
 				return $group == '*' ? 'all' : $group;
-			}, $groupPermissionsLookup->getGroupsWithPermission( $right ) );
+			}, $this->getGroupPermissionsLookup()->getGroupsWithPermission( $right ) );
 
 			$help['permissions'] .= Html::rawElement( 'dd', null,
 				$this->msg( 'api-help-permissions-granted-to' )

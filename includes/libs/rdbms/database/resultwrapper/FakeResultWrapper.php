@@ -2,16 +2,18 @@
 
 namespace Wikimedia\Rdbms;
 
-use RuntimeException;
 use stdClass;
 
 /**
- * Overloads the relevant methods of the real ResultWrapper so it
+ * Overloads the relevant methods of the real ResultsWrapper so it
  * doesn't go anywhere near an actual database.
  */
-class FakeResultWrapper extends ResultWrapper {
-	/** @var stdClass[]|array[]|null */
+class FakeResultWrapper implements IResultWrapper {
+	/** @var stdClass[]|array[] */
 	protected $result;
+
+	/** @var int */
+	protected $pos = 0;
 
 	/**
 	 * @param stdClass[]|array[]|FakeResultWrapper $result
@@ -24,30 +26,58 @@ class FakeResultWrapper extends ResultWrapper {
 		}
 	}
 
-	protected function doNumRows() {
+	public function numRows() {
 		return count( $this->result );
 	}
 
-	protected function doFetchObject() {
-		$value = $this->result[$this->currentPos] ?? false;
-		return is_array( $value ) ? (object)$value : $value;
+	public function fetchObject() {
+		$current = $this->current();
+
+		$this->next();
+
+		return $current;
 	}
 
-	protected function doFetchRow() {
-		$row = $this->doFetchObject();
+	public function fetchRow() {
+		// @phan-suppress-next-line PhanTypeArraySuspiciousNullable valid() checks for result not null
+		$row = $this->valid() ? $this->result[$this->pos] : false;
+
+		$this->next();
+
 		return is_object( $row ) ? get_object_vars( $row ) : $row;
 	}
 
-	protected function doSeek( $pos ) {
+	public function seek( $pos ) {
+		$this->pos = $pos;
 	}
 
-	protected function doFree() {
+	public function free() {
 		$this->result = null;
 	}
 
-	protected function doGetFieldNames() {
-		// @phan-suppress-previous-line PhanPluginNeverReturnMethod
-		throw new RuntimeException( __METHOD__ . ' is unimplemented' );
+	public function rewind() {
+		$this->pos = 0;
+	}
+
+	public function current() {
+		// @phan-suppress-next-line PhanTypeArraySuspiciousNullable valid() checks for result not null
+		$row = $this->valid() ? $this->result[$this->pos] : false;
+
+		return is_array( $row ) ? (object)$row : $row;
+	}
+
+	public function key() {
+		return $this->pos;
+	}
+
+	public function next() {
+		$this->pos++;
+
+		return $this->current();
+	}
+
+	public function valid() {
+		return array_key_exists( $this->pos, $this->result );
 	}
 }
 

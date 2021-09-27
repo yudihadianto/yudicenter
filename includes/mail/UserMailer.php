@@ -199,7 +199,7 @@ class UserMailer {
 	private static function isMailMimeUsable() {
 		static $usable = null;
 		if ( $usable === null ) {
-			$usable = class_exists( Mail_mime::class );
+			$usable = class_exists( 'Mail_mime' );
 		}
 		return $usable;
 	}
@@ -213,7 +213,7 @@ class UserMailer {
 	private static function isMailUsable() {
 		static $usable = null;
 		if ( $usable === null ) {
-			$usable = class_exists( Mail::class );
+			$usable = class_exists( 'Mail' );
 		}
 
 		return $usable;

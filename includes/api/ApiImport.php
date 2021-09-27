@@ -27,24 +27,6 @@
  */
 class ApiImport extends ApiBase {
 
-	/** @var WikiImporterFactory */
-	private $wikiImporterFactory;
-
-	/**
-	 * @param ApiMain $main
-	 * @param string $action
-	 * @param WikiImporterFactory $wikiImporterFactory
-	 */
-	public function __construct(
-		ApiMain $main,
-		$action,
-		WikiImporterFactory $wikiImporterFactory
-	) {
-		parent::__construct( $main, $action );
-
-		$this->wikiImporterFactory = $wikiImporterFactory;
-	}
-
 	public function execute() {
 		$this->useTransactionalTimeLimit();
 		$user = $this->getUser();
@@ -91,7 +73,7 @@ class ApiImport extends ApiBase {
 			}
 		}
 
-		$importer = $this->wikiImporterFactory->getWikiImporter( $source->value );
+		$importer = new WikiImporter( $source->value, $this->getConfig() );
 		if ( isset( $params['namespace'] ) ) {
 			$importer->setTargetNamespace( $params['namespace'] );
 		} elseif ( isset( $params['rootpage'] ) ) {

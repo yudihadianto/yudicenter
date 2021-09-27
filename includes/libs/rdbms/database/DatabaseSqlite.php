@@ -29,6 +29,7 @@ use NullLockManager;
 use PDO;
 use PDOException;
 use RuntimeException;
+use stdClass;
 
 /**
  * @ingroup Database
@@ -44,7 +45,7 @@ class DatabaseSqlite extends Database {
 	/** @var int The number of rows affected as an integer */
 	protected $lastAffectedRowCount;
 
-	/** @var PDO|null */
+	/** @var PDO */
 	protected $conn;
 
 	/** @var FSLockManager (hopefully on the same server as the DB) */
@@ -132,7 +133,7 @@ class DatabaseSqlite extends Database {
 		return 'sqlite';
 	}
 
-	protected function open( $server, $user, $password, $db, $schema, $tablePrefix ) {
+	protected function open( $server, $user, $pass, $dbName, $schema, $tablePrefix ) {
 		$this->close( __METHOD__ );
 
 		// Note that for SQLite, $server, $user, and $pass are ignored
@@ -144,17 +145,23 @@ class DatabaseSqlite extends Database {
 		if ( $this->dbPath !== null ) {
 			$path = $this->dbPath;
 		} elseif ( $this->dbDir !== null ) {
-			$path = self::generateFileName( $this->dbDir, $db );
+			$path = self::generateFileName( $this->dbDir, $dbName );
 		} else {
 			throw $this->newExceptionAfterConnectError( "DB path or directory required" );
 		}
 
 		// Check if the database file already exists but is non-readable
-		if ( !self::isProcessMemoryPath( $path ) && is_file( $path ) && !is_readable( $path ) ) {
+		if (
+			!self::isProcessMemoryPath( $path ) &&
+			file_exists( $path ) &&
+			!is_readable( $path )
+		) {
 			throw $this->newExceptionAfterConnectError( 'SQLite database file is not readable' );
 		} elseif ( !in_array( $this->trxMode, self::$VALID_TRX_MODES, true ) ) {
 			throw $this->newExceptionAfterConnectError( "Got mode '{$this->trxMode}' for BEGIN" );
 		}
+
+		$this->server = 'localhost';
 
 		$attributes = [];
 		if ( $this->getFlag( self::DBO_PERSISTENT ) ) {
@@ -177,7 +184,7 @@ class DatabaseSqlite extends Database {
 			throw $this->newExceptionAfterConnectError( $e->getMessage() );
 		}
 
-		$this->currentDomain = new DatabaseDomain( $db, null, $tablePrefix );
+		$this->currentDomain = new DatabaseDomain( $dbName, null, $tablePrefix );
 
 		try {
 			$flags = self::QUERY_IGNORE_DBO_TRX | self::QUERY_NO_RETRY;
@@ -351,8 +358,10 @@ class DatabaseSqlite extends Database {
 	}
 
 	/**
+	 * SQLite doesn't allow buffered results or data seeking etc, so we'll use fetchAll as the result
+	 *
 	 * @param string $sql
-	 * @return IResultWrapper|bool
+	 * @return bool|IResultWrapper
 	 */
 	protected function doQuery( $sql ) {
 		$res = $this->getBindingHandle()->query( $sql );
@@ -360,8 +369,103 @@ class DatabaseSqlite extends Database {
 			return false;
 		}
 
-		$this->lastAffectedRowCount = $res->rowCount();
-		return new SqliteResultWrapper( $res );
+		$resource = ResultWrapper::unwrap( $res );
+		$this->lastAffectedRowCount = $resource->rowCount();
+		$res = new ResultWrapper( $this, $resource->fetchAll() );
+
+		return $res;
+	}
+
+	/**
+	 * @param IResultWrapper|mixed $res
+	 */
+	public function freeResult( $res ) {
+		if ( $res instanceof ResultWrapper ) {
+			$res->free();
+		}
+	}
+
+	/**
+	 * @param IResultWrapper|array $res
+	 * @return stdClass|bool
+	 */
+	public function fetchObject( $res ) {
+		$resource =& ResultWrapper::unwrap( $res );
+
+		$cur = current( $resource );
+		if ( is_array( $cur ) ) {
+			next( $resource );
+			$obj = (object)[];
+			foreach ( $cur as $k => $v ) {
+				if ( !is_numeric( $k ) ) {
+					$obj->$k = $v;
+				}
+			}
+
+			return $obj;
+		}
+
+		return false;
+	}
+
+	/**
+	 * @param IResultWrapper|mixed $res
+	 * @return array|bool
+	 */
+	public function fetchRow( $res ) {
+		$resource =& ResultWrapper::unwrap( $res );
+		$cur = current( $resource );
+		if ( is_array( $cur ) ) {
+			next( $resource );
+
+			return $cur;
+		}
+
+		return false;
+	}
+
+	/**
+	 * The PDO::Statement class implements the array interface so count() will work
+	 *
+	 * @param IResultWrapper|array|false $res
+	 * @return int
+	 */
+	public function numRows( $res ) {
+		// false does not implement Countable
+		$resource = ResultWrapper::unwrap( $res );
+
+		return is_array( $resource ) ? count( $resource ) : 0;
+	}
+
+	/**
+	 * @param IResultWrapper $res
+	 * @return int
+	 */
+	public function numFields( $res ) {
+		$resource = ResultWrapper::unwrap( $res );
+		if ( is_array( $resource ) && count( $resource ) > 0 ) {
+			// The size of the result array is twice the number of fields. (T67578)
+			return count( $resource[0] ) / 2;
+		} else {
+			// If the result is empty return 0
+			return 0;
+		}
+	}
+
+	/**
+	 * @param IResultWrapper $res
+	 * @param int $n
+	 * @return bool
+	 */
+	public function fieldName( $res, $n ) {
+		$resource = ResultWrapper::unwrap( $res );
+		if ( is_array( $resource ) ) {
+			$keys = array_keys( $resource[0] );
+
+			return $keys[$n];
+		}
+
+		return false;
 	}
 
 	protected function doSelectDomain( DatabaseDomain $domain ) {
@@ -418,6 +522,20 @@ class DatabaseSqlite extends Database {
 	public function insertId() {
 		// PDO::lastInsertId yields a string :(
 		return intval( $this->getBindingHandle()->lastInsertId() );
+	}
+
+	/**
+	 * @param IResultWrapper|array $res
+	 * @param int $row
+	 */
+	public function dataSeek( $res, $row ) {
+		$resource =& ResultWrapper::unwrap( $res );
+		reset( $resource );
+		if ( $row > 0 ) {
+			for ( $i = 0; $i < $row; $i++ ) {
+				next( $resource );
+			}
+		}
 	}
 
 	/**
@@ -560,7 +678,7 @@ class DatabaseSqlite extends Database {
 		return [ 'INSERT OR IGNORE INTO', '' ];
 	}
 
-	protected function doReplace( $table, array $identityKey, array $rows, $fname ) {
+	protected function doReplace( $table, array $uniqueKeys, array $rows, $fname ) {
 		$encTable = $this->tableName( $table );
 		list( $sqlColumns, $sqlTuples ) = $this->makeInsertLists( $rows );
 		// https://sqlite.org/lang_insert.html
@@ -569,7 +687,7 @@ class DatabaseSqlite extends Database {
 
 	/**
 	 * Returns the size of a text field, or -1 for "unlimited"
-	 * In SQLite this is SQLITE_MAX_LENGTH, by default 1 GB. No way to query it though.
+	 * In SQLite this is SQLITE_MAX_LENGTH, by default 1GB. No way to query it though.
 	 *
 	 * @param string $table
 	 * @param string $field
@@ -621,11 +739,6 @@ class DatabaseSqlite extends Database {
 		// https://sqlite.org/lang_createtable.html#uniqueconst
 		// https://sqlite.org/lang_conflict.html
 		return false;
-	}
-
-	public function getTopologyBasedServerId() {
-		// Sqlite topologies trivially consist of single primary server for the dataset
-		return '0';
 	}
 
 	public function serverIsReadOnly() {
@@ -831,12 +944,7 @@ class DatabaseSqlite extends Database {
 		return $s;
 	}
 
-	public function doLockIsFree( string $lockName, string $method ) {
-		// Only locks by this thread will be checked
-		return true;
-	}
-
-	public function doLock( string $lockName, string $method, int $timeout ) {
+	public function lock( $lockName, $method, $timeout = 5 ) {
 		$status = $this->lockMgr->lock( [ $lockName ], LockManager::LOCK_EX, $timeout );
 		if (
 			$this->lockMgr instanceof FSLockManager &&
@@ -845,10 +953,10 @@ class DatabaseSqlite extends Database {
 			throw new DBError( $this, "Cannot create directory \"{$this->getLockFileDirectory()}\"" );
 		}
 
-		return $status->isOK() ? microtime( true ) : null;
+		return $status->isOK();
 	}
 
-	public function doUnlock( string $lockName, string $method ) {
+	public function unlock( $lockName, $method ) {
 		return $this->lockMgr->unlock( [ $lockName ], LockManager::LOCK_EX )->isGood();
 	}
 
@@ -955,6 +1063,7 @@ class DatabaseSqlite extends Database {
 
 			$sqlIndex .= '(' . implode( ',', $fields ) . ')';
 
+			// @phan-suppress-next-line SecurityCheck-SQLInjection implode does not ignore taint from keys T270942
 			$this->query( $sqlIndex, __METHOD__ );
 		}
 

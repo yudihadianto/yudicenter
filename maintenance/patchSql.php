@@ -44,7 +44,7 @@ class PatchSql extends Maintenance {
 	}
 
 	public function execute() {
-		$dbw = $this->getDB( DB_PRIMARY );
+		$dbw = $this->getDB( DB_MASTER );
 		$updater = DatabaseUpdater::newForDB( $dbw, true, $this );
 
 		foreach ( $this->mArgs as $arg ) {

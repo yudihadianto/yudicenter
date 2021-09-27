@@ -16,16 +16,16 @@
  * http://www.gnu.org/copyleft/gpl.html
  *
  * @file
- * @author Kunal Mehta <legoktm@debian.org>
+ * @author Kunal Mehta <legoktm@member.fsf.org>
  */
 namespace MediaWiki\Linker;
 
 use LinkCache;
 use MediaWiki\HookContainer\HookContainer;
 use MediaWiki\SpecialPage\SpecialPageFactory;
-use MediaWiki\User\UserIdentity;
 use NamespaceInfo;
 use TitleFormatter;
+use User;
 
 /**
  * Factory to create LinkRender objects
@@ -91,14 +91,14 @@ class LinkRendererFactory {
 	}
 
 	/**
-	 * @deprecated since 1.37. LinkRenderer does not depend on the user any longer,
-	 * so calling ::create is sufficient.
-	 * @param UserIdentity $user
+	 * @param User $user
 	 * @return LinkRenderer
 	 */
-	public function createForUser( UserIdentity $user ) {
-		wfDeprecated( __METHOD__, '1.37' );
-		return $this->create();
+	public function createForUser( User $user ) {
+		$linkRenderer = $this->create();
+		$linkRenderer->setStubThreshold( $user->getStubThreshold() );
+
+		return $linkRenderer;
 	}
 
 	/**
@@ -116,6 +116,12 @@ class LinkRendererFactory {
 			$linkRenderer->setExpandURLs( PROTO_HTTP );
 		} elseif ( in_array( 'https', $options, true ) ) {
 			$linkRenderer->setExpandURLs( PROTO_HTTPS );
+		}
+
+		if ( isset( $options['stubThreshold'] ) ) {
+			$linkRenderer->setStubThreshold(
+				$options['stubThreshold']
+			);
 		}
 
 		return $linkRenderer;

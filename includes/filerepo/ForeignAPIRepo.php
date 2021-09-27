@@ -19,10 +19,7 @@
  * @ingroup FileRepo
  */
 
-use MediaWiki\Linker\LinkTarget;
 use MediaWiki\Logger\LoggerFactory;
-use MediaWiki\MediaWikiServices;
-use MediaWiki\Page\PageIdentity;
 
 /**
  * A foreign repository for a remote MediaWiki accessible through api.php requests.
@@ -106,7 +103,7 @@ class ForeignAPIRepo extends FileRepo {
 	 * Per docs in FileRepo, this needs to return false if we don't support versioned
 	 * files. Well, we don't.
 	 *
-	 * @param PageIdentity|LinkTarget|string $title
+	 * @param Title $title
 	 * @param string|bool $time
 	 * @return File|false
 	 */
@@ -469,8 +466,7 @@ class ForeignAPIRepo extends FileRepo {
 	 * @return string
 	 */
 	public static function getUserAgent() {
-		return MediaWikiServices::getInstance()->getHttpRequestFactory()->getUserAgent() .
-			" ForeignAPIRepo/" . self::VERSION;
+		return Http::userAgent() . " ForeignAPIRepo/" . self::VERSION;
 	}
 
 	/**
@@ -508,6 +504,9 @@ class ForeignAPIRepo extends FileRepo {
 	}
 
 	/**
+	 * Like a HttpRequestFactory::get request, but with custom User-Agent.
+	 * @see HttpRequestFactory::get
+	 * @todo Can this use HttpRequestFactory::get() but just pass the 'userAgent' option?
 	 * @param string $url
 	 * @param string $timeout
 	 * @param array $options
@@ -527,10 +526,8 @@ class ForeignAPIRepo extends FileRepo {
 			$options['timeout'] = 'default';
 		}
 
-		$options['userAgent'] = self::getUserAgent();
-
-		$req = MediaWikiServices::getInstance()->getHttpRequestFactory()
-			->create( $url, $options, __METHOD__ );
+		$req = MWHttpRequest::factory( $url, $options, __METHOD__ );
+		$req->setUserAgent( self::getUserAgent() );
 		$status = $req->execute();
 
 		if ( $status->isOK() ) {
@@ -594,7 +591,6 @@ class ForeignAPIRepo extends FileRepo {
 	 * @throws MWException
 	 */
 	public function enumFiles( $callback ) {
-		// @phan-suppress-previous-line PhanPluginNeverReturnMethod
 		throw new MWException( 'enumFiles is not supported by ' . static::class );
 	}
 

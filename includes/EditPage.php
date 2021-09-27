@@ -55,10 +55,7 @@ use MediaWiki\Revision\RevisionRecord;
 use MediaWiki\Revision\RevisionStore;
 use MediaWiki\Revision\RevisionStoreRecord;
 use MediaWiki\Revision\SlotRecord;
-use MediaWiki\Storage\EditResult;
 use MediaWiki\User\UserIdentity;
-use MediaWiki\User\UserNameUtils;
-use MediaWiki\Watchlist\WatchlistManager;
 use OOUI\CheckboxInputWidget;
 use OOUI\DropdownInputWidget;
 use OOUI\FieldLayout;
@@ -170,6 +167,9 @@ class EditPage implements IEditObject {
 	private $mTokenOk = false;
 
 	/** @var bool */
+	private $mTokenOkExceptSuffix = false;
+
+	/** @var bool */
 	private $mTriedSave = false;
 
 	/** @var bool */
@@ -214,9 +214,20 @@ class EditPage implements IEditObject {
 	private $hasPresetSummary = false;
 
 	/**
+	 * @var Revision|bool|null
+	 *
+	 * A revision object corresponding to $this->editRevId.
+	 * Formerly public as part of using Revision objects
+	 *
+	 * @deprecated since 1.35
+	 */
+	protected $mBaseRevision = false;
+
+	/**
 	 * @var RevisionRecord|bool|null
 	 *
 	 * A RevisionRecord corresponding to $this->editRevId or $this->edittime
+	 * Replaced $mBaseRevision
 	 */
 	private $mExpectedParentRevision = false;
 
@@ -241,7 +252,7 @@ class EditPage implements IEditObject {
 	private $watchthis = false;
 
 	/** @var bool Corresponds to $wgWatchlistExpiry */
-	private $watchlistExpiryEnabled;
+	private $watchlistExpiryEnabled = false;
 
 	/** @var WatchedItemStoreInterface */
 	private $watchedItemStore;
@@ -269,7 +280,7 @@ class EditPage implements IEditObject {
 	 */
 	private $nosummary = false;
 
-	/** @var string|null
+	/** @var string
 	 * Timestamp of the latest revision of the page when editing was initiated
 	 * on the client.
 	 */
@@ -412,16 +423,6 @@ class EditPage implements IEditObject {
 	private $wikiPageFactory;
 
 	/**
-	 * @var WatchlistManager
-	 */
-	private $watchlistManager;
-
-	/**
-	 * @var UserNameUtils
-	 */
-	private $userNameUtils;
-
-	/**
 	 * @stable to call
 	 * @param Article $article
 	 */
@@ -453,12 +454,12 @@ class EditPage implements IEditObject {
 			&& $this->getContext()->getConfig()->get( 'WatchlistExpiry' );
 		$this->watchedItemStore = $services->getWatchedItemStore();
 		$this->wikiPageFactory = $services->getWikiPageFactory();
-		$this->watchlistManager = $services->getWatchlistManager();
-		$this->userNameUtils = $services->getUserNameUtils();
 
+		$this->deprecatePublicProperty( 'mBaseRevision', '1.35', __CLASS__ );
 		$this->deprecatePublicProperty( 'deletedSinceEdit', '1.35', __CLASS__ );
 		$this->deprecatePublicProperty( 'lastDelete', '1.35', __CLASS__ );
 		$this->deprecatePublicProperty( 'mTokenOk', '1.35', __CLASS__ );
+		$this->deprecatePublicProperty( 'mTokenOkExceptSuffix', '1.35', __CLASS__ );
 		$this->deprecatePublicProperty( 'mTriedSave', '1.35', __CLASS__ );
 		$this->deprecatePublicProperty( 'incompleteForm', '1.35', __CLASS__ );
 		$this->deprecatePublicProperty( 'tooBig', '1.35', __CLASS__ );
@@ -508,6 +509,8 @@ class EditPage implements IEditObject {
 	}
 
 	/**
+	 * Get the context title object.
+	 *
 	 * @throws RuntimeException if no context title was set
 	 * @return Title
 	 */
@@ -735,6 +738,21 @@ class EditPage implements IEditObject {
 			$this->mTitle,
 			$rigor
 		);
+		# Can this title be created?
+		if ( !$this->mTitle->exists() ) {
+			$permErrors = array_merge(
+				$permErrors,
+				wfArrayDiff2(
+					$this->permManager->getPermissionErrors(
+						'create',
+						$user,
+						$this->mTitle,
+						$rigor
+					),
+					$permErrors
+				)
+			);
+		}
 		# Ignore some permissions errors when a user is just previewing/viewing diffs
 		$remove = [];
 		foreach ( $permErrors as $error ) {
@@ -777,11 +795,8 @@ class EditPage implements IEditObject {
 
 		$content = $this->getContentObject();
 
-		// Use the normal message if there's nothing to display
-		// We used to only do this if $this->firsttime was truthy, and there was no content
-		// or the content was empty, but sometimes there was no content even if it not the
-		// first time, we can't use displayViewSourcePage if there is no content (T281400)
-		if ( !$content || ( $this->firsttime && $content->isEmpty() ) ) {
+		# Use the normal message if there's nothing to display
+		if ( $this->firsttime && ( !$content || $content->isEmpty() ) ) {
 			$action = $this->mTitle->exists() ? 'edit' :
 				( $this->mTitle->isTalkPage() ? 'createtalk' : 'createpage' );
 			throw new PermissionsError( $action, $permErrors );
@@ -897,7 +912,7 @@ class EditPage implements IEditObject {
 			$name = $this->mTitle->getSkinFromConfigSubpage();
 			$skinFactory = MediaWikiServices::getInstance()->getSkinFactory();
 			$skins = array_merge(
-				array_keys( $skinFactory->getInstalledSkins() ),
+				array_keys( $skinFactory->getSkinNames() ),
 				[ 'common' ]
 			);
 			return !in_array( $name, $skins )
@@ -1056,7 +1071,7 @@ class EditPage implements IEditObject {
 			}
 
 			# Don't force edit summaries when a user is editing their own user or talk page
-			if ( ( $this->mTitle->getNamespace() === NS_USER || $this->mTitle->getNamespace() === NS_USER_TALK )
+			if ( ( $this->mTitle->mNamespace === NS_USER || $this->mTitle->mNamespace === NS_USER_TALK )
 				&& $this->mTitle->getText() == $user->getName()
 			) {
 				$this->allowBlankSummary = true;
@@ -1226,7 +1241,7 @@ class EditPage implements IEditObject {
 		} elseif ( $user->getOption( 'watchcreations' ) && !$this->mTitle->exists() ) {
 			# Watch creations
 			$this->watchthis = true;
-		} elseif ( $this->watchlistManager->isWatched( $user, $this->mTitle ) ) {
+		} elseif ( $user->isWatched( $this->mTitle ) ) {
 			# Already watched
 			$this->watchthis = true;
 		}
@@ -1323,11 +1338,9 @@ class EditPage implements IEditObject {
 
 					if ( $undoMsg === null ) {
 						$oldContent = $this->page->getContent( RevisionRecord::RAW );
-						$services = MediaWikiServices::getInstance();
-						$popts = ParserOptions::newFromUserAndLang( $user, $services->getContentLanguage() );
-						$contentTransformer = $services->getContentTransformer();
-						$newContent = $contentTransformer->preSaveTransform( $content, $this->mTitle, $user, $popts );
-
+						$popts = ParserOptions::newFromUserAndLang(
+							$user, MediaWikiServices::getInstance()->getContentLanguage() );
+						$newContent = $content->preSaveTransform( $this->mTitle, $user, $popts );
 						if ( $newContent->getModel() !== $oldContent->getModel() ) {
 							// The undo may change content
 							// model if its reverting the top
@@ -1603,13 +1616,7 @@ class EditPage implements IEditObject {
 			$content = $converted;
 		}
 
-		$contentTransformer = MediaWikiServices::getInstance()->getContentTransformer();
-		return $contentTransformer->preloadTransform(
-			$content,
-			$title,
-			$parserOptions,
-			$params
-		);
+		return $content->preloadTransform( $title, $parserOptions, $params );
 	}
 
 	/**
@@ -1636,6 +1643,7 @@ class EditPage implements IEditObject {
 		$token = $request->getVal( 'wpEditToken' );
 		$user = $this->context->getUser();
 		$this->mTokenOk = $user->matchEditToken( $token );
+		$this->mTokenOkExceptSuffix = $user->matchEditTokenNoSuffix( $token );
 		return $this->mTokenOk;
 	}
 
@@ -1672,18 +1680,18 @@ class EditPage implements IEditObject {
 	 * Attempt submission
 	 * @param array|bool &$resultDetails See docs for $result in internalAttemptSave
 	 * @throws UserBlockedError|ReadOnlyError|ThrottledError|PermissionsError
-	 * @return Status
+	 * @return Status The resulting status object.
 	 */
 	public function attemptSave( &$resultDetails = false ) {
+		// TODO: MCR:
+		// * treat $this->minoredit like $this->markAsBot and check isAllowed( 'minoredit' )!
+		// * add $this->autopatrol like $this->markAsBot and check isAllowed( 'autopatrol' )!
+		// This is needed since PageUpdater no longer checks these rights!
+
 		// Allow bots to exempt some edits from bot flagging
 		$markAsBot = $this->markAsBot
-			&& $this->context->getAuthority()->isAllowed( 'bot' );
-
-		// Allow trusted users to mark some edits as minor
-		$markAsMinor = $this->minoredit && !$this->isNew
-			&& $this->context->getAuthority()->isAllowed( 'minoredit' );
-
-		$status = $this->internalAttemptSave( $resultDetails, $markAsBot, $markAsMinor );
+			&& $this->permManager->userHasRight( $this->context->getUser(), 'bot' );
+		$status = $this->internalAttemptSave( $resultDetails, $markAsBot );
 
 		$this->getHookRunner()->onEditPage__attemptSave_after( $this, $status, $resultDetails );
 
@@ -1838,9 +1846,9 @@ class EditPage implements IEditObject {
 				// is if an extension hook aborted from inside ArticleSave.
 				// Render the status object into $this->hookError
 				// FIXME this sucks, we should just use the Status object throughout
-				$this->hookError = Html::errorBox(
-					"\n" . $status->getWikiText( false, false, $this->context->getLanguage() )
-				);
+				$this->hookError = '<div class="error">' . "\n" .
+					$status->getWikiText( false, false, $this->context->getLanguage() ) .
+					'</div>';
 				return true;
 		}
 	}
@@ -1850,7 +1858,7 @@ class EditPage implements IEditObject {
 	 *
 	 * @return string[] array with two values, the summary and the anchor text
 	 */
-	private function newSectionSummary(): array {
+	private function newSectionSummary() : array {
 		$newSectionSummary = $this->summary;
 		$newSectionAnchor = '';
 		$services = MediaWikiServices::getInstance();
@@ -1894,7 +1902,6 @@ class EditPage implements IEditObject {
 	 *     revision is a redirect.
 	 * @param bool $markAsBot True if edit is being made under the bot right
 	 *     and the bot wishes the edit to be marked as such.
-	 * @param bool $markAsMinor True if edit should be marked as minor.
 	 *
 	 * @return Status Status object, possibly with a message, but always with
 	 *   one of the AS_* constants in $status->value,
@@ -1906,9 +1913,7 @@ class EditPage implements IEditObject {
 	 *   AS_BLOCKED_PAGE_FOR_USER. All that stuff needs to be cleaned up some
 	 * time.
 	 */
-	public function internalAttemptSave( &$result, $markAsBot = false, $markAsMinor = false ) {
-		global $wgUseNPPatrol, $wgUseRCPatrol;
-
+	public function internalAttemptSave( &$result, $markAsBot = false ) {
 		if ( !$this->getHookRunner()->onEditPage__attemptSave( $this ) ) {
 			wfDebug( "Hook 'EditPage::attemptSave' aborted article saving" );
 			$status = Status::newFatal( 'hookaborted' );
@@ -1979,7 +1984,7 @@ class EditPage implements IEditObject {
 		$constraintRunner->addConstraint(
 			$constraintFactory->newSpamRegexConstraint(
 				$this->summary,
-				$this->section ?? '',
+				$this->section === null ? '' : $this->section,
 				$this->sectiontitle,
 				$this->textbox1,
 				$this->context->getRequest()->getIP(),
@@ -2035,7 +2040,7 @@ class EditPage implements IEditObject {
 		);
 
 		// Check the constraints
-		if ( !$constraintRunner->checkConstraints() ) {
+		if ( $constraintRunner->checkConstraints() === false ) {
 			$failed = $constraintRunner->getFailedConstraint();
 
 			// Need to check SpamRegexConstraint here, to avoid needing to pass
@@ -2050,38 +2055,12 @@ class EditPage implements IEditObject {
 		}
 		// END OF MIGRATION TO EDITCONSTRAINT SYSTEM (continued below)
 
-		# Load the page data from the primary DB. If anything changes in the meantime,
+		# Load the page data from the master. If anything changes in the meantime,
 		# we detect it by using page_latest like a token in a 1 try compare-and-swap.
 		$this->page->loadPageData( 'fromdbmaster' );
 		$new = !$this->page->exists();
 
-		$flags = EDIT_AUTOSUMMARY |
-			( $new ? EDIT_NEW : EDIT_UPDATE ) |
-			( $markAsMinor ? EDIT_MINOR : 0 ) |
-			( $markAsBot ? EDIT_FORCE_BOT : 0 );
-
 		if ( $new ) {
-			$content = $textbox_content;
-
-			$result['sectionanchor'] = '';
-			if ( $this->section == 'new' ) {
-				if ( $this->sectiontitle !== '' ) {
-					// Insert the section title above the content.
-					$content = $content->addSectionHeader( $this->sectiontitle );
-				} elseif ( $this->summary !== '' ) {
-					// Insert the section title above the content.
-					$content = $content->addSectionHeader( $this->summary );
-				}
-
-				list( $newSectionSummary, $anchor ) = $this->newSectionSummary();
-				$this->summary = $newSectionSummary;
-				$result['sectionanchor'] = $anchor;
-			}
-
-			$pageUpdater = $this->page->newPageUpdater( $user )
-				->setContent( SlotRecord::MAIN, $content );
-			$pageUpdater->prepareUpdate( $flags );
-
 			// BEGINNING OF MIGRATION TO EDITCONSTRAINT SYSTEM (see T157658)
 			// Create a new runner to avoid rechecking the prior constraints, use the same factory
 			$constraintRunner = new EditConstraintRunner();
@@ -2103,20 +2082,37 @@ class EditPage implements IEditObject {
 
 			$constraintRunner->addConstraint(
 				$constraintFactory->newEditFilterMergedContentHookConstraint(
-					$content,
+					$textbox_content,
 					$this->context,
 					$this->summary,
-					$markAsMinor
+					$this->minoredit
 				)
 			);
 
 			// Check the constraints
-			if ( !$constraintRunner->checkConstraints() ) {
+			if ( $constraintRunner->checkConstraints() === false ) {
 				$failed = $constraintRunner->getFailedConstraint();
 				$this->handleFailedConstraint( $failed );
 				return Status::wrap( $failed->getLegacyStatus() );
 			}
 			// END OF MIGRATION TO EDITCONSTRAINT SYSTEM (continued below)
+
+			$content = $textbox_content;
+
+			$result['sectionanchor'] = '';
+			if ( $this->section == 'new' ) {
+				if ( $this->sectiontitle !== '' ) {
+					// Insert the section title above the content.
+					$content = $content->addSectionHeader( $this->sectiontitle );
+				} elseif ( $this->summary !== '' ) {
+					// Insert the section title above the content.
+					$content = $content->addSectionHeader( $this->summary );
+				}
+
+				list( $newSectionSummary, $anchor ) = $this->newSectionSummary();
+				$this->summary = $newSectionSummary;
+				$result['sectionanchor'] = $anchor;
+			}
 		} else { # not $new
 
 			# Article exists. Check for edit conflict.
@@ -2155,7 +2151,7 @@ class EditPage implements IEditObject {
 				} elseif ( $this->section == ''
 					&& $this->edittime
 					&& $this->revisionStore->userWasLastToEdit(
-						wfGetDB( DB_PRIMARY ),
+						wfGetDB( DB_MASTER ),
 						$this->mTitle->getArticleID(),
 						$user->getId(),
 						$this->edittime
@@ -2231,18 +2227,16 @@ class EditPage implements IEditObject {
 					$editConflictLogger->debug( 'Suppressing edit conflict, successful merge.' );
 				} else {
 					$this->section = '';
-					$this->textbox1 = ( $content instanceof TextContent ) ? $content->getText() : '';
+					$this->textbox1 = ContentHandler::getContentText( $content );
 					$editConflictLogger->debug( 'Keeping edit conflict, failed merge.' );
 				}
 			}
 
 			if ( $this->isConflict ) {
-				return Status::newGood( self::AS_CONFLICT_DETECTED )->setOK( false );
+				$status = Status::newGood( self::AS_CONFLICT_DETECTED );
+				$status->setOK( false );
+				return $status;
 			}
-
-			$pageUpdater = $this->page->newPageUpdater( $user )
-				->setContent( SlotRecord::MAIN, $content );
-			$pageUpdater->prepareUpdate( $flags );
 
 			// BEGINNING OF MIGRATION TO EDITCONSTRAINT SYSTEM (see T157658)
 			// Create a new runner to avoid rechecking the prior constraints, use the same factory
@@ -2252,7 +2246,7 @@ class EditPage implements IEditObject {
 					$content,
 					$this->context,
 					$this->summary,
-					$markAsMinor
+					$this->minoredit
 				)
 			);
 
@@ -2278,7 +2272,7 @@ class EditPage implements IEditObject {
 				);
 			}
 			// Check the constraints
-			if ( !$constraintRunner->checkConstraints() ) {
+			if ( $constraintRunner->checkConstraints() === false ) {
 				$failed = $constraintRunner->getFailedConstraint();
 				$this->handleFailedConstraint( $failed );
 				return Status::wrap( $failed->getLegacyStatus() );
@@ -2336,40 +2330,36 @@ class EditPage implements IEditObject {
 			)
 		);
 		// Check the constraints
-		if ( !$constraintRunner->checkConstraints() ) {
+		if ( $constraintRunner->checkConstraints() === false ) {
 			$failed = $constraintRunner->getFailedConstraint();
 			$this->handleFailedConstraint( $failed );
 			return Status::wrap( $failed->getLegacyStatus() );
 		}
 		// END OF MIGRATION TO EDITCONSTRAINT SYSTEM
 
-		if ( $this->undidRev && $this->isUndoClean( $content ) ) {
+		$flags = EDIT_AUTOSUMMARY |
+			( $new ? EDIT_NEW : EDIT_UPDATE ) |
+			( ( $this->minoredit && !$this->isNew ) ? EDIT_MINOR : 0 ) |
+			( $markAsBot ? EDIT_FORCE_BOT : 0 );
+
+		$isUndo = false;
+		if ( $this->undidRev ) {
 			// As the user can change the edit's content before saving, we only mark
 			// "clean" undos as reverts. This is to avoid abuse by marking irrelevant
 			// edits as undos.
-			$pageUpdater
-				->setOriginalRevisionId( $this->undoAfter ?: false )
-				->markAsRevert(
-					EditResult::REVERT_UNDO,
-					$this->undidRev,
-					$this->undoAfter ?: null
-				);
+			$isUndo = $this->isUndoClean( $content );
 		}
 
-		$needsPatrol = $wgUseRCPatrol || ( $wgUseNPPatrol && !$this->page->exists() );
-		if ( $needsPatrol && $this->context->getAuthority()
-				->authorizeWrite( 'autopatrol', $this->getTitle() )
-		) {
-			$pageUpdater->setRcPatrolStatus( RecentChange::PRC_AUTOPATROLLED );
-		}
-
-		$pageUpdater
-			->addTags( $this->changeTags )
-			->saveRevision(
-				CommentStoreComment::newUnsavedComment( trim( $this->summary ) ),
-				$flags
-			);
-		$doEditStatus = $pageUpdater->getStatus();
+		$doEditStatus = $this->page->doEditContent(
+			$content,
+			$this->summary,
+			$flags,
+			$isUndo && $this->undoAfter ? $this->undoAfter : false,
+			$user,
+			$content->getDefaultFormat(),
+			$this->changeTags,
+			$isUndo ? $this->undidRev : 0
+		);
 
 		if ( !$doEditStatus->isOK() ) {
 			// Failure from doEdit()
@@ -2456,7 +2446,7 @@ class EditPage implements IEditObject {
 	 *
 	 * @return bool
 	 */
-	private function isUndoClean( Content $content ): bool {
+	private function isUndoClean( Content $content ) : bool {
 		// Check whether the undo was "clean", that is the user has not modified
 		// the automatically generated content.
 		$undoRev = $this->revisionStore->getRevisionById( $this->undidRev );
@@ -2484,12 +2474,10 @@ class EditPage implements IEditObject {
 		}
 
 		// Do a pre-save transform on the retrieved undo content
-		$services = MediaWikiServices::getInstance();
-		$contentLanguage = $services->getContentLanguage();
+		$contentLanguage = MediaWikiServices::getInstance()->getContentLanguage();
 		$user = $this->context->getUser();
 		$parserOptions = ParserOptions::newFromUserAndLang( $user, $contentLanguage );
-		$contentTransformer = $services->getContentTransformer();
-		$undoContent = $contentTransformer->preSaveTransform( $undoContent, $this->mTitle, $user, $parserOptions );
+		$undoContent = $undoContent->preSaveTransform( $this->mTitle, $user, $parserOptions );
 
 		if ( $undoContent->equals( $content ) ) {
 			return true;
@@ -2521,7 +2509,7 @@ class EditPage implements IEditObject {
 	 * Register the change of watch status
 	 */
 	protected function updateWatchlist() {
-		$performer = $this->context->getAuthority();
+		$performer = $this->context->getUser();
 		if ( !$performer->getUser()->isRegistered() ) {
 			return;
 		}
@@ -2533,7 +2521,7 @@ class EditPage implements IEditObject {
 		// This can't run as a DeferredUpdate due to a possible race condition
 		// when the post-edit redirect happens if the pendingUpdates queue is
 		// too large to finish in time (T259564)
-		$this->watchlistManager->setWatch( $watch, $performer, $title, $watchlistExpiry );
+		WatchAction::doWatchOrUnwatch( $watch, $title, $performer, $watchlistExpiry );
 
 		$this->watchedItemStore->maybeEnqueueWatchlistExpiryJob();
 	}
@@ -2589,6 +2577,29 @@ class EditPage implements IEditObject {
 	}
 
 	/**
+	 * Returns the revision that was current at the time editing was initiated on the client,
+	 * even if the edit was based on an old revision.
+	 *
+	 * @deprecated since 1.35, use ::getExpectedParentRevision
+	 *
+	 * @warning this method is very poorly named. If the user opened the form with ?oldid=X,
+	 *        one might think of X as the "base revision", which is NOT what this returns,
+	 *        see oldid for that. One might further assume that this corresponds to the $baseRevId
+	 *        parameter of WikiPage::doEditContent, which is not the case either.
+	 *        getExpectedParentRevision() would perhaps be a better name.
+	 *
+	 * @return Revision|null Current version when editing was initiated on the client
+	 */
+	public function getBaseRevision() {
+		wfDeprecated( __METHOD__, '1.35' );
+		if ( $this->mBaseRevision === false ) {
+			$revRecord = $this->getExpectedParentRevision();
+			$this->mBaseRevision = $revRecord ? new Revision( $revRecord ) : null;
+		}
+		return $this->mBaseRevision;
+	}
+
+	/**
 	 * Returns the RevisionRecord corresponding to the revision that was current at the time
 	 * editing was initiated on the client even if the edit was based on an old revision
 	 *
@@ -2603,7 +2614,7 @@ class EditPage implements IEditObject {
 					$this->editRevId,
 					RevisionStore::READ_LATEST
 				);
-			} elseif ( $this->edittime ) {
+			} else {
 				$revRecord = $this->revisionStore->getRevisionByTimestamp(
 					$this->getTitle(),
 					$this->edittime,
@@ -2621,7 +2632,6 @@ class EditPage implements IEditObject {
 		$out->addModules( 'mediawiki.action.edit' );
 		$out->addModuleStyles( 'mediawiki.action.edit.styles' );
 		$out->addModuleStyles( 'mediawiki.editfont.styles' );
-		$out->addModuleStyles( 'mediawiki.interface.helpers.styles' );
 
 		$user = $this->context->getUser();
 
@@ -2667,6 +2677,7 @@ class EditPage implements IEditObject {
 		# Keep Resources.php/mediawiki.action.edit.preview in sync with the possible keys
 		$out->addJsConfigVars( [
 			'wgEditMessage' => $msg,
+			'wgAjaxEditStash' => $config->get( 'AjaxEditStash' ),
 		] );
 
 		// Add whether to use 'save' or 'publish' messages to JavaScript for post-edit, other
@@ -2729,7 +2740,7 @@ class EditPage implements IEditObject {
 		if ( $namespace === NS_USER || $namespace === NS_USER_TALK ) {
 			$username = explode( '/', $this->mTitle->getText(), 2 )[0];
 			$user = User::newFromName( $username, false /* allow IP users */ );
-			$ip = $this->userNameUtils->isIP( $username );
+			$ip = User::isIP( $username );
 			$block = DatabaseBlock::newFromTarget( $user, $user );
 
 			$userExists = ( $user && $user->isRegistered() );
@@ -2747,13 +2758,7 @@ class EditPage implements IEditObject {
 			} elseif (
 				$block !== null &&
 				$block->getType() != DatabaseBlock::TYPE_AUTO &&
-				(
-					$block->isSitewide() ||
-					$user->isBlockedFrom(
-						$this->mTitle,
-						true
-					)
-				)
+				( $block->isSitewide() || $user->isBlockedFrom( $this->mTitle ) )
 			) {
 				// Show log extract if the user is sitewide blocked or is partially
 				// blocked and not allowed to edit their user page or user talk page
@@ -2761,7 +2766,7 @@ class EditPage implements IEditObject {
 					$out,
 					'block',
 					MediaWikiServices::getInstance()->getNamespaceInfo()->
-						getCanonicalName( NS_USER ) . ':' . $block->getTargetName(),
+						getCanonicalName( NS_USER ) . ':' . $block->getTarget(),
 					'',
 					[
 						'lim' => 1,
@@ -2946,11 +2951,8 @@ class EditPage implements IEditObject {
 		$out->addHTML( $this->editFormTextTop );
 
 		if ( $this->wasDeletedSinceLastEdit() && $this->formtype !== 'save' ) {
-			$out->addHTML( Html::errorBox(
-				$out->msg( 'deletedwhileediting' )->parse(),
-				'',
-				'mw-deleted-while-editing'
-			) );
+			$out->wrapWikiMsg( "<div class='error mw-deleted-while-editing'>\n$1\n</div>",
+				'deletedwhileediting' );
 		}
 
 		// @todo add EditForm plugin interface and use it here!
@@ -2968,7 +2970,7 @@ class EditPage implements IEditObject {
 		) );
 
 		if ( is_callable( $formCallback ) ) {
-			wfWarn( 'The $formCallback parameter to ' . __METHOD__ . ' is deprecated' );
+			wfWarn( 'The $formCallback parameter to ' . __METHOD__ . 'is deprecated' );
 			call_user_func_array( $formCallback, [ &$out ] );
 		}
 
@@ -3001,7 +3003,7 @@ class EditPage implements IEditObject {
 		$this->showFormBeforeText();
 
 		if ( $this->wasDeletedSinceLastEdit() && $this->formtype == 'save' ) {
-			$username = $this->lastDelete->actor_name;
+			$username = $this->lastDelete->user_name;
 			$comment = CommentStore::getStore()
 				->getComment( 'log_comment', $this->lastDelete )->text;
 
@@ -3204,7 +3206,7 @@ class EditPage implements IEditObject {
 	 * Extract the section title from current section text, if any.
 	 *
 	 * @param string $text
-	 * @return string|false
+	 * @return string|bool String or false
 	 */
 	private static function extractSectionTitle( $text ) {
 		if ( preg_match( "/^(=+)(.+)\\1\\s*(\n|$)/i", $text, $matches ) ) {
@@ -3343,7 +3345,7 @@ class EditPage implements IEditObject {
 			# Check the skin exists
 			if ( $this->isWrongCaseUserConfigPage() ) {
 				$out->wrapWikiMsg(
-					"<div class='errorbox' id='mw-userinvalidconfigtitle'>\n$1\n</div>",
+					"<div class='error' id='mw-userinvalidconfigtitle'>\n$1\n</div>",
 					[ 'userinvalidconfigtitle', $this->mTitle->getSkinFromConfigSubpage() ]
 				);
 			}
@@ -3698,9 +3700,7 @@ class EditPage implements IEditObject {
 			$user = $this->context->getUser();
 			$popts = ParserOptions::newFromUserAndLang( $user,
 				MediaWikiServices::getInstance()->getContentLanguage() );
-			$services = MediaWikiServices::getInstance();
-			$contentTransformer = $services->getContentTransformer();
-			$newContent = $contentTransformer->preSaveTransform( $newContent, $this->mTitle, $user, $popts );
+			$newContent = $newContent->preSaveTransform( $this->mTitle, $user, $popts );
 		}
 
 		if ( ( $oldContent && !$oldContent->isEmpty() ) || ( $newContent && !$newContent->isEmpty() ) ) {
@@ -3795,7 +3795,7 @@ class EditPage implements IEditObject {
 		// Allow for site and per-namespace customization of contribution/copyright notice.
 		Hooks::runner()->onEditPageCopyrightWarning( $title, $copywarnMsg );
 
-		$msg = wfMessage( ...$copywarnMsg )->page( $title );
+		$msg = wfMessage( ...$copywarnMsg )->title( $title );
 		if ( $langcode ) {
 			$msg->inLanguage( $langcode );
 		}
@@ -3993,8 +3993,9 @@ class EditPage implements IEditObject {
 	protected function getLastDelete() {
 		$dbr = wfGetDB( DB_REPLICA );
 		$commentQuery = CommentStore::getStore()->getJoin( 'log_comment' );
+		$actorQuery = ActorMigration::newMigration()->getJoin( 'log_user' );
 		$data = $dbr->selectRow(
-			array_merge( [ 'logging' ], $commentQuery['tables'], [ 'actor' ] ),
+			array_merge( [ 'logging' ], $commentQuery['tables'], $actorQuery['tables'], [ 'user' ] ),
 			[
 				'log_type',
 				'log_action',
@@ -4003,8 +4004,8 @@ class EditPage implements IEditObject {
 				'log_title',
 				'log_params',
 				'log_deleted',
-				'actor_name'
-			] + $commentQuery['fields'],
+				'user_name'
+			] + $commentQuery['fields'] + $actorQuery['fields'],
 			[
 				'log_namespace' => $this->mTitle->getNamespace(),
 				'log_title' => $this->mTitle->getDBkey(),
@@ -4012,15 +4013,15 @@ class EditPage implements IEditObject {
 				'log_action' => 'delete',
 			],
 			__METHOD__,
-			[ 'ORDER BY' => 'log_timestamp DESC' ],
+			[ 'LIMIT' => 1, 'ORDER BY' => 'log_timestamp DESC' ],
 			[
-				'actor' => [ 'JOIN', 'actor_id=log_actor' ],
-			] + $commentQuery['joins']
+				'user' => [ 'JOIN', 'user_id=' . $actorQuery['fields']['log_user'] ],
+			] + $commentQuery['joins'] + $actorQuery['joins']
 		);
 		// Quick paranoid permission checks...
 		if ( is_object( $data ) ) {
 			if ( $data->log_deleted & LogPage::DELETED_USER ) {
-				$data->actor_name = $this->context->msg( 'rev-deleted-user' )->escaped();
+				$data->user_name = $this->context->msg( 'rev-deleted-user' )->escaped();
 			}
 
 			if ( $data->log_deleted & LogPage::DELETED_COMMENT ) {
@@ -4076,8 +4077,13 @@ class EditPage implements IEditObject {
 				$this->context->getLanguage()->getArrow() . ' ' .
 				$this->context->msg( 'continue-editing' )->text() . ']]</span>';
 			if ( $this->mTriedSave && !$this->mTokenOk ) {
-				$note = $this->context->msg( 'session_fail_preview' )->plain();
-				$this->incrementEditFailureStats( 'session_loss' );
+				if ( $this->mTokenOkExceptSuffix ) {
+					$note = $this->context->msg( 'token_suffix_mismatch' )->plain();
+					$this->incrementEditFailureStats( 'bad_token' );
+				} else {
+					$note = $this->context->msg( 'session_fail_preview' )->plain();
+					$this->incrementEditFailureStats( 'session_loss' );
+				}
 			} elseif ( $this->incompleteForm ) {
 				$note = $this->context->msg( 'edit_form_incomplete' )->plain();
 				if ( $this->mTriedSave ) {
@@ -4201,9 +4207,9 @@ class EditPage implements IEditObject {
 		$parserOptions->setIsSectionPreview( $this->section !== null && $this->section !== '' );
 		$parserOptions->enableLimitReport();
 
-		// XXX: we could call $parserOptions->setCurrentRevisionRecordCallback here to force the
+		// XXX: we could call $parserOptions->setCurrentRevisionCallback here to force the
 		// current revision to be null during PST, until setupFakeRevision is called on
-		// the ParserOptions. Currently, we rely on Parser::getRevisionRecordObject() to ignore
+		// the ParserOptions. Currently, we rely on Parser::getRevisionObject() to ignore
 		// existing revisions in preview mode.
 
 		return $parserOptions;
@@ -4223,13 +4229,11 @@ class EditPage implements IEditObject {
 		$parserOptions = $this->getPreviewParserOptions();
 
 		// NOTE: preSaveTransform doesn't have a fake revision to operate on.
-		// Parser::getRevisionRecordObject() will return null in preview mode,
+		// Parser::getRevisionObject() will return null in preview mode,
 		// causing the context user to be used for {{subst:REVISIONUSER}}.
 		// XXX: Alternatively, we could also call setupFakeRevision() a second time:
 		// once before PST with $content, and then after PST with $pstContent.
-		$services = MediaWikiServices::getInstance();
-		$contentTransformer = $services->getContentTransformer();
-		$pstContent = $contentTransformer->preSaveTransform( $content, $this->mTitle, $user, $parserOptions );
+		$pstContent = $content->preSaveTransform( $this->mTitle, $user, $parserOptions );
 		$scopedCallback = $parserOptions->setupFakeRevision( $this->mTitle, $pstContent, $user );
 		$parserOutput = $pstContent->getParserOutput( $this->mTitle, null, $parserOptions );
 		ScopedCallback::consume( $scopedCallback );
@@ -4357,7 +4361,7 @@ class EditPage implements IEditObject {
 			// (if it's a valid option) rather than the current value for watchlistExpiry.
 			// See also above in $this->importFormData().
 			$expiryFromRequest = $this->getContext()->getRequest()->getText( 'wpWatchlistExpiry' );
-			if ( ( $this->preview || $this->diff ) && in_array( $expiryFromRequest, $expiryOptions['options'] ) ) {
+			if ( $this->preview && in_array( $expiryFromRequest, $expiryOptions['options'] ) ) {
 				$expiryOptions['default'] = $expiryFromRequest;
 			}
 			// Reformat the options to match what DropdownInputWidget wants.
@@ -4464,9 +4468,7 @@ class EditPage implements IEditObject {
 	 *
 	 * @param int &$tabindex Current tabindex
 	 *
-	 * @return string[] Strings or objects with a __toString() implementation. Usually an array of
-	 *  {@see ButtonInputWidget}, but EditPageBeforeEditButtons hook handlers might inject something
-	 *  else.
+	 * @return array
 	 */
 	public function getEditButtons( &$tabindex ) {
 		$buttons = [];
@@ -4564,7 +4566,6 @@ class EditPage implements IEditObject {
 		$out->addHTML( '<div id="spamprotected">' );
 		$out->addWikiMsg( 'spamprotectiontext' );
 		if ( $match ) {
-			// @phan-suppress-next-line SecurityCheck-DoubleEscaped false positive
 			$out->addWikiMsg( 'spamprotectionmatch', wfEscapeWikiText( $match ) );
 		}
 		$out->addHTML( '</div>' );
@@ -4689,6 +4690,19 @@ class EditPage implements IEditObject {
 	protected function addExplainConflictHeader( OutputPage $out ) {
 		$out->addHTML(
 			$this->getEditConflictHelper()->getExplainHeader()
+		);
+	}
+
+	/**
+	 * @param string $name
+	 * @param mixed[] $customAttribs
+	 * @param User $user
+	 * @return mixed[]
+	 * @since 1.29
+	 */
+	protected function buildTextboxAttribs( $name, array $customAttribs, User $user ) {
+		return ( new TextboxBuilder() )->buildTextboxAttribs(
+			$name, $customAttribs, $user, $this->mTitle
 		);
 	}
 

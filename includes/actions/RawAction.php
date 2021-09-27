@@ -26,11 +26,8 @@
  * @file
  */
 
-use MediaWiki\HookContainer\HookContainer;
-use MediaWiki\HookContainer\HookRunner;
 use MediaWiki\Logger\LoggerFactory;
-use MediaWiki\Permissions\PermissionManager;
-use MediaWiki\Revision\RevisionLookup;
+use MediaWiki\MediaWikiServices;
 use MediaWiki\Revision\SlotRecord;
 
 /**
@@ -40,42 +37,6 @@ use MediaWiki\Revision\SlotRecord;
  * @ingroup Actions
  */
 class RawAction extends FormlessAction {
-
-	/** @var HookRunner */
-	private $hookRunner;
-
-	/** @var Parser */
-	private $parser;
-
-	/** @var PermissionManager */
-	private $permissionManager;
-
-	/** @var RevisionLookup */
-	private $revisionLookup;
-
-	/**
-	 * @param Page $page
-	 * @param IContextSource $context
-	 * @param HookContainer $hookContainer
-	 * @param Parser $parser
-	 * @param PermissionManager $permissionManager
-	 * @param RevisionLookup $revisionLookup
-	 */
-	public function __construct(
-		Page $page,
-		IContextSource $context,
-		HookContainer $hookContainer,
-		Parser $parser,
-		PermissionManager $permissionManager,
-		RevisionLookup $revisionLookup
-	) {
-		parent::__construct( $page, $context );
-		$this->hookRunner = new HookRunner( $hookContainer );
-		$this->parser = $parser;
-		$this->permissionManager = $permissionManager;
-		$this->revisionLookup = $revisionLookup;
-	}
-
 	public function getName() {
 		return 'raw';
 	}
@@ -127,9 +88,10 @@ class RawAction extends FormlessAction {
 		// Set standard Vary headers so cache varies on cookies and such (T125283)
 		$response->header( $this->getOutput()->getVaryHeader() );
 
+		$permissionManager = MediaWikiServices::getInstance()->getPermissionManager();
 		// Output may contain user-specific data;
 		// vary generated content for open sessions on private wikis
-		$privateCache = !$this->permissionManager->isEveryoneAllowed( 'read' ) &&
+		$privateCache = !$permissionManager->isEveryoneAllowed( 'read' ) &&
 			( $smaxage == 0 || MediaWiki\Session\SessionManager::getGlobalSession()->isPersistent() );
 		// Don't accidentally cache cookies if user is registered (T55032)
 		$privateCache = $privateCache || $this->getUser()->isRegistered();
@@ -201,7 +163,7 @@ class RawAction extends FormlessAction {
 			$response->statusHeader( 404 );
 		}
 
-		if ( !$this->hookRunner->onRawPageViewBeforeOutput( $this, $text ) ) {
+		if ( !$this->getHookRunner()->onRawPageViewBeforeOutput( $this, $text ) ) {
 			wfDebug( __METHOD__ . ": RawPageViewBeforeOutput hook broke raw page output." );
 		}
 
@@ -222,7 +184,9 @@ class RawAction extends FormlessAction {
 		$request = $this->getRequest();
 
 		// Get it from the DB
-		$rev = $this->revisionLookup->getRevisionByTitle( $title, $this->getOldId() );
+		$rev = MediaWikiServices::getInstance()
+			->getRevisionLookup()
+			->getRevisionByTitle( $title, $this->getOldId() );
 		if ( $rev ) {
 			$lastmod = wfTimestamp( TS_RFC2822, $rev->getTimestamp() );
 			$request->response()->header( "Last-modified: $lastmod" );
@@ -232,6 +196,7 @@ class RawAction extends FormlessAction {
 
 			if ( $content === null ) {
 				// revision not found (or suppressed)
+				$text = false;
 			} elseif ( !$content instanceof TextContent ) {
 				// non-text content
 				wfHttpError( 415, "Unsupported Media Type", "The requested page uses the content model `"
@@ -246,6 +211,7 @@ class RawAction extends FormlessAction {
 
 				if ( $content === null || $content === false ) {
 					// section not found (or section not supported, e.g. for JS, JSON, and CSS)
+					$text = false;
 				} else {
 					$text = $content->getText();
 				}
@@ -253,7 +219,7 @@ class RawAction extends FormlessAction {
 		}
 
 		if ( $text !== false && $text !== '' && $request->getRawVal( 'templates' ) === 'expand' ) {
-			$text = $this->parser->preprocess(
+			$text = MediaWikiServices::getInstance()->getParser()->preprocess(
 				$text,
 				$title,
 				ParserOptions::newFromContext( $this->getContext() )
@@ -270,7 +236,7 @@ class RawAction extends FormlessAction {
 	 */
 	public function getOldId() {
 		$oldid = $this->getRequest()->getInt( 'oldid' );
-		$rl = $this->revisionLookup;
+		$rl = MediaWikiServices::getInstance()->getRevisionLookup();
 		switch ( $this->getRequest()->getText( 'direction' ) ) {
 			case 'next':
 				# output next revision, or nothing if there isn't one

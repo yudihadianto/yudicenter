@@ -10,7 +10,6 @@ use MediaWikiIntegrationTestCase;
  * @covers MediaWiki\Session\SessionInfo
  */
 class SessionInfoTest extends MediaWikiIntegrationTestCase {
-	use SessionProviderTestTrait;
 
 	public function testBasics() {
 		$anonInfo = UserInfo::newAnonymous();
@@ -63,26 +62,26 @@ class SessionInfoTest extends MediaWikiIntegrationTestCase {
 
 		$manager = new SessionManager();
 		$provider = $this->getMockBuilder( SessionProvider::class )
-			->onlyMethods( [ 'persistsSessionId', 'canChangeUser', '__toString' ] )
+			->setMethods( [ 'persistsSessionId', 'canChangeUser', '__toString' ] )
 			->getMockForAbstractClass();
-		$this->initProvider( $provider, null, null, $manager );
-		$provider->method( 'persistsSessionId' )
-			->willReturn( true );
-		$provider->method( 'canChangeUser' )
-			->willReturn( true );
-		$provider->method( '__toString' )
-			->willReturn( 'Mock' );
+		$provider->setManager( $manager );
+		$provider->expects( $this->any() )->method( 'persistsSessionId' )
+			->will( $this->returnValue( true ) );
+		$provider->expects( $this->any() )->method( 'canChangeUser' )
+			->will( $this->returnValue( true ) );
+		$provider->expects( $this->any() )->method( '__toString' )
+			->will( $this->returnValue( 'Mock' ) );
 
 		$provider2 = $this->getMockBuilder( SessionProvider::class )
-			->onlyMethods( [ 'persistsSessionId', 'canChangeUser', '__toString' ] )
+			->setMethods( [ 'persistsSessionId', 'canChangeUser', '__toString' ] )
 			->getMockForAbstractClass();
-		$this->initProvider( $provider2, null, null, $manager );
-		$provider2->method( 'persistsSessionId' )
-			->willReturn( true );
-		$provider2->method( 'canChangeUser' )
-			->willReturn( true );
-		$provider2->method( '__toString' )
-			->willReturn( 'Mock2' );
+		$provider2->setManager( $manager );
+		$provider2->expects( $this->any() )->method( 'persistsSessionId' )
+			->will( $this->returnValue( true ) );
+		$provider2->expects( $this->any() )->method( 'canChangeUser' )
+			->will( $this->returnValue( true ) );
+		$provider2->expects( $this->any() )->method( '__toString' )
+			->will( $this->returnValue( 'Mock2' ) );
 
 		try {
 			new SessionInfo( SessionInfo::MIN_PRIORITY, [

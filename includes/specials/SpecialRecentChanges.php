@@ -36,6 +36,7 @@ class SpecialRecentChanges extends ChangesListSpecialPage {
 
 	protected static $savedQueriesPreferenceName = 'rcfilters-saved-queries';
 	protected static $daysPreferenceName = 'rcdays'; // Use general RecentChanges preference
+	protected static $limitPreferenceName = 'rcfilters-limit'; // Use RCFilters-specific preference
 	protected static $collapsedPreferenceName = 'rcfilters-rc-collapsed';
 
 	private $watchlistFilterGroupDefinition;
@@ -84,7 +85,7 @@ class SpecialRecentChanges extends ChangesListSpecialPage {
 					'label' => 'rcfilters-filter-watchlist-watched-label',
 					'description' => 'rcfilters-filter-watchlist-watched-description',
 					'cssClassSuffix' => 'watched',
-					'isRowApplicableCallable' => static function ( IContextSource $ctx, RecentChange $rc ) {
+					'isRowApplicableCallable' => static function ( $ctx, $rc ) {
 						return $rc->getAttribute( 'wl_user' );
 					}
 				],
@@ -93,7 +94,7 @@ class SpecialRecentChanges extends ChangesListSpecialPage {
 					'label' => 'rcfilters-filter-watchlist-watchednew-label',
 					'description' => 'rcfilters-filter-watchlist-watchednew-description',
 					'cssClassSuffix' => 'watchednew',
-					'isRowApplicableCallable' => static function ( IContextSource $ctx, RecentChange $rc ) {
+					'isRowApplicableCallable' => static function ( $ctx, $rc ) {
 						return $rc->getAttribute( 'wl_user' ) &&
 							$rc->getAttribute( 'rc_timestamp' ) &&
 							$rc->getAttribute( 'wl_notificationtimestamp' ) &&
@@ -105,15 +106,14 @@ class SpecialRecentChanges extends ChangesListSpecialPage {
 					'label' => 'rcfilters-filter-watchlist-notwatched-label',
 					'description' => 'rcfilters-filter-watchlist-notwatched-description',
 					'cssClassSuffix' => 'notwatched',
-					'isRowApplicableCallable' => static function ( IContextSource $ctx, RecentChange $rc ) {
+					'isRowApplicableCallable' => static function ( $ctx, $rc ) {
 						return $rc->getAttribute( 'wl_user' ) === null;
 					},
 				]
 			],
 			'default' => ChangesListStringOptionsFilterGroup::NONE,
-			'queryCallable' => function ( string $specialClassName, IContextSource $ctx,
-				IDatabase $dbr, &$tables, &$fields, &$conds, &$query_options, &$join_conds, $selectedValues
-			) {
+			'queryCallable' => function ( $specialPageClassName, $context, IDatabase $dbr,
+				&$tables, &$fields, &$conds, &$query_options, &$join_conds, $selectedValues ) {
 				sort( $selectedValues );
 				$notwatchedCond = 'wl_user IS NULL';
 				$watchedCond = 'wl_user IS NOT NULL';
@@ -352,9 +352,9 @@ class SpecialRecentChanges extends ChangesListSpecialPage {
 		$dbr = $this->getDB();
 
 		$rcQuery = RecentChange::getQueryInfo();
-		$tables = array_merge( $rcQuery['tables'], $tables );
+		$tables = array_merge( $tables, $rcQuery['tables'] );
 		$fields = array_merge( $rcQuery['fields'], $fields );
-		$join_conds = array_merge( $rcQuery['joins'], $join_conds );
+		$join_conds = array_merge( $join_conds, $rcQuery['joins'] );
 
 		// Join with watchlist and watchlist_expiry tables to highlight watched rows.
 		$this->addWatchlistJoins( $dbr, $tables, $fields, $join_conds, $conds );
@@ -958,18 +958,11 @@ class SpecialRecentChanges extends ChangesListSpecialPage {
 		// Prefer the RCFilters-specific preference if RCFilters is enabled
 		if ( $this->isStructuredFilterUiEnabled() ) {
 			return $this->userOptionsLookup->getIntOption(
-				$this->getUser(), $this->getLimitPreferenceName(), $systemPrefValue
+				$this->getUser(), static::$limitPreferenceName, $systemPrefValue
 			);
 		}
 
 		// Otherwise, use the system rclimit preference value
 		return $systemPrefValue;
-	}
-
-	/**
-	 * @return string
-	 */
-	protected function getLimitPreferenceName(): string {
-		return 'rcfilters-limit'; // Use RCFilters-specific preference
 	}
 }

@@ -20,8 +20,10 @@
 
 namespace MediaWiki\Page;
 
-use InvalidArgumentException;
+use MediaWiki\DAO\WikiAwareEntityTrait;
 use Wikimedia\Assert\Assert;
+use Wikimedia\Assert\ParameterAssertionException;
+use Wikimedia\NonSerializable\NonSerializableTrait;
 
 /**
  * Immutable value object representing a page identity.
@@ -38,33 +40,23 @@ use Wikimedia\Assert\Assert;
  *
  * @since 1.36
  */
-class PageIdentityValue extends PageReferenceValue implements ProperPageIdentity {
+class PageIdentityValue implements ProperPageIdentity {
+
+	/* Use JSON, but beware the note on serialization above. */
+	use NonSerializableTrait;
+	use WikiAwareEntityTrait;
 
 	/** @var int */
 	private $pageId;
 
-	/**
-	 * Constructs a PageIdentityValue, or returns null if the parameters are not valid.
-	 *
-	 * @note This does not perform any normalization, and only basic validation.
-	 * For full normalization and validation, use TitleParser::makeTitleValueSafe()
-	 * together with PageLookup::getPageForLink().
-	 *
-	 * @param int $pageId The ID of this page, or 0 if the page does not exist.
-	 * @param int $namespace A valid namespace ID. Validation is the caller's responsibility!
-	 * @param string $dbKey A valid DB key. Validation is the caller's responsibility!
-	 * @param string|bool $wikiId The Id of the wiki this page belongs to,
-	 *        or self::LOCAL for the local wiki.
-	 *
-	 * @return PageIdentityValue|null
-	 */
-	public static function tryNew( int $pageId, int $namespace, string $dbKey, $wikiId ) {
-		try {
-			return new static( $pageId, $namespace, $dbKey, $wikiId );
-		} catch ( InvalidArgumentException $ex ) {
-			return null;
-		}
-	}
+	/** @var int */
+	private $namespace;
+
+	/** @var string */
+	private $dbKey;
+
+	/** @var bool|string */
+	private $wikiId;
 
 	/**
 	 * @param int $pageId The ID of this page, or 0 if the page does not exist.
@@ -76,29 +68,39 @@ class PageIdentityValue extends PageReferenceValue implements ProperPageIdentity
 	public function __construct( int $pageId, int $namespace, string $dbKey, $wikiId ) {
 		Assert::parameter( $pageId >= 0, '$pageId', 'must not be negative' );
 		Assert::parameter( $namespace >= 0, '$namespace', 'must not be negative' );
+		$this->assertWikiIdParam( $wikiId );
 
-		// Not full validation, intended to help detect lack of validation in the caller.
-		Assert::parameter(
-			!preg_match( '/[#|]/', $dbKey ),
-			'$dbKey',
-			'must not contain pipes or hashes: ' . $dbKey
-		);
+		if ( $dbKey === '' ) {
+			throw new ParameterAssertionException(
+				'$dbKey',
+				'PageIdentityValue cannot be created for an empty title.'
+			);
+		}
 
-		parent::__construct( $namespace, $dbKey, $wikiId );
+		// Don't be mad about spaces.
+		$dbKey = str_replace( ' ', '_', $dbKey );
+
+		// Not full validation, but catches commons issues:
+		if ( preg_match( '/[\s#|]/', $dbKey ) ) {
+			throw new ParameterAssertionException(
+				'$dbKey',
+				'PageIdentityValue contains a bad character: ' . $dbKey
+			);
+		}
 
 		$this->pageId = $pageId;
+		$this->wikiId = $wikiId;
+		$this->namespace = $namespace;
+		$this->dbKey = $dbKey;
 	}
 
 	/**
-	 * Create PageIdentity for a local page.
+	 * Get the ID of the wiki provided to the constructor.
 	 *
-	 * @param int $pageId
-	 * @param int $namespace
-	 * @param string $dbKey
-	 * @return PageIdentityValue
+	 * @return string|false
 	 */
-	public static function localIdentity( int $pageId, int $namespace, string $dbKey ): self {
-		return new self( $pageId, $namespace, $dbKey, self::LOCAL );
+	public function getWikiId() {
+		return $this->wikiId;
 	}
 
 	/**
@@ -120,13 +122,72 @@ class PageIdentityValue extends PageReferenceValue implements ProperPageIdentity
 	 * @return bool
 	 */
 	public function exists(): bool {
-		return $this->getId( $this->getWikiId() ) > 0;
+		return $this->getId( $this->wikiId ) > 0;
 	}
 
 	/**
 	 * @return bool always true
 	 */
 	public function canExist(): bool {
+		return true;
+	}
+
+	/**
+	 * @inheritDoc
+	 *
+	 * @return int
+	 */
+	public function getNamespace(): int {
+		return $this->namespace;
+	}
+
+	/**
+	 * @inheritDoc
+	 *
+	 * @return string
+	 */
+	public function getDBkey(): string {
+		return $this->dbKey;
+	}
+
+	/**
+	 * Returns a string representation of the title, for logging. This is purely informative
+	 * and must not be used programmatically.
+	 *
+	 * @return string
+	 */
+	public function __toString(): string {
+		$name = '#' . $this->pageId;
+
+		if ( $this->wikiId ) {
+			$name .= '@' . $this->wikiId;
+		}
+
+		return $name . ' [' . $this->namespace . ':' . $this->dbKey . ']';
+	}
+
+	/**
+	 * @param PageIdentity $other
+	 *
+	 * @return bool
+	 */
+	public function isSamePageAs( PageIdentity $other ) {
+		// NOTE: keep in sync with Title::isSamePageAs()!
+		// NOTE: keep in sync with WikiPage::isSamePageAs()!
+
+		$wikiId = $this->getWikiId();
+		if ( $other->getWikiId() !== $wikiId
+			|| $other->getId( $wikiId ) !== $this->getId( $wikiId ) ) {
+			return false;
+		}
+
+		if ( $this->getId( $wikiId ) === 0 ) {
+			if ( $other->getNamespace() !== $this->getNamespace()
+				|| $other->getDBkey() !== $this->getDBkey() ) {
+				return false;
+			}
+		}
+
 		return true;
 	}
 

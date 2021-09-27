@@ -6,7 +6,7 @@ use IContextSource;
 use MediaWiki\Revision\RevisionRecord;
 
 /**
- * @stable to implement
+ * @stable for implementation
  * @ingroup Hooks
  */
 interface LinkerGenerateRollbackLinkHook {

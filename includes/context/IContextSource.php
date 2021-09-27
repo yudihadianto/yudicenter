@@ -22,7 +22,6 @@
  */
 
 use MediaWiki\Permissions\Authority;
-use MediaWiki\Session\CsrfTokenSetProvider;
 
 /**
  * Interface for objects which can provide a MediaWiki context on request
@@ -55,7 +54,7 @@ use MediaWiki\Session\CsrfTokenSetProvider;
  *
  * @unstable for implementation, extensions should subclass ContextSource instead.
  */
-interface IContextSource extends MessageLocalizer, CsrfTokenSetProvider {
+interface IContextSource extends MessageLocalizer {
 
 	/**
 	 * @return WebRequest

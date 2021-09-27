@@ -185,9 +185,7 @@ abstract class IndexPager extends ContextSource implements Pager {
 		$this->mOffset = $this->mRequest->getText( 'offset' );
 
 		# Use consistent behavior for the limit options
-		$this->mDefaultLimit = MediaWikiServices::getInstance()
-			->getUserOptionsLookup()
-			->getIntOption( $this->getUser(), 'rclimit' );
+		$this->mDefaultLimit = $this->getUser()->getIntOption( 'rclimit' );
 		if ( !$this->mLimit ) {
 			// Don't override if a subclass calls $this->setLimit() in its constructor.
 			list( $this->mLimit, /* $offset */ ) = $this->mRequest
@@ -981,7 +979,7 @@ abstract class IndexPager extends ContextSource implements Pager {
 	 */
 	protected function getLinkRenderer() {
 		if ( $this->linkRenderer === null ) {
-			$this->linkRenderer = MediaWikiServices::getInstance()->getLinkRenderer();
+			 $this->linkRenderer = MediaWikiServices::getInstance()->getLinkRenderer();
 		}
 		return $this->linkRenderer;
 	}

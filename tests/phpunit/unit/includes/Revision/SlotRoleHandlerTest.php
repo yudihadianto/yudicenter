@@ -2,7 +2,6 @@
 
 namespace MediaWiki\Tests\Revision;
 
-use MediaWiki\Page\PageIdentityValue;
 use MediaWiki\Revision\SlotRoleHandler;
 use Title;
 
@@ -62,14 +61,10 @@ class SlotRoleHandlerTest extends \MediaWikiUnitTestCase {
 	 */
 	public function testIsAllowedModel() {
 		$handler = new SlotRoleHandler( 'foo', 'FooModel' );
-		$this->assertTrue( $handler->isAllowedModel(
-			'FooModel',
-			PageIdentityValue::localIdentity( 1, NS_MAIN, 'Test' )
-		) );
-		$this->assertFalse( $handler->isAllowedModel(
-			'QuaxModel',
-			PageIdentityValue::localIdentity( 1, NS_MAIN, 'Test' ) )
-		);
+
+		$title = $this->makeBlankTitleObject();
+		$this->assertTrue( $handler->isAllowedModel( 'FooModel', $title ) );
+		$this->assertFalse( $handler->isAllowedModel( 'QuaxModel', $title ) );
 	}
 
 	/**

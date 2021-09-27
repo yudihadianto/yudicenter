@@ -24,7 +24,6 @@
 use MediaWiki\Cache\LinkBatchFactory;
 use MediaWiki\HookContainer\HookRunner;
 use MediaWiki\User\ActorNormalization;
-use MediaWiki\User\UserIdentityLookup;
 use Wikimedia\Rdbms\ILoadBalancer;
 use Wikimedia\Timestamp\TimestampException;
 
@@ -44,26 +43,20 @@ class SpecialLog extends SpecialPage {
 	/** @var ActorNormalization */
 	private $actorNormalization;
 
-	/** @var UserIdentityLookup */
-	private $userIdentityLookup;
-
 	/**
 	 * @param LinkBatchFactory $linkBatchFactory
 	 * @param ILoadBalancer $loadBalancer
 	 * @param ActorNormalization $actorNormalization
-	 * @param UserIdentityLookup $userIdentityLookup
 	 */
 	public function __construct(
 		LinkBatchFactory $linkBatchFactory,
 		ILoadBalancer $loadBalancer,
-		ActorNormalization $actorNormalization,
-		UserIdentityLookup $userIdentityLookup
+		ActorNormalization $actorNormalization
 	) {
 		parent::__construct( 'Log' );
 		$this->linkBatchFactory = $linkBatchFactory;
 		$this->loadBalancer = $loadBalancer;
 		$this->actorNormalization = $actorNormalization;
-		$this->userIdentityLookup = $userIdentityLookup;
 	}
 
 	public function execute( $par ) {
@@ -256,9 +249,8 @@ class SpecialLog extends SpecialPage {
 		$this->addHeader( $opts->getValue( 'type' ) );
 
 		# Set relevant user
-		$performer = $pager->getPerformer();
-		if ( $performer ) {
-			$performerUser = $this->userIdentityLookup->getUserIdentityByName( $performer );
+		if ( $pager->getPerformer() ) {
+			$performerUser = User::newFromName( $pager->getPerformer(), false );
 			if ( $performerUser ) {
 				$this->getSkin()->setRelevantUser( $performerUser );
 			}
@@ -267,7 +259,7 @@ class SpecialLog extends SpecialPage {
 		# Show form options
 		$loglist->showOptions(
 			$pager->getType(),
-			$performer,
+			$pager->getPerformer(),
 			$pager->getPage(),
 			$pager->getPattern(),
 			$pager->getYear(),

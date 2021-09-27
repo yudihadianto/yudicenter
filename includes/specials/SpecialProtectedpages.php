@@ -42,6 +42,9 @@ class SpecialProtectedpages extends SpecialPage {
 	/** @var CommentStore */
 	private $commentStore;
 
+	/** @var ActorMigration */
+	private $actorMigration;
+
 	/** @var UserCache */
 	private $userCache;
 
@@ -49,18 +52,21 @@ class SpecialProtectedpages extends SpecialPage {
 	 * @param LinkBatchFactory $linkBatchFactory
 	 * @param ILoadBalancer $loadBalancer
 	 * @param CommentStore $commentStore
+	 * @param ActorMigration $actorMigration
 	 * @param UserCache $userCache
 	 */
 	public function __construct(
 		LinkBatchFactory $linkBatchFactory,
 		ILoadBalancer $loadBalancer,
 		CommentStore $commentStore,
+		ActorMigration $actorMigration,
 		UserCache $userCache
 	) {
 		parent::__construct( 'Protectedpages' );
 		$this->linkBatchFactory = $linkBatchFactory;
 		$this->loadBalancer = $loadBalancer;
 		$this->commentStore = $commentStore;
+		$this->actorMigration = $actorMigration;
 		$this->userCache = $userCache;
 	}
 
@@ -97,6 +103,7 @@ class SpecialProtectedpages extends SpecialPage {
 			$this->linkBatchFactory,
 			$this->loadBalancer,
 			$this->commentStore,
+			$this->actorMigration,
 			$this->userCache
 		);
 
@@ -159,7 +166,7 @@ class SpecialProtectedpages extends SpecialPage {
 		$htmlForm = HTMLForm::factory( 'ooui', $formDescriptor, $this->getContext() )
 			->setMethod( 'get' )
 			->setWrapperLegendMsg( 'protectedpages' )
-			->setSubmitTextMsg( 'protectedpages-submit' );
+			->setSubmitText( $this->msg( 'protectedpages-submit' )->text() );
 
 		return $htmlForm->prepareForm()->getHTML( false );
 	}

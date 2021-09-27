@@ -1,7 +1,7 @@
 <?php
 
-use Wikimedia\RemexHtml\Tokenizer\Attributes;
-use Wikimedia\RemexHtml\Tokenizer\NullTokenHandler;
+use RemexHtml\Tokenizer\Attributes;
+use RemexHtml\Tokenizer\NullTokenHandler;
 
 /**
  * @internal

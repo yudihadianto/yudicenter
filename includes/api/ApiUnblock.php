@@ -24,7 +24,6 @@ use MediaWiki\Block\BlockPermissionCheckerFactory;
 use MediaWiki\Block\DatabaseBlock;
 use MediaWiki\Block\UnblockUserFactory;
 use MediaWiki\ParamValidator\TypeDef\UserDef;
-use MediaWiki\User\UserIdentityLookup;
 
 /**
  * API module that facilitates the unblocking of users. Requires API write mode
@@ -42,21 +41,21 @@ class ApiUnblock extends ApiBase {
 	/** @var UnblockUserFactory */
 	private $unblockUserFactory;
 
-	/** @var UserIdentityLookup */
-	private $userIdentityLookup;
+	/** @var UserCache */
+	private $userCache;
 
 	public function __construct(
 		ApiMain $main,
 		$action,
 		BlockPermissionCheckerFactory $permissionCheckerFactory,
 		UnblockUserFactory $unblockUserFactory,
-		UserIdentityLookup $userIdentityLookup
+		UserCache $userCache
 	) {
 		parent::__construct( $main, $action );
 
 		$this->permissionCheckerFactory = $permissionCheckerFactory;
 		$this->unblockUserFactory = $unblockUserFactory;
-		$this->userIdentityLookup = $userIdentityLookup;
+		$this->userCache = $userCache;
 	}
 
 	/**
@@ -73,11 +72,13 @@ class ApiUnblock extends ApiBase {
 		}
 
 		if ( $params['userid'] !== null ) {
-			$identity = $this->userIdentityLookup->getUserIdentityByUserId( $params['userid'] );
-			if ( !$identity ) {
+			$username = $this->userCache->getProp( $params['userid'], 'name' );
+
+			if ( $username === false ) {
 				$this->dieWithError( [ 'apierror-nosuchuserid', $params['userid'] ], 'nosuchuserid' );
+			} else {
+				$params['user'] = $username;
 			}
-			$params['user'] = $identity->getName();
 		}
 
 		$target = $params['id'] === null ? $params['user'] : "#{$params['id']}";
@@ -108,12 +109,11 @@ class ApiUnblock extends ApiBase {
 		}
 
 		$block = $status->getValue();
-		$targetName = $block->getType() === DatabaseBlock::TYPE_AUTO ? '' : $block->getTargetName();
-		$targetUserId = $block->getTargetUserIdentity() ? $block->getTargetUserIdentity()->getId() : 0;
+		$target = $block->getType() == DatabaseBlock::TYPE_AUTO ? '' : $block->getTarget();
 		$res = [
 			'id' => $block->getId(),
-			'user' => $targetName,
-			'userid' => $targetUserId,
+			'user' => $target instanceof User ? $target->getName() : $target,
+			'userid' => $target instanceof User ? $target->getId() : 0,
 			'reason' => $params['reason']
 		];
 		$this->getResult()->addValue( null, $this->getModuleName(), $res );

@@ -40,7 +40,7 @@ class UpdateRestrictions extends Maintenance {
 	}
 
 	public function execute() {
-		$dbw = $this->getDB( DB_PRIMARY );
+		$dbw = $this->getDB( DB_MASTER );
 		$batchSize = $this->getBatchSize();
 
 		if ( !$dbw->tableExists( 'page_restrictions', __METHOD__ ) ) {

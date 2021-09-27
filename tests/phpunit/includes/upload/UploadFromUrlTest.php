@@ -14,7 +14,7 @@ class UploadFromUrlTest extends ApiTestCase {
 
 	private $user;
 
-	protected function setUp(): void {
+	protected function setUp() : void {
 		parent::setUp();
 		$this->user = self::$users['sysop']->getUser();
 
@@ -144,7 +144,7 @@ class UploadFromUrlTest extends ApiTestCase {
 		}
 		$this->assertTrue( $exception, "Got exception" );
 
-		$this->getServiceContainer()->getUserGroupManager()->removeUserFromGroup( $this->user, 'sysop' );
+		$this->user->removeGroup( 'sysop' );
 		$exception = false;
 		try {
 			$this->doApiRequest( [
@@ -183,12 +183,15 @@ class UploadFromUrlTest extends ApiTestCase {
 		$file = __DIR__ . '/../../data/upload/png-plain.png';
 		$this->installMockHttp( file_get_contents( $file ) );
 
-		$this->getServiceContainer()->getUserGroupManager()->addUserToGroup( $this->user, 'users' );
-		$data = $this->doApiRequestWithToken( [
+		$token = $this->user->getEditToken();
+
+		$this->user->addGroup( 'users' );
+		$data = $this->doApiRequest( [
 			'action' => 'upload',
 			'filename' => 'UploadFromUrlTest.png',
 			'url' => 'http://upload.wikimedia.org/wikipedia/mediawiki/b/bc/Wiki.png',
 			'ignorewarnings' => true,
+			'token' => $token,
 		], $data );
 
 		$this->assertEquals( 'Success', $data[0]['upload']['result'] );

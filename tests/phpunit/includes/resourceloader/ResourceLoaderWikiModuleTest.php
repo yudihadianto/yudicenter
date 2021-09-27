@@ -1,9 +1,6 @@
 <?php
 
-use MediaWiki\Page\PageIdentity;
-use MediaWiki\Page\PageIdentityValue;
-use MediaWiki\Page\PageRecord;
-use MediaWiki\Page\PageStore;
+use MediaWiki\MediaWikiServices;
 use Wikimedia\Rdbms\IDatabase;
 use Wikimedia\TestingAccessWrapper;
 
@@ -11,7 +8,6 @@ use Wikimedia\TestingAccessWrapper;
  * @covers ResourceLoaderWikiModule
  */
 class ResourceLoaderWikiModuleTest extends ResourceLoaderTestCase {
-	use LinkCacheTestTrait;
 
 	/**
 	 * @dataProvider provideConstructor
@@ -129,7 +125,7 @@ class ResourceLoaderWikiModuleTest extends ResourceLoaderTestCase {
 	public function testIsKnownEmpty( $titleInfo, $group, $dependencies, $expected ) {
 		$module = $this->getMockBuilder( ResourceLoaderWikiModule::class )
 			->disableOriginalConstructor()
-			->onlyMethods( [ 'getTitleInfo', 'getGroup', 'getDependencies' ] )
+			->setMethods( [ 'getTitleInfo', 'getGroup', 'getDependencies' ] )
 			->getMock();
 		$module->method( 'getTitleInfo' )
 			->willReturn( $this->prepareTitleInfo( $titleInfo ) );
@@ -221,7 +217,7 @@ class ResourceLoaderWikiModuleTest extends ResourceLoaderTestCase {
 		$expected = $titleInfo;
 
 		$module = $this->getMockBuilder( ResourceLoaderWikiModule::class )
-			->onlyMethods( [ 'getPages', 'getTitleInfo' ] )
+			->setMethods( [ 'getPages', 'getTitleInfo' ] )
 			->getMock();
 		$module->method( 'getPages' )->willReturn( $pages );
 		$module->method( 'getTitleInfo' )->willReturn( $titleInfo );
@@ -250,7 +246,7 @@ class ResourceLoaderWikiModuleTest extends ResourceLoaderTestCase {
 		$expected = $titleInfo;
 
 		$module = $this->getMockBuilder( TestResourceLoaderWikiModule::class )
-			->onlyMethods( [ 'getPages' ] )
+			->setMethods( [ 'getPages' ] )
 			->getMock();
 		$module->method( 'getPages' )->willReturn( $pages );
 		// Can't mock static methods
@@ -260,7 +256,7 @@ class ResourceLoaderWikiModuleTest extends ResourceLoaderTestCase {
 		$context = new ResourceLoaderContext( $rl, new FauxRequest() );
 
 		TestResourceLoaderWikiModule::invalidateModuleCache(
-			new PageIdentityValue( 17, NS_MEDIAWIKI, 'Common.css', PageIdentity::LOCAL ),
+			Title::newFromText( 'MediaWiki:Common.css' ),
 			null,
 			null,
 			wfWikiID()
@@ -347,19 +343,19 @@ class ResourceLoaderWikiModuleTest extends ResourceLoaderTestCase {
 	public function testGetContent( $expected, $title, Content $contentObj = null ) {
 		$context = $this->getResourceLoaderContext( [], new EmptyResourceLoader );
 		$module = $this->getMockBuilder( ResourceLoaderWikiModule::class )
-			->onlyMethods( [ 'getContentObj' ] )->getMock();
+			->setMethods( [ 'getContentObj' ] )->getMock();
 		$module->method( 'getContentObj' )
 			->willReturn( $contentObj );
 
 		if ( is_array( $title ) ) {
 			$title += [ 'ns' => NS_MAIN, 'id' => 1, 'len' => 1, 'redirect' => 0 ];
 			$titleText = $title['text'];
-			// Mock page table access via PageStore
-			$pageStore = $this->createNoOpMock( PageStore::class, [ 'getPageByText' ] );
-			$pageStore->method( 'getPageByText' )->willReturn(
-				new PageIdentityValue(
-					$title['id'], $title['ns'], $title['text'], PageRecord::LOCAL
-				)
+			// Mock Title db access via LinkCache
+			MediaWikiServices::getInstance()->getLinkCache()->addGoodLinkObj(
+				$title['id'],
+				new TitleValue( $title['ns'], $title['title'] ),
+				$title['len'],
+				$title['redirect']
 			);
 		} else {
 			$titleText = $title;
@@ -377,19 +373,17 @@ class ResourceLoaderWikiModuleTest extends ResourceLoaderTestCase {
 			'MediaWiki:Common.css' => [ 'type' => 'style' ],
 		];
 
-		$rl = new EmptyResourceLoader();
-
 		$module = $this->getMockBuilder( ResourceLoaderWikiModule::class )
-			->onlyMethods( [ 'getPages' ] )
+			->setMethods( [ 'getPages' ] )
 			->getMock();
 		$module->method( 'getPages' )->willReturn( $pages );
-		$module->setConfig( $rl->getConfig() );
 
+		$rl = new EmptyResourceLoader();
 		$context = new DerivativeResourceLoaderContext(
 			new ResourceLoaderContext( $rl, new FauxRequest() )
 		);
-		$context->setContentOverrideCallback( static function ( PageIdentity $t ) {
-			if ( $t->getDBkey() === 'Common.css' ) {
+		$context->setContentOverrideCallback( static function ( Title $t ) {
+			if ( $t->getPrefixedText() === 'MediaWiki:Common.css' ) {
 				return new CssContent( '.override{}' );
 			}
 			return null;
@@ -402,8 +396,8 @@ class ResourceLoaderWikiModuleTest extends ResourceLoaderTestCase {
 			]
 		], $module->getStyles( $context ) );
 
-		$context->setContentOverrideCallback( static function ( PageIdentity $t ) {
-			if ( $t->getDBkey() === 'Skin.css' ) {
+		$context->setContentOverrideCallback( static function ( Title $t ) {
+			if ( $t->getPrefixedText() === 'MediaWiki:Skin.css' ) {
 				return new CssContent( '.override{}' );
 			}
 			return null;
@@ -417,20 +411,19 @@ class ResourceLoaderWikiModuleTest extends ResourceLoaderTestCase {
 			$this->getResourceLoaderContext( [], new EmptyResourceLoader )
 		);
 		$module = $this->getMockBuilder( ResourceLoaderWikiModule::class )
-			->onlyMethods( [ 'getPages' ] )
+			->setMethods( [ 'getPages' ] )
 			->getMock();
 		$module->method( 'getPages' )
 			->willReturn( [
 				'MediaWiki:Redirect.js' => [ 'type' => 'script' ]
 			] );
-		$module->setConfig( $context->getResourceLoader()->getConfig() );
-		$context->setContentOverrideCallback( static function ( PageIdentity $title ) {
-			if ( $title->getDBkey() === 'Redirect.js' ) {
+		$context->setContentOverrideCallback( static function ( Title $title ) {
+			if ( $title->getPrefixedText() === 'MediaWiki:Redirect.js' ) {
 				$handler = new JavaScriptContentHandler();
 				return $handler->makeRedirectContent(
 					Title::makeTitle( NS_MEDIAWIKI, 'Target.js' )
 				);
-			} elseif ( $title->getDBkey() === 'Target.js' ) {
+			} elseif ( $title->getPrefixedText() === 'MediaWiki:Target.js' ) {
 				return new JavaScriptContent( 'target;' );
 			} else {
 				return null;
@@ -438,7 +431,12 @@ class ResourceLoaderWikiModuleTest extends ResourceLoaderTestCase {
 		} );
 
 		// Mock away Title's db queries with LinkCache
-		$this->addGoodLinkObject( 1, new TitleValue( NS_MEDIAWIKI, 'Redirect.js' ), 1, 1 );
+		MediaWikiServices::getInstance()->getLinkCache()->addGoodLinkObj(
+			1, // id
+			new TitleValue( NS_MEDIAWIKI, 'Redirect.js' ),
+			1, // len
+			1 // redirect
+		);
 
 		$this->assertSame(
 			"/*\nMediaWiki:Redirect.js\n*/\ntarget;\n",
@@ -447,7 +445,7 @@ class ResourceLoaderWikiModuleTest extends ResourceLoaderTestCase {
 		);
 	}
 
-	protected function tearDown(): void {
+	protected function tearDown() : void {
 		Title::clearCaches();
 		parent::tearDown();
 	}

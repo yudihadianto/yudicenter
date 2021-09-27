@@ -20,9 +20,6 @@
  * @file
  */
 
-use MediaWiki\Page\PageReference;
-use MediaWiki\Page\PageReferenceValue;
-
 /**
  * Job queue task description base code
  *
@@ -46,8 +43,8 @@ class JobSpecification implements IJobSpecification {
 	/** @var array Array of job parameters or false if none */
 	protected $params;
 
-	/** @var PageReference */
-	protected $page;
+	/** @var Title */
+	protected $title;
 
 	/** @var array */
 	protected $opts;
@@ -58,30 +55,28 @@ class JobSpecification implements IJobSpecification {
 	 * @param array $opts Map of key/values
 	 *   'removeDuplicates' key - whether to remove duplicate jobs
 	 *   'removeDuplicatesIgnoreParams' key - array with parameters to ignore for deduplication
-	 * @param PageReference|null $page
+	 * @param Title|null $title Optional descriptive title
 	 */
 	public function __construct(
-		$type, array $params, array $opts = [], PageReference $page = null
+		$type, array $params, array $opts = [], Title $title = null
 	) {
 		$this->validateParams( $params );
 		$this->validateParams( $opts );
 
 		$this->type = $type;
-		if ( $page ) {
+		if ( $title instanceof Title ) {
 			// Make sure JobQueue classes can pull the title from parameters alone
-			if ( $page->getDBkey() !== '' ) {
+			if ( $title->getDBkey() !== '' ) {
 				$params += [
-					'namespace' => $page->getNamespace(),
-					'title' => $page->getDBkey()
+					'namespace' => $title->getNamespace(),
+					'title' => $title->getDBkey()
 				];
 			}
 		} else {
-			// We aim to remove the page from job specification and all we need
-			// is namespace/dbkey, so use LOCAL no matter what.
-			$page = PageReferenceValue::localReference( NS_SPECIAL, 'Badtitle/' . __CLASS__ );
+			$title = Title::makeTitle( NS_SPECIAL, '' );
 		}
 		$this->params = $params;
-		$this->page = $page;
+		$this->title = $title;
 		$this->opts = $opts;
 	}
 
@@ -102,13 +97,8 @@ class JobSpecification implements IJobSpecification {
 		return $this->type;
 	}
 
-	/**
-	 * @deprecated since 1.37.
-	 * @return Title|null
-	 */
 	public function getTitle() {
-		wfDeprecated( __METHOD__, '1.37' );
-		return Title::castFromPageReference( $this->page );
+		return $this->title;
 	}
 
 	public function getParams() {
@@ -172,8 +162,8 @@ class JobSpecification implements IJobSpecification {
 			'params' => $this->params,
 			'opts'   => $this->opts,
 			'title'  => [
-				'ns'  => $this->page->getNamespace(),
-				'key' => $this->page->getDBkey()
+				'ns'  => $this->title->getNamespace(),
+				'key' => $this->title->getDBkey()
 			]
 		];
 	}
@@ -184,11 +174,8 @@ class JobSpecification implements IJobSpecification {
 	 * @since 1.25
 	 */
 	public static function newFromArray( array $map ) {
-		return new self(
-			$map['type'],
-			$map['params'],
-			$map['opts'],
-			PageReferenceValue::localReference( $map['title']['ns'], $map['title']['key'] )
-		);
+		$title = Title::makeTitle( $map['title']['ns'], $map['title']['key'] );
+
+		return new self( $map['type'], $map['params'], $map['opts'], $title );
 	}
 }

@@ -20,6 +20,8 @@
  * @file
  */
 
+use MediaWiki\MediaWikiServices;
+
 /**
  * Query module to enumerate links from all pages together.
  *
@@ -34,24 +36,11 @@ class ApiQueryAllLinks extends ApiQueryGeneratorBase {
 	private $useIndex = null;
 	private $props = [];
 
-	/** @var NamespaceInfo */
-	private $namespaceInfo;
-
-	/** @var GenderCache */
-	private $genderCache;
-
 	/**
 	 * @param ApiQuery $query
 	 * @param string $moduleName
-	 * @param NamespaceInfo $namespaceInfo
-	 * @param GenderCache $genderCache
 	 */
-	public function __construct(
-		ApiQuery $query,
-		$moduleName,
-		NamespaceInfo $namespaceInfo,
-		GenderCache $genderCache
-	) {
+	public function __construct( ApiQuery $query, $moduleName ) {
 		switch ( $moduleName ) {
 			case 'alllinks':
 				$prefix = 'al';
@@ -92,8 +81,6 @@ class ApiQueryAllLinks extends ApiQueryGeneratorBase {
 		}
 
 		parent::__construct( $query, $moduleName, $prefix );
-		$this->namespaceInfo = $namespaceInfo;
-		$this->genderCache = $genderCache;
 	}
 
 	public function execute() {
@@ -118,7 +105,7 @@ class ApiQueryAllLinks extends ApiQueryGeneratorBase {
 
 		$pfx = $this->tablePrefix;
 		$fieldTitle = $this->fieldTitle;
-		$prop = array_fill_keys( $params['prop'], true );
+		$prop = array_flip( $params['prop'] );
 		$fld_ids = isset( $prop['ids'] );
 		$fld_title = isset( $prop['title'] );
 		if ( $this->hasNamespace ) {
@@ -204,13 +191,14 @@ class ApiQueryAllLinks extends ApiQueryGeneratorBase {
 
 		// Get gender information
 		if ( $res->numRows() && $resultPageSet === null ) {
-			if ( $this->namespaceInfo->hasGenderDistinction( $namespace ) ) {
+			$services = MediaWikiServices::getInstance();
+			if ( $services->getNamespaceInfo()->hasGenderDistinction( $namespace ) ) {
 				$users = [];
 				foreach ( $res as $row ) {
 					$users[] = $row->pl_title;
 				}
 				if ( $users !== [] ) {
-					$this->genderCache->doQuery( $users, __METHOD__ );
+					$services->getGenderCache()->doQuery( $users, __METHOD__ );
 				}
 			}
 		}

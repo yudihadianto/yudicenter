@@ -22,7 +22,7 @@ function addDescribedBy( elem, id ) {
 	describedby.push( id );
 	elem
 		.data( "ui-tooltip-id", id )
-		.attr( "aria-describedby", describedby.join( " " ).trim() );
+		.attr( "aria-describedby", $.trim( describedby.join( " " ) ) );
 }
 
 function removeDescribedBy( elem ) {
@@ -34,7 +34,7 @@ function removeDescribedBy( elem ) {
 	}
 
 	elem.removeData( "ui-tooltip-id" );
-	describedby = describedby.join( " " ).trim();
+	describedby = $.trim( describedby.join( " " ) );
 	if ( describedby ) {
 		elem.attr( "aria-describedby", describedby );
 	} else {
@@ -111,7 +111,7 @@ $.widget( "ui.tooltip", {
 		});
 
 		// remove title attributes to prevent native tooltips
-		this.element.find( this.options.items ).addBack().each(function() {
+		this.element.find( this.options.items ).andSelf().each(function() {
 			var element = $( this );
 			if ( element.is( "[title]" ) ) {
 				element
@@ -123,7 +123,7 @@ $.widget( "ui.tooltip", {
 
 	_enable: function() {
 		// restore title attributes
-		this.element.find( this.options.items ).addBack().each(function() {
+		this.element.find( this.options.items ).andSelf().each(function() {
 			var element = $( this );
 			if ( element.data( "ui-tooltip-title" ) ) {
 				element.attr( "title", element.data( "ui-tooltip-title" ) );

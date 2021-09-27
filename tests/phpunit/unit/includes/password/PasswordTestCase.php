@@ -29,7 +29,7 @@ abstract class PasswordTestCase extends MediaWikiUnitTestCase {
 	 */
 	protected $passwordFactory;
 
-	protected function setUp(): void {
+	protected function setUp() : void {
 		parent::setUp();
 
 		$this->passwordFactory = new PasswordFactory();
@@ -89,7 +89,7 @@ abstract class PasswordTestCase extends MediaWikiUnitTestCase {
 		return array_keys( $this->getTypeConfigs() );
 	}
 
-	public function provideTypes() {
+	public function provideTypes( $type ) {
 		$params = [];
 		foreach ( $this->getValidTypes() as $type ) {
 			$params[] = [ $type ];
